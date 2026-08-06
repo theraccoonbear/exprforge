@@ -9,6 +9,7 @@
 // compilation unit. The SpEf prefix (SplineExprforge) exists to avoid
 // collisions with hand-written code elsewhere in that project.
 const { num, v, call, add, mul, sub, div, letIn, select, cmp } = require("../ast.js");
+const { forComponents } = require("../util.js");
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 const PI = num(3.141592653589793);
@@ -67,18 +68,29 @@ function mfLetChain(body) {
            )))))))));
 }
 
-// R components (normalized)
-const SpEfMkFrRX = { name: "SpEfMkFrRX", params: MF_PARAMS, body: mfLetChain(v("rxN")) };
-const SpEfMkFrRY = { name: "SpEfMkFrRY", params: MF_PARAMS, body: mfLetChain(v("ryN")) };
-const SpEfMkFrRZ = { name: "SpEfMkFrRZ", params: MF_PARAMS, body: mfLetChain(v("rzN")) };
+// R components (normalized) — same let chain, same params, only the
+// returned component differs, so forComponents() replaces three
+// hand-written near-duplicates with one template.
+const [SpEfMkFrRX, SpEfMkFrRY, SpEfMkFrRZ] = forComponents(["X", "Y", "Z"], (axis) => ({
+    name: `SpEfMkFrR${axis}`,
+    params: MF_PARAMS,
+    body: mfLetChain(v(`r${axis.toLowerCase()}N`)),
+}));
 
-// U = R × T  (using normalized R)
-const ux = sub(mul(v("ryN"), v("tz")), mul(v("rzN"), v("ty")));
-const uy = sub(mul(v("rzN"), v("tx")), mul(v("rxN"), v("tz")));
-const uz = sub(mul(v("rxN"), v("ty")), mul(v("ryN"), v("tx")));
-const SpEfMkFrUX = { name: "SpEfMkFrUX", params: MF_PARAMS, body: mfLetChain(ux) };
-const SpEfMkFrUY = { name: "SpEfMkFrUY", params: MF_PARAMS, body: mfLetChain(uy) };
-const SpEfMkFrUZ = { name: "SpEfMkFrUZ", params: MF_PARAMS, body: mfLetChain(uz) };
+// U = R × T  (using normalized R) — the three component expressions are a
+// cyclic permutation, not a single formula, so they're tabulated by axis
+// rather than derived generically; forComponents() still collapses the
+// three function definitions built from them into one template.
+const uBody = {
+    X: sub(mul(v("ryN"), v("tz")), mul(v("rzN"), v("ty"))),
+    Y: sub(mul(v("rzN"), v("tx")), mul(v("rxN"), v("tz"))),
+    Z: sub(mul(v("rxN"), v("ty")), mul(v("ryN"), v("tx"))),
+};
+const [SpEfMkFrUX, SpEfMkFrUY, SpEfMkFrUZ] = forComponents(["X", "Y", "Z"], (axis) => ({
+    name: `SpEfMkFrU${axis}`,
+    params: MF_PARAMS,
+    body: mfLetChain(uBody[axis]),
+}));
 
 // ── SpActualPos ──────────────────────────────────────────────────────────
 // actual = wire + standoff*(cos(pathRoll)*U + sin(pathRoll)*R)

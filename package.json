@@ -7,6 +7,7 @@
   "files": [
     "index.js",
     "ast.js",
+    "util.js",
     "build.js",
     "emitters/",
     "samples/"
