@@ -1,0 +1,22 @@
+# Build output (node build.js)
+out/
+
+# Dependencies
+node_modules/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Env / secrets
+.env
+.env.*
+
+# Coverage
+coverage/
+
+# OS / editor cruft
+.DS_Store
+*.swp
+.vscode/
+.idea/

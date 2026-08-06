@@ -1,0 +1,42 @@
+{
+  "name": "exprforge",
+  "version": "0.1.0",
+  "description": "Author a math expression once as an AST, emit identical-behavior implementations in JS, QB64, C, Java, Go, and Rust.",
+  "main": "index.js",
+  "type": "commonjs",
+  "files": [
+    "index.js",
+    "ast.js",
+    "build.js",
+    "emitters/"
+  ],
+  "scripts": {
+    "build": "node build.js",
+    "test": "node --test",
+    "prepublishOnly": "npm test"
+  },
+  "keywords": [
+    "codegen",
+    "ast",
+    "math",
+    "cross-language",
+    "transpiler",
+    "qb64"
+  ],
+  "license": "MIT",
+  "author": {
+    "name": "Don Smith",
+    "url": "https://github.com/theraccoonbear"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/theraccoonbear/exprforge.git"
+  },
+  "homepage": "https://github.com/theraccoonbear/exprforge#readme",
+  "bugs": {
+    "url": "https://github.com/theraccoonbear/exprforge/issues"
+  }
+}
