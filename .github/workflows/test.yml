@@ -1,0 +1,40 @@
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  conformance:
+    # The whole point of this project is emitted-code conformance across
+    # targets, so CI provisions every toolchain the test suite knows how to
+    # drive (C, Go, Rust, Java) rather than letting them silently skip.
+    # QB64 isn't wired up here yet -- see README.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - run: npm ci
+
+      - name: gcc
+        run: gcc --version
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "stable"
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - run: npm test

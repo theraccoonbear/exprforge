@@ -1,5 +1,7 @@
 # ExprForge 🔢🔨
 
+[![test](https://github.com/theraccoonbear/exprforge/actions/workflows/test.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test.yml)
+
 Author a math expression once, as a small AST, and emit verified,
 identical-behavior implementations in JavaScript, QB64, C, Java, Go, and Rust.
 
@@ -77,8 +79,21 @@ existing file as a template), then add one line to
 npm test
 ```
 
-Runs `node --test`, including a conformance check that compiles the C
-output and diffs it against the JS output for the same inputs.
+Runs `node --test`. For each sample, that's two kinds of check:
+
+- Emitted JS vs. an independently hand-written reference implementation
+  (catches a wrong formula in the AST itself).
+- Every other emitted target vs. that same JS, compiled and run as a real
+  subprocess with the sample inputs as argv (catches an emitter bug).
+
+The compiled-language checks need their toolchain on `PATH` and skip
+(not fail) when it's missing, so `npm test` degrades gracefully on any
+one machine — CI (`.github/workflows/test.yml`) installs gcc, Go, Rust,
+and a JDK so all of those actually run on every push/PR, not just JS.
+
+QB64 isn't wired into this harness yet — it's compiled by eye against
+the other targets' output, not automatically. That's the one gap left
+in "verified" above; contributions welcome.
 
 ## License
 
