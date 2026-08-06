@@ -23,7 +23,8 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 
-const { catmullRomAst, fibonacciAst, emitters } = require("../index.js");
+const { num, v, call, add, mul, div, letIn, cmp, select, catmullRomAst, fibonacciAst, splineFrameAsts, emitters } =
+    require("../index.js");
 
 function catmullRomReference(P0, P1, P2, P3, t) {
     const t2 = t * t;
@@ -44,6 +45,27 @@ function fibonacciReference(n) {
     return a;
 }
 
+// Exercises let + select + cmp together: length computed once via letIn,
+// then select() picks between the normalized value and a safe fallback.
+// Covers the near-zero case specifically, since that's the one a naive
+// select-as-a-guard implementation gets wrong (see ast.js's select() doc
+// comment and samples/spline-frame.js's safeDiv).
+const EPS = num(1e-9);
+const normalizeXAst = {
+    name: "normalizeX",
+    params: ["x", "y", "z"],
+    body: letIn(
+        "len",
+        call("sqrt", add(mul(v("x"), v("x")), mul(v("y"), v("y")), mul(v("z"), v("z")))),
+        select(cmp(v("len"), ">", EPS), div(v("x"), v("len")), num(0)),
+    ),
+};
+
+function normalizeXReference(x, y, z) {
+    const len = Math.sqrt(x * x + y * y + z * z);
+    return len > 1e-9 ? x / len : 0;
+}
+
 const SAMPLES = {
     catmullRom: {
         ast: catmullRomAst,
@@ -59,6 +81,16 @@ const SAMPLES = {
         ast: fibonacciAst,
         reference: fibonacciReference,
         inputs: [[0], [1], [2], [10], [20], [30]],
+    },
+    normalizeX: {
+        ast: normalizeXAst,
+        reference: normalizeXReference,
+        inputs: [
+            [1, 0, 0],
+            [3, 4, 0],
+            [1, 1, 1],
+            [0, 0, 0], // degenerate: len=0, must fall back to 0, not divide
+        ],
     },
 };
 
@@ -207,12 +239,14 @@ function runJava(ast, inputs) {
 // --- test registration ---------------------------------------------------
 
 function registerConformance(sampleName, { ast, reference, inputs }) {
-    test(`${sampleName}: emitted JS matches an independent reference implementation`, () => {
-        const fn = loadJsFn(ast);
-        for (const args of inputs) {
-            assertClose(fn(...args), reference(...args), `args=${JSON.stringify(args)}`);
-        }
-    });
+    if (reference) {
+        test(`${sampleName}: emitted JS matches an independent reference implementation`, () => {
+            const fn = loadJsFn(ast);
+            for (const args of inputs) {
+                assertClose(fn(...args), reference(...args), `args=${JSON.stringify(args)}`);
+            }
+        });
+    }
 
     const targets = [
         ["C", TOOLS.gcc, runC],
@@ -241,3 +275,61 @@ function registerConformance(sampleName, { ast, reference, inputs }) {
 for (const [sampleName, sample] of Object.entries(SAMPLES)) {
     registerConformance(sampleName, sample);
 }
+
+// --- samples/spline-frame.js ---------------------------------------------
+//
+// The real-world motivating case for let/select/cmp: 19 functions across
+// four parameter shapes. No independent per-function reference (that would
+// mean re-deriving the whole Gram-Schmidt frame math by hand) — instead,
+// cross-language conformance (every target vs. JS) for all 19, plus one
+// independent check of a property the math must satisfy regardless of how
+// it's computed: the constructed R basis vector is unit length, including
+// at the degenerate (0,0,0) tangent where safeDiv's fallback kicks in.
+
+const SPLINE_FRAME_INPUTS = {
+    "tx,ty,tz": [
+        [0, 1, 0], // near-vertical branch
+        [1, 0, 0], // normal branch
+        [0, 0, 0], // degenerate: safeDiv fallback
+        [0.577, 0.577, 0.577],
+    ],
+    "wx,wy_wire,wz_wire,tx,ty,tz,prDeg,so": [
+        [0, 0, 0, 1, 0, 0, 0, 1],
+        [1, 2, 3, 0, 1, 0, 90, 0.5],
+        [0, 0, 0, 0, 0, 0, 45, 1], // degenerate tangent
+    ],
+    "ux,uy,uz,rx,ry,rz,crDeg": [
+        [1, 0, 0, 0, 1, 0, 0],
+        [1, 0, 0, 0, 1, 0, 90],
+        [0, 1, 0, 1, 0, 0, 45],
+    ],
+    t: [[0], [0.5], [1], [-0.3]],
+};
+
+for (const ast of splineFrameAsts) {
+    const inputs = SPLINE_FRAME_INPUTS[ast.params.join(",")];
+    if (!inputs) {
+        throw new Error(`test/conformance.test.js: no sample inputs registered for params ${ast.params.join(",")}`);
+    }
+    registerConformance(`splineFrame.${ast.name}`, { ast, inputs });
+}
+
+test("spline-frame: SpEfMkFrR is unit length, including at the degenerate tangent", () => {
+    const rx = loadJsFn(splineFrameAsts.find((a) => a.name === "SpEfMkFrRX"));
+    const ry = loadJsFn(splineFrameAsts.find((a) => a.name === "SpEfMkFrRY"));
+    const rz = loadJsFn(splineFrameAsts.find((a) => a.name === "SpEfMkFrRZ"));
+    const tangents = [
+        [1, 0, 0],
+        [0, 1, 0],
+        [0, 0.99, 0.1],
+        [0.577, 0.577, 0.577],
+        [0, 0, 0], // degenerate -- fallback frame (0,0,1) must still be unit length
+    ];
+    for (const [tx, ty, tz] of tangents) {
+        const x = rx(tx, ty, tz);
+        const y = ry(tx, ty, tz);
+        const z = rz(tx, ty, tz);
+        const len = Math.sqrt(x * x + y * y + z * z);
+        assert.ok(Math.abs(len - 1) < 1e-9, `R not unit length for tangent (${tx},${ty},${tz}): len=${len}`);
+    }
+});

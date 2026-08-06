@@ -3,10 +3,13 @@
 // these into your own expression trees; see samples/ for worked examples.
 //
 // Node shapes:
-//   { type: "num",  value: number }
-//   { type: "var",  name: string }
-//   { type: "bin",  op: "+" | "-" | "*" | "/", left: Node, right: Node }
-//   { type: "call", name: string, args: Node[] }   // any Math.* function
+//   { type: "num",    value: number }
+//   { type: "var",    name: string }
+//   { type: "bin",    op: "+" | "-" | "*" | "/", left: Node, right: Node }
+//   { type: "call",   name: string, args: Node[] }   // any Math.* function
+//   { type: "let",    name: string, value: Node, body: Node }
+//   { type: "cmp",    op: ">" | "<" | ">=" | "<=" | "==" | "!=", left: Node, right: Node }
+//   { type: "select", cond: CmpNode, then: Node, else: Node }
 //
 // Every "bin" node is emitted with explicit parens in every target, so
 // operation order (and therefore floating-point rounding behavior) is
@@ -44,4 +47,70 @@ function div(a, b) {
     return bin("/", a, b);
 }
 
-module.exports = { num, v, bin, call, add, mul, sub, div };
+// Name a subexpression to avoid recomputing it (e.g. sqrt(x²+y²+z²) once,
+// then divide three components by it). Lifted out by collectLets before
+// emission — see there for how `v(name)` ends up referring to it.
+function letIn(name, value, body) {
+    return { type: "let", name, value, body };
+}
+
+// Comparison predicate — only valid as the `cond` of a select(); not a
+// general boolean expression, and shouldn't appear anywhere else in a tree.
+function cmp(left, op, right) {
+    return { type: "cmp", op, left, right };
+}
+
+// Conditional *value* selection, not a branch — both `then` and `else` are
+// always evaluated by every emitter (this is a value expression, not
+// control flow). Do not use this to guard division by zero or any other
+// undefined operation: ensure the operands are already safe (e.g. clamp a
+// denominator with its own select before dividing by it), or keep a real
+// guard as hand-written code in the caller of the generated function.
+function select(cond, thenNode, elseNode) {
+    return { type: "select", cond, then: thenNode, else: elseNode };
+}
+
+// Lifts every `let` node out of the tree into a flat, ordered list of
+// { name, node } bindings, replacing each with a plain v(name) reference.
+// The list is in dependency order — safe to declare/assign top-to-bottom.
+// Throws if two bindings share a name: they'd silently shadow or fail to
+// redeclare depending on the target language, and there's no lexical
+// scoping here to make that meaningful — every binding lands in one flat
+// list per function.
+function collectLets(node) {
+    const bindings = [];
+
+    function walk(n) {
+        if (n.type === "let") {
+            const { bindings: inner, body: val } = collectLets(n.value);
+            bindings.push(...inner);
+            bindings.push({ name: n.name, node: val });
+            return walk(n.body);
+        }
+        if (n.type === "bin") return { ...n, left: walk(n.left), right: walk(n.right) };
+        if (n.type === "call") return { ...n, args: n.args.map(walk) };
+        if (n.type === "select") {
+            return {
+                ...n,
+                then: walk(n.then),
+                else: walk(n.else),
+                cond: { ...n.cond, left: walk(n.cond.left), right: walk(n.cond.right) },
+            };
+        }
+        return n; // num, var
+    }
+
+    const body = walk(node);
+
+    const seen = new Set();
+    for (const { name } of bindings) {
+        if (seen.has(name)) {
+            throw new Error(`collectLets: duplicate let binding name "${name}" in one function`);
+        }
+        seen.add(name);
+    }
+
+    return { bindings, body };
+}
+
+module.exports = { num, v, bin, call, add, mul, sub, div, letIn, cmp, select, collectLets };

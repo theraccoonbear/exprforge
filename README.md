@@ -41,15 +41,20 @@ console.log(outputs.c.source);
 
 ## Samples
 
-`samples/` has two worked, non-trivial examples (also exported from the
-package as `catmullRomAst` and `fibonacciAst`, or together as `samples`):
+`samples/` has worked, non-trivial examples (also exported from the
+package individually, or together as `samples`):
 
 - `samples/catmull-rom.js` — uniform Catmull-Rom spline interpolation.
 - `samples/fibonacci.js` — nth Fibonacci number via Binet's closed form.
   There's no loop/recursion version because exprforge has no control flow
   (see below) — this is what "fibonacci" looks like as a pure expression.
+- `samples/spline-frame.js` — Gram-Schmidt frame construction for spline
+  paths (worldUp selection, tangent normalization with a safe-division
+  fallback, roll). 19 functions exercising `letIn`/`cmp`/`select` on a
+  real-world case — this is the actual motivating use case for those three
+  node types, not a toy.
 
-`npm run build` emits both, for every target language, into `out/`.
+`npm run build` emits all of them, for every target language, into `out/`.
 
 ## Supported Math functions
 
@@ -64,6 +69,32 @@ Requesting an unmapped function throws at build time, not silently.
 Write `emitters/<lang>.js` exporting an `Emitter` instance (see any
 existing file as a template), then add one line to
 `emitters/registry.js`. Nothing else changes.
+
+## Named subexpressions and conditional values
+
+Beyond `num`/`v`/`bin`/`call`, two more node types stay inside the
+expression model without introducing control flow:
+
+- **`letIn(name, value, body)`** — name a subexpression to avoid
+  recomputing it (e.g. `sqrt(x²+y²+z²)` once, then divide three
+  components by it). Every `let` in a function gets lifted into an ordered
+  list of local declarations ahead of the return statement/expression, in
+  every target.
+- **`select(cond, then, else)` + `cmp(left, op, right)`** — conditional
+  *value* selection, emitted as a ternary where one exists (`c`, `js`,
+  `java`), as `if`-as-expression in Rust, as an immediately-invoked
+  function in Go (which has neither), and as the equivalent arithmetic
+  expression in QB64 (which has no conditional expression syntax at all).
+
+  **`select` is not a branch** — every target evaluates both `then` and
+  `else`. Don't use it to guard division by zero or anything else
+  undefined; clamp the operand itself with its own `select` first (see
+  `safeDiv` in `samples/spline-frame.js`), or keep a real guard as
+  hand-written code around the generated function.
+
+See [`docs/planned-additions.md`](./docs/planned-additions.md) for the
+full design rationale, including why the naive "guard division with
+select" pattern is wrong.
 
 ## What this deliberately doesn't do
 
