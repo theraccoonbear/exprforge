@@ -5,8 +5,9 @@ const emitters = require("./emitters/registry.js");
 const { catmullRomAst } = require("./samples/catmull-rom.js");
 const { fibonacciAst } = require("./samples/fibonacci.js");
 const { splineFrameAsts } = require("./samples/spline-frame.js");
+const { kitchenSinkAst } = require("./samples/kitchen-sink.js");
 
-const samples = { "catmull-rom": catmullRomAst, fibonacci: fibonacciAst };
+const samples = { "catmull-rom": catmullRomAst, fibonacci: fibonacciAst, "kitchen-sink": kitchenSinkAst };
 
 const outDir = path.join(__dirname, "out");
 if (!fs.existsSync(outDir)) {

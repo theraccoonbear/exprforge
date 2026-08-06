@@ -47,6 +47,13 @@ function div(a, b) {
     return bin("/", a, b);
 }
 
+// Unary negation, since there's no unary operator in the AST — every
+// operator here is binary. `0 - x` rather than `-1 * x`: both are always
+// safe to emit, but subtraction from zero is the more direct reading.
+function neg(x) {
+    return sub(num(0), x);
+}
+
 // Name a subexpression to avoid recomputing it (e.g. sqrt(x²+y²+z²) once,
 // then divide three components by it). Lifted out by collectLets before
 // emission — see there for how `v(name)` ends up referring to it.
@@ -113,4 +120,4 @@ function collectLets(node) {
     return { bindings, body };
 }
 
-module.exports = { num, v, bin, call, add, mul, sub, div, letIn, cmp, select, collectLets };
+module.exports = { num, v, bin, call, add, mul, sub, div, neg, letIn, cmp, select, collectLets };

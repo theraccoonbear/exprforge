@@ -53,6 +53,11 @@ package individually, or together as `samples`):
   fallback, roll). 19 functions exercising `letIn`/`cmp`/`select` on a
   real-world case — this is the actual motivating use case for those three
   node types, not a toy.
+- `samples/kitchen-sink.js` — not a worked example: a synthetic function
+  that calls all 22 supported Math functions in one expression, existing
+  purely as a conformance-test fixture. It's what caught Go's and Rust's
+  `sign()` disagreeing with everyone else at exactly zero (see below) —
+  the other samples between them only ever exercised 5 of the 22.
 
 `npm run build` emits all of them, for every target language, into `out/`.
 

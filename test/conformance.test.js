@@ -23,8 +23,22 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 
-const { num, v, call, add, mul, div, letIn, cmp, select, catmullRomAst, fibonacciAst, splineFrameAsts, emitters } =
-    require("../index.js");
+const {
+    num,
+    v,
+    call,
+    add,
+    mul,
+    div,
+    letIn,
+    cmp,
+    select,
+    catmullRomAst,
+    fibonacciAst,
+    splineFrameAsts,
+    kitchenSinkAst,
+    emitters,
+} = require("../index.js");
 
 function catmullRomReference(P0, P1, P2, P3, t) {
     const t2 = t * t;
@@ -90,6 +104,22 @@ const SAMPLES = {
             [3, 4, 0],
             [1, 1, 1],
             [0, 0, 0], // degenerate: len=0, must fall back to 0, not divide
+        ],
+    },
+    // Calls all 22 supported Math functions in one expression -- coverage,
+    // not a formula with real meaning, so no independent reference (there
+    // isn't a second sensible way to compute "call everything and sum").
+    // x stays in (0, 1) so sqrt/log*/asin/acos are all simultaneously in
+    // domain; d = x - y varies sign (and hits exactly 0 once) for
+    // floor/ceil/round/trunc/sign, while deliberately avoiding exact .5
+    // boundaries -- see samples/kitchen-sink.js for why.
+    kitchenSink: {
+        ast: kitchenSinkAst,
+        inputs: [
+            [0.5, 0.2],
+            [0.3, 0.7],
+            [0.9, 0.9], // d = 0 exactly
+            [0.1, 2.5],
         ],
     },
 };

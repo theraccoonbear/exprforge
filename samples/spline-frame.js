@@ -8,7 +8,7 @@
 // IMPORTANT for QB64: function names must be unique across the entire QB64
 // compilation unit. The SpEf prefix (SplineExprforge) exists to avoid
 // collisions with hand-written code elsewhere in that project.
-const { num, v, call, add, mul, sub, div, letIn, select, cmp } = require("../ast.js");
+const { num, v, call, add, mul, sub, div, neg, letIn, select, cmp } = require("../ast.js");
 const { forComponents } = require("../util.js");
 
 // ── Helpers ──────────────────────────────────────────────────────────────
@@ -58,7 +58,7 @@ function mfLetChain(body) {
     return letIn("wy", select(nearVert, num(0), num(1)),
            letIn("wz", select(nearVert, num(1), num(0)),
            letIn("rx", sub(mul(v("ty"), v("wz")), mul(v("tz"), v("wy"))),
-           letIn("ry", mul(num(-1), mul(v("tx"), v("wz"))),
+           letIn("ry", neg(mul(v("tx"), v("wz"))),
            letIn("rz", mul(v("tx"), v("wy")),
            letIn("rLen", len3(v("rx"), v("ry"), v("rz")),
            letIn("rxN", safeDiv(v("rx"), "rLen", num(0)),
@@ -102,7 +102,7 @@ function apLetChain(body) {
     return letIn("wy", select(nearVert, num(0), num(1)),
            letIn("wz", select(nearVert, num(1), num(0)),
            letIn("rx", sub(mul(v("ty"), v("wz")), mul(v("tz"), v("wy"))),
-           letIn("ry", mul(num(-1), mul(v("tx"), v("wz"))),
+           letIn("ry", neg(mul(v("tx"), v("wz"))),
            letIn("rz", mul(v("tx"), v("wy")),
            letIn("rLen", len3(v("rx"), v("ry"), v("rz")),
            letIn("rxN", safeDiv(v("rx"), "rLen", num(0)),
@@ -168,13 +168,13 @@ function crLetChain(body) {
                body));
 }
 const SpEfCrW0 = { name: "SpEfCrW0", params: CRW_PARAMS,
-    body: crLetChain(mul(num(0.5), add(mul(num(-1), v("t3")), mul(num(2), v("t2")), mul(num(-1), v("t"))))) };
+    body: crLetChain(mul(num(0.5), add(neg(v("t3")), mul(num(2), v("t2")), neg(v("t"))))) };
 const SpEfCrW1 = { name: "SpEfCrW1", params: CRW_PARAMS,
     body: crLetChain(mul(num(0.5), add(mul(num(3), v("t3")), mul(num(-5), v("t2")), num(2)))) };
 const SpEfCrW2 = { name: "SpEfCrW2", params: CRW_PARAMS,
     body: crLetChain(mul(num(0.5), add(mul(num(-3), v("t3")), mul(num(4), v("t2")), v("t")))) };
 const SpEfCrW3 = { name: "SpEfCrW3", params: CRW_PARAMS,
-    body: crLetChain(mul(num(0.5), add(v("t3"), mul(num(-1), v("t2"))))) };
+    body: crLetChain(mul(num(0.5), add(v("t3"), neg(v("t2"))))) };
 
 // ── Exports ──────────────────────────────────────────────────────────────
 const splineFrameAsts = [

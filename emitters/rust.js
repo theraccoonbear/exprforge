@@ -26,9 +26,12 @@ const emitter = new Emitter({
         tan: method0("tan"), asin: method0("asin"), acos: method0("acos"), atan: method0("atan"),
         ln: method0("ln"), log2: method0("log2"), log10: method0("log10"), exp: method0("exp"),
         floor: method0("floor"), ceil: method0("ceil"), round: method0("round"), trunc: method0("trunc"),
-        signum: method0("signum"),
         log: method0("ln"),   // Math.log is natural log; Rust spells it ln()
-        sign: method0("signum"),
+        // NOT .signum(): Rust's docs specify 1.0 at positive zero (it only
+        // reads the sign bit), unlike JS's Math.sign(0) === 0 (and C's/
+        // Java's sign, which both special-case zero). Found by the
+        // kitchen-sink conformance test at exactly x - y == 0.
+        sign: ([x]) => `(if ${x} > 0.0 { 1.0f64 } else if ${x} < 0.0 { -1.0f64 } else { 0.0f64 })`,
         pow: method1("powf"), atan2: method1("atan2"), min: method1("min"),
         max: method1("max"), hypot: method1("hypot"),
     },

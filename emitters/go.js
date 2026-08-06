@@ -18,7 +18,11 @@ const emitter = new Emitter({
         log2: fn1("Log2"), log10: fn1("Log10"), exp: fn1("Exp"), floor: fn1("Floor"),
         ceil: fn1("Ceil"), round: fn1("Round"), trunc: fn1("Trunc"),
         pow: fn2("Pow"), atan2: fn2("Atan2"), min: fn2("Min"), max: fn2("Max"), hypot: fn2("Hypot"),
-        sign: ([x]) => `math.Copysign(1, ${x})`,
+        // NOT math.Copysign(1, x): that only reads the sign bit, so it
+        // returns ±1 at x == 0 too, unlike JS's Math.sign(0) === 0 (and
+        // C's/Java's sign, which both special-case zero). Found by the
+        // kitchen-sink conformance test at exactly x - y == 0.
+        sign: ([x]) => `func() float64 { if ${x} > 0.0 { return 1.0 }; if ${x} < 0.0 { return -1.0 }; return 0.0 }()`,
     },
     // Go has no ternary operator at all (a deliberate language design
     // choice) and `if` is a statement, not an expression — so there's no
