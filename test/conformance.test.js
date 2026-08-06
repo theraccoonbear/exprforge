@@ -13,7 +13,7 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 
-const { catmullRomAst, emitters } = require("../index.js");
+const { catmullRomAst, fibonacciAst, emitters } = require("../index.js");
 
 const SAMPLE_INPUTS = [
     [0.0, 1.0, 2.0, 3.0, 0.0],
@@ -79,4 +79,17 @@ test("C emitted output matches JS emitted output", { skip: !hasGcc() && "gcc not
     }
 
     fs.rmSync(cDir, { recursive: true, force: true });
+});
+
+test("JS-emitted fibonacci (Binet closed form) matches known values", () => {
+    const jsSource = emitters.js.emitFunction(fibonacciAst);
+    const tmpFile = path.join(os.tmpdir(), `fib-test-${Date.now()}.js`);
+    fs.writeFileSync(tmpFile, jsSource);
+    const { fibonacci } = require(tmpFile);
+    fs.unlinkSync(tmpFile);
+
+    const KNOWN = [[0, 0], [1, 1], [2, 1], [10, 55], [20, 6765]];
+    for (const [n, expected] of KNOWN) {
+        assert.strictEqual(Math.round(fibonacci(n)), expected, `F(${n})`);
+    }
 });

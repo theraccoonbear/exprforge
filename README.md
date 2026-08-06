@@ -37,6 +37,18 @@ console.log(outputs.rust.source);
 console.log(outputs.c.source);
 ```
 
+## Samples
+
+`samples/` has two worked, non-trivial examples (also exported from the
+package as `catmullRomAst` and `fibonacciAst`, or together as `samples`):
+
+- `samples/catmull-rom.js` — uniform Catmull-Rom spline interpolation.
+- `samples/fibonacci.js` — nth Fibonacci number via Binet's closed form.
+  There's no loop/recursion version because exprforge has no control flow
+  (see below) — this is what "fibonacci" looks like as a pure expression.
+
+`npm run build` emits both, for every target language, into `out/`.
+
 ## Supported Math functions
 
 `sqrt abs pow sin cos tan asin acos atan atan2 log log2 log10 exp

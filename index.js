@@ -1,6 +1,8 @@
 // exprforge/index.js
-const { num, v, bin, call, add, mul, sub, catmullRomAst } = require("./ast.js");
+const { num, v, bin, call, add, mul, sub, div } = require("./ast.js");
 const emitters = require("./emitters/registry.js");
+const { catmullRomAst } = require("./samples/catmull-rom.js");
+const { fibonacciAst } = require("./samples/fibonacci.js");
 
 /**
  * Run every registered emitter against one AST function definition.
@@ -16,9 +18,11 @@ function emitAll(fn) {
 
 module.exports = {
     // AST builders — use these to define your own formulas.
-    num, v, bin, call, add, mul, sub,
-    // Built-in example formula.
+    num, v, bin, call, add, mul, sub, div,
+    // Built-in example formulas — see samples/ for the source.
     catmullRomAst,
+    fibonacciAst,
+    samples: { catmullRom: catmullRomAst, fibonacci: fibonacciAst },
     // Per-language emitter instances, keyed by name (js, qb64, c, java, go, rust).
     emitters,
     // Convenience: run every emitter at once.
