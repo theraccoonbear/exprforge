@@ -173,7 +173,26 @@ const TOOLS = {
     // same as Java does without a local JDK.
     tsc: hasTool("tsc", ["--version"]),
     qb64: hasTool("qb64pe", ["-v"]),
+    dotnet: hasTool("dotnet", ["--version"]),
+    python: hasTool("python3", ["--version"]),
+    lua: hasTool("lua", ["-v"]),
 };
+
+// Optional CI-only filter: EXPRFORGE_TEST_TARGETS="Go" npm test runs only
+// the Go-labeled checks (plus the toolchain-independent JS/reference ones,
+// which aren't gated by this at all). Unset locally, so `npm test` on a
+// dev machine still runs everything its installed toolchains allow --
+// this exists so CI can run each language's checks in its own parallel
+// job (installing just that one toolchain) instead of one job serially
+// installing all of them, most of which have nothing to do with each
+// other. See .github/workflows/test.yml.
+const TARGET_FILTER = process.env.EXPRFORGE_TEST_TARGETS
+    ? new Set(process.env.EXPRFORGE_TEST_TARGETS.split(",").map((s) => s.trim()))
+    : null;
+
+function targetAllowed(label) {
+    return !TARGET_FILTER || TARGET_FILTER.has(label);
+}
 
 function tmpDir(prefix) {
     return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
@@ -502,6 +521,136 @@ function runSuiteJava(ast, inputs, outputNames) {
     return results;
 }
 
+// --- C# --------------------------------------------------------------
+//
+// dotnet build needs a project, not a single file -- a minimal SDK-style
+// .csproj gets written alongside the emitted source each time. Built once
+// per test (dotnet build, into an out/ subdir) and the resulting .dll run
+// directly (dotnet <dll>) per input row, same compile-once-run-many shape
+// as C/Go/Rust. InvariantGlobalization avoids any locale-dependent decimal
+// separator surprises when parsing argv.
+
+const CSPROJ = `<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net9.0</TargetFramework>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+</Project>
+`;
+
+// Matches csharp.js's wrapperClassName -- not just capitalize(fn.name),
+// since C# forbids a member sharing its enclosing type's exact name and
+// every SpEf-prefixed sample name is already capitalized (see csharp.js).
+function csharpClassName(fnName) {
+    return `${capitalize(fnName)}Impl`;
+}
+
+function runCSharp(ast, inputs) {
+    const source = emitters.csharp.emitFunction(ast);
+    const className = csharpClassName(ast.name);
+    const dir = tmpDir("ef-cs-");
+    fs.writeFileSync(path.join(dir, `${className}.cs`), source);
+    fs.writeFileSync(path.join(dir, "app.csproj"), CSPROJ);
+    const parses = ast.params.map((p, i) => `double ${p} = double.Parse(args[${i}]);`).join("\n");
+    const callArgs = ast.params.join(", ");
+    const mainSrc = `${parses}\nConsole.WriteLine(${className}.${ast.name}(${callArgs}).ToString("G17"));\n`;
+    fs.writeFileSync(path.join(dir, "Program.cs"), mainSrc);
+    const outDir = path.join(dir, "out");
+    execFileSync("dotnet", ["build", "-c", "Release", "-o", outDir], { cwd: dir, stdio: "ignore" });
+    const dll = path.join(outDir, "app.dll");
+    const results = inputs.map((args) => Number(execFileSync("dotnet", [dll, ...args.map(String)]).toString().trim()));
+    fs.rmSync(dir, { recursive: true, force: true });
+    return results;
+}
+
+function runSuiteCSharp(ast, inputs, outputNames) {
+    const source = emitters.csharp.emitFunction(ast);
+    const className = csharpClassName(ast.name);
+    const dir = tmpDir("ef-cs-");
+    fs.writeFileSync(path.join(dir, `${className}.cs`), source);
+    fs.writeFileSync(path.join(dir, "app.csproj"), CSPROJ);
+    const parses = ast.params.map((p, i) => `double ${p} = double.Parse(args[${i}]);`).join("\n");
+    const callArgs = ast.params.join(", ");
+    const prints = outputNames.map((n) => `Console.WriteLine(r.${n}.ToString("G17"));`).join("\n");
+    const mainSrc = `${parses}\nvar r = ${className}.${ast.name}(${callArgs});\n${prints}\n`;
+    fs.writeFileSync(path.join(dir, "Program.cs"), mainSrc);
+    const outDir = path.join(dir, "out");
+    execFileSync("dotnet", ["build", "-c", "Release", "-o", outDir], { cwd: dir, stdio: "ignore" });
+    const dll = path.join(outDir, "app.dll");
+    const results = inputs.map((args) => parseSuiteOutput(execFileSync("dotnet", [dll, ...args.map(String)]), outputNames));
+    fs.rmSync(dir, { recursive: true, force: true });
+    return results;
+}
+
+// --- Python --------------------------------------------------------------
+//
+// No compile step -- python3 interprets the emitted source directly, with
+// a small argv-reading harness appended.
+
+function runPython(ast, inputs) {
+    const source = emitters.python.emitFunction(ast);
+    const dir = tmpDir("ef-py-");
+    const parses = ast.params.map((p, i) => `${p} = float(sys.argv[${i + 1}])`).join("\n");
+    const callArgs = ast.params.join(", ");
+    const harness = `${source}\nimport sys\n${parses}\nprint(repr(${ast.name}(${callArgs})))\n`;
+    const srcPath = path.join(dir, "main.py");
+    fs.writeFileSync(srcPath, harness);
+    const results = inputs.map((args) => Number(execFileSync("python3", [srcPath, ...args.map(String)]).toString().trim()));
+    fs.rmSync(dir, { recursive: true, force: true });
+    return results;
+}
+
+function runSuitePython(ast, inputs, outputNames) {
+    const source = emitters.python.emitFunction(ast);
+    const dir = tmpDir("ef-py-");
+    const parses = ast.params.map((p, i) => `${p} = float(sys.argv[${i + 1}])`).join("\n");
+    const callArgs = ast.params.join(", ");
+    const prints = outputNames.map((n) => `print(repr(r.${n}))`).join("\n");
+    const harness = `${source}\nimport sys\n${parses}\nr = ${ast.name}(${callArgs})\n${prints}\n`;
+    const srcPath = path.join(dir, "main.py");
+    fs.writeFileSync(srcPath, harness);
+    const results = inputs.map((args) => parseSuiteOutput(execFileSync("python3", [srcPath, ...args.map(String)]), outputNames));
+    fs.rmSync(dir, { recursive: true, force: true });
+    return results;
+}
+
+// --- Lua -------------------------------------------------------------------
+//
+// No compile step -- lua interprets the emitted source directly. CLI args
+// arrive via the global `arg` table (arg[1] is the first argument, like
+// argv[1] in C -- arg[0] is the script name, same convention).
+
+function runLua(ast, inputs) {
+    const source = emitters.lua.emitFunction(ast);
+    const dir = tmpDir("ef-lua-");
+    const parses = ast.params.map((p, i) => `local ${p} = tonumber(arg[${i + 1}])`).join("\n");
+    const callArgs = ast.params.join(", ");
+    const harness = `${source}\n${parses}\nprint(string.format("%.17g", ${ast.name}(${callArgs})))\n`;
+    const srcPath = path.join(dir, "main.lua");
+    fs.writeFileSync(srcPath, harness);
+    const results = inputs.map((args) => Number(execFileSync("lua", [srcPath, ...args.map(String)]).toString().trim()));
+    fs.rmSync(dir, { recursive: true, force: true });
+    return results;
+}
+
+function runSuiteLua(ast, inputs, outputNames) {
+    const source = emitters.lua.emitFunction(ast);
+    const dir = tmpDir("ef-lua-");
+    const parses = ast.params.map((p, i) => `local ${p} = tonumber(arg[${i + 1}])`).join("\n");
+    const callArgs = ast.params.join(", ");
+    const resultVars = outputNames.map((_, i) => `r${i}`).join(", ");
+    const prints = outputNames.map((_, i) => `print(string.format("%.17g", r${i}))`).join("\n");
+    const harness = `${source}\n${parses}\nlocal ${resultVars} = ${ast.name}(${callArgs})\n${prints}\n`;
+    const srcPath = path.join(dir, "main.lua");
+    fs.writeFileSync(srcPath, harness);
+    const results = inputs.map((args) => parseSuiteOutput(execFileSync("lua", [srcPath, ...args.map(String)]), outputNames));
+    fs.rmSync(dir, { recursive: true, force: true });
+    return results;
+}
+
 function registerSuiteConformance(sampleName, { ast, inputs }) {
     const outputNames = suiteOutputNames(ast);
     const targets = [
@@ -511,7 +660,10 @@ function registerSuiteConformance(sampleName, { ast, inputs }) {
         ["Java", TOOLS.java, runSuiteJava],
         ["TypeScript", TOOLS.tsc, runTS],
         ["QB64", TOOLS.qb64, runSuiteQB64],
-    ];
+        ["C#", TOOLS.dotnet, runSuiteCSharp],
+        ["Python", TOOLS.python, runSuitePython],
+        ["Lua", TOOLS.lua, runSuiteLua],
+    ].filter(([label]) => targetAllowed(label));
 
     for (const [label, available, run] of targets) {
         test(
@@ -555,7 +707,10 @@ function registerConformance(sampleName, { ast, reference, inputs, skipTargets =
         ["Java", TOOLS.java, runJava],
         ["TypeScript", TOOLS.tsc, runTS],
         ["QB64", TOOLS.qb64, runQB64],
-    ].filter(([label]) => !skipTargets.includes(label));
+        ["C#", TOOLS.dotnet, runCSharp],
+        ["Python", TOOLS.python, runPython],
+        ["Lua", TOOLS.lua, runLua],
+    ].filter(([label]) => !skipTargets.includes(label) && targetAllowed(label));
 
     for (const [label, available, run] of targets) {
         test(

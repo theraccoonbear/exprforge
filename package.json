@@ -1,7 +1,7 @@
 {
   "name": "exprforge",
   "version": "0.1.0",
-  "description": "Author a math expression once as an AST, emit identical-behavior implementations in JS, TypeScript, QB64, C, Java, Go, and Rust.",
+  "description": "Author a math expression once as an AST, emit identical-behavior implementations in JS, TypeScript, Python, C#, Lua, QB64, C, Java, Go, and Rust.",
   "main": "index.js",
   "type": "commonjs",
   "files": [

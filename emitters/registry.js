@@ -9,4 +9,7 @@ module.exports = {
     java: require("./java.js"),
     go: require("./go.js"),
     rust: require("./rust.js"),
+    csharp: require("./csharp.js"),
+    python: require("./python.js"),
+    lua: require("./lua.js"),
 };

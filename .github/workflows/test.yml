@@ -7,44 +7,94 @@ on:
     branches: [main]
   workflow_dispatch: {}
 
+# One job per target language, run in parallel -- they have nothing to do
+# with each other, so there's no reason to serialize installing gcc, Go,
+# Rust, a JDK, tsc, and building QB64-PE from source (the slowest of the
+# lot, at several minutes) into one job like an earlier version of this
+# workflow did. Each job installs only its own toolchain and runs
+# EXPRFORGE_TEST_TARGETS=<Label> npm test, which the suite
+# (test/conformance.test.js) uses to run only that language's checks (plus
+# the toolchain-independent JS/reference ones, which every job repeats --
+# cheap, and a nice redundant sanity check per job).
 jobs:
-  conformance:
-    # The whole point of this project is emitted-code conformance across
-    # targets, so CI provisions every toolchain the test suite knows how to
-    # drive (C, Go, Rust, Java, TypeScript, QB64) rather than letting them
-    # silently skip.
+  c:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
           cache: npm
-
       - run: npm ci
+      - run: gcc --version
+      - run: EXPRFORGE_TEST_TARGETS=C npm test
 
-      - name: gcc
-        run: gcc --version
-
+  go:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
       - uses: actions/setup-go@v5
         with:
           go-version: "stable"
+      - run: EXPRFORGE_TEST_TARGETS=Go npm test
 
+  rust:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
       - uses: dtolnay/rust-toolchain@stable
+      - run: EXPRFORGE_TEST_TARGETS=Rust npm test
 
+  java:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: "21"
+      - run: EXPRFORGE_TEST_TARGETS=Java npm test
 
+  typescript:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
       # tsc is a system tool here exactly like gcc/go/rustc/javac above --
       # exprforge only ever generates .ts source text, never executes or
-      # type-checks it itself, so this is not a project dependency
-      # (package.json has none). Global install just puts `tsc` on PATH
-      # for the test step below, same as the JDK does for `javac`/`java`.
+      # type-checks it itself, so this is not a project dependency.
       - name: Install tsc
         run: npm install -g typescript
+      - run: EXPRFORGE_TEST_TARGETS=TypeScript npm test
+
+  qb64:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
 
       # QB64-PE setup, adapted from a sibling game project's proven CI
       # recipe (Super-Spaceguy-Shooter's .github/workflows/build.yml) --
@@ -89,4 +139,66 @@ jobs:
       - name: Add QB64-PE to PATH
         run: echo "$GITHUB_WORKSPACE/qb64pe-bin" >> "$GITHUB_PATH"
 
-      - run: npm test
+      - run: EXPRFORGE_TEST_TARGETS=QB64 npm test
+
+  csharp:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "9.0.x"
+      - run: EXPRFORGE_TEST_TARGETS=C# npm test
+
+  python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+      - run: EXPRFORGE_TEST_TARGETS=Python npm test
+
+  lua:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+      - name: Install lua
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y lua5.4
+          sudo ln -sf /usr/bin/lua5.4 /usr/local/bin/lua
+      - run: EXPRFORGE_TEST_TARGETS=Lua npm test
+
+  all-green:
+    name: All language checks pass
+    needs: [c, go, rust, java, typescript, qb64, csharp, python, lua]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Require every job to have succeeded
+        run: |
+          echo '${{ toJSON(needs) }}' | python3 -c "
+          import json, sys
+          needs = json.load(sys.stdin)
+          bad = [name for name, info in needs.items() if info['result'] != 'success']
+          if bad:
+              print('FAILED jobs:', ', '.join(bad))
+              sys.exit(1)
+          print('All language jobs passed.')
+          "

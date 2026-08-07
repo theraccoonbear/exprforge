@@ -3,8 +3,8 @@
 [![test](https://github.com/theraccoonbear/exprforge/actions/workflows/test.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test.yml)
 
 Author a math expression once, as a small AST, and emit verified,
-identical-behavior implementations in JavaScript, TypeScript, QB64, C,
-Java, Go, and Rust.
+identical-behavior implementations in JavaScript, TypeScript, Python, C#,
+Lua, QB64, C, Java, Go, and Rust.
 
 No parser, no dependencies. You build the AST directly with plain JS
 functions; the same tree is walked once per target language.
@@ -90,10 +90,14 @@ expression model without introducing control flow:
   list of local declarations ahead of the return statement/expression, in
   every target.
 - **`select(cond, then, else)` + `cmp(left, op, right)`** — conditional
-  *value* selection, emitted as a ternary where one exists (`c`, `js`,
-  `java`), as `if`-as-expression in Rust, as an immediately-invoked
-  function in Go (which has neither), and as the equivalent arithmetic
-  expression in QB64 (which has no conditional expression syntax at all).
+  *value* selection. Every target has a genuinely different way to spell
+  this: a native ternary where one exists (C, Java, C#), `if`-as-expression
+  in Rust, `a if cond else b` in Python, `cond and a or b` in Lua (safe
+  there specifically because only `nil`/`false` are falsy in Lua — a
+  number is always truthy, so this never mis-selects at zero), an
+  immediately-invoked function in Go (which has neither ternary nor an
+  `if`-expression), and the equivalent arithmetic expression in QB64
+  (which has no conditional expression syntax whatsoever).
 
   **`select` is not a branch** — every target evaluates both `then` and
   `else`. Don't use it to guard division by zero or anything else
@@ -131,9 +135,10 @@ multi-value idiom it has, since none of them agree:
 | Target | Shape |
 |---|---|
 | JS | object literal |
-| Go | native multiple return values (unnamed types — see below) |
+| Go, Lua | native multiple return values |
+| C# | a native named value tuple (`(double rx, double ry)`) |
 | C / Rust | a small `...Result` struct, returned by value |
-| Java | a nested static `Result` class |
+| Java, Python | a nested/local `Result` class |
 | QB64 | a `SUB` with the outputs as trailing by-reference parameters |
 
 Go specifically does **not** use *named* return values (`(rx, ry float64)`)
@@ -142,7 +147,9 @@ pre-declared locals in the function's own scope, and that collides — for
 real, on the first suite this feature was built for — whenever an output
 name matches an internal `letIn` name. Plain unnamed return types side-step
 the whole collision class regardless of naming; a leading comment documents
-the order instead.
+the order instead (same reason Lua's return, also positional, gets one).
+C#'s tuple has no such risk — a tuple literal's element names aren't
+pre-declared locals the way Go's named returns are.
 
 ## What this deliberately doesn't do
 
@@ -166,39 +173,62 @@ Runs `node --test`. For each sample, that's two kinds of check:
   TypeScript, also type-checked under `--strict`) and run, with the sample
   inputs as arguments (catches an emitter bug).
 
-The compiled-language checks need their toolchain on `PATH` and skip
-(not fail) when it's missing, so `npm test` degrades gracefully on any
-one machine. `tsc` and `qb64pe` are treated exactly like gcc/go/rustc/
-javac here: looked up on `PATH`, never a project dependency — exprforge
-only ever generates source text for these, it doesn't execute or
-type-check it itself. CI (`.github/workflows/test.yml`) installs all
-six (gcc, Go, Rust, a JDK, `tsc`, and a built-from-source QB64-PE,
-cached by version) so every target actually runs on every push/PR, not
-just JS.
+The compiled/interpreted-language checks need their toolchain on `PATH`
+and skip (not fail) when it's missing, so `npm test` degrades gracefully
+on any one machine. Every one of `tsc`/`qb64pe`/`dotnet`/`python3`/`lua`
+is treated exactly like gcc/go/rustc/javac: looked up on `PATH`, never a
+project dependency — exprforge only ever generates source text for these,
+it doesn't execute or type-check any of it itself. `package.json` has
+zero dependencies of any kind, matching this.
 
-QB64 in particular took real debugging to get right — worth knowing if
-you touch `emitters/qb64.js`:
+CI (`.github/workflows/test.yml`) runs one job per target language, in
+parallel — they have nothing to do with each other, so there's no reason
+to serialize installing nine different toolchains (QB64-PE alone, built
+from source and cached by version, takes several minutes) into one job.
+Each job installs only its own toolchain and runs
+`EXPRFORGE_TEST_TARGETS=<Label> npm test`; that environment variable
+(read once in `test/conformance.test.js`) filters the target lists down
+to just that one language, plus the toolchain-independent JS/reference
+checks, which every job repeats — cheap, and a redundant sanity check
+per job. Unset locally, so a plain `npm test` still runs everything your
+own machine's installed toolchains allow.
 
-- `Dim x# AS DOUBLE` (sigil *and* an `AS` clause together) is a QB64
-  syntax error; it has to be `Dim x AS DOUBLE`.
-- QB64's own exponential notation uses `D`, not `E` (`1D-9`, not
-  `1e-9#`) — and that applies to reading its `PRINT` output back too,
-  not just to literals.
-- A chunk of QB64/BASIC builtins (`len`, `val`, `pos`, `log`, ... —
-  see `QB64_RESERVED` in `emitters/qb64.js`) silently conflict with a
-  variable of the same name; the emitter now throws a clear error at
-  emission time instead of failing to compile later with no context.
-- The test harness runs compiled binaries headless via the `$CONSOLE:ONLY`
-  metacommand, so no display (real or virtual) is needed at all — no
-  `xvfb-run` required for these console-only test programs, unlike a
-  typical QB64 build.
+A few of these needed real debugging to get right, all found by actually
+compiling/running against a real toolchain rather than assumed to work:
 
-One test (`normalizeX`) is deliberately excluded from the QB64 check:
-it exists specifically to demonstrate the "don't guard division with
-`select`" pitfall from the section above, and QB64 is the one target
-where that pitfall actually produces `NaN` (everywhere else short-
-circuits around it) — that's the AST being correctly unsafe on
-purpose, not an emitter bug.
+- **QB64**: `Dim x# AS DOUBLE` (sigil *and* an `AS` clause together) is a
+  syntax error; has to be `Dim x AS DOUBLE`. Its own exponential notation
+  uses `D`, not `E` (`1D-9`, not `1e-9#`) — including when reading its
+  `PRINT` output back, not just in literals. A chunk of QB64/BASIC
+  builtins (`len`, `val`, `pos`, `log`, ... — see `QB64_RESERVED` in
+  `emitters/qb64.js`) silently conflict with a same-named variable; the
+  emitter throws a clear error at emission time instead of failing to
+  compile later with no context. The test harness runs compiled binaries
+  headless via the `$CONSOLE:ONLY` metacommand, so no display (real or
+  virtual) is needed — no `xvfb-run` required for these console-only test
+  programs, unlike a typical QB64 build.
+- **C#**: forbids a member sharing its enclosing type's *exact* name
+  (`CS0542`) — every SpEf-prefixed sample name here is already
+  capitalized, so the obvious `capitalize(fn.name)` wrapper-class name
+  collided with the method name outright; see `wrapperClassName` in
+  `emitters/csharp.js`. Bare integer-valued literals are `int` by
+  default, and `int / int` is integer division — every literal is
+  suffixed `d` unconditionally to rule that out, not just the cases that
+  would otherwise break.
+- **Python**: `math.floor`/`math.ceil`/`math.trunc`/`round` all return
+  `int`, not `float` — wrapped with `float(...)` to stay float64
+  throughout, matching every other target.
+- **Lua**: 5.3+ removed `math.pow` (use the `^` operator) and
+  `math.atan2` (use two-argument `math.atan(y, x)`); there's no
+  `math.round` or `math.trunc` or `math.sign` at any version (manual
+  `floor(x+0.5)`, `math.modf(x)`, and an `and`/`or` chain respectively).
+
+One test (`normalizeX`) is deliberately excluded from the QB64 check
+only: it exists specifically to demonstrate the "don't guard division
+with `select`" pitfall from the section above, and QB64 is the one
+target where that pitfall actually produces `NaN` (every other target,
+including Lua's `and`/`or`, genuinely short-circuits around it) — that's
+the AST being correctly unsafe on purpose, not an emitter bug.
 
 ## License
 
