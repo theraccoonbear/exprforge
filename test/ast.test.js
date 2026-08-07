@@ -6,7 +6,7 @@
 
 const test = require("node:test");
 const assert = require("node:assert");
-const { num, v, add, mul, letIn, outputs, collectLets } = require("../ast.js");
+const { num, v, add, mul, sub, letIn, letChain, outputs, collectLets } = require("../ast.js");
 
 test("outputs() builds a plain {type, fields} node", () => {
     const node = outputs({ a: num(1), b: v("x") });
@@ -51,4 +51,52 @@ test("collectLets still catches a duplicate let name when it's inside two differ
         b: letIn("x", num(2), v("x")),
     });
     assert.throws(() => collectLets(tree), /duplicate let binding name "x"/);
+});
+
+test("letChain([[a,..],[b,..]], body) builds the same tree as hand-nested letIn", () => {
+    const chained = letChain(
+        [
+            ["a", num(1)],
+            ["b", add(v("a"), num(1))],
+        ],
+        v("b"),
+    );
+    const handNested = letIn("a", num(1), letIn("b", add(v("a"), num(1)), v("b")));
+    assert.deepStrictEqual(chained, handNested);
+});
+
+test("letChain: first pair is outermost, last pair is innermost (closest to body)", () => {
+    const chained = letChain(
+        [
+            ["a", num(1)],
+            ["b", num(2)],
+            ["c", num(3)],
+        ],
+        v("c"),
+    );
+    assert.strictEqual(chained.name, "a");
+    assert.strictEqual(chained.body.name, "b");
+    assert.strictEqual(chained.body.body.name, "c");
+    assert.deepStrictEqual(chained.body.body.body, v("c"));
+});
+
+test("letChain with an empty bindings array returns body unchanged", () => {
+    const body = add(num(1), num(2));
+    assert.deepStrictEqual(letChain([], body), body);
+});
+
+test("letChain output round-trips through collectLets exactly like hand-nested letIn", () => {
+    const chained = letChain(
+        [
+            ["s", add(v("x"), v("y"))],
+            ["d", sub(v("x"), v("y"))],
+        ],
+        outputs({ sum: v("s"), diff: v("d") }),
+    );
+    const { bindings, body } = collectLets(chained);
+    assert.deepStrictEqual(
+        bindings.map((b) => b.name),
+        ["s", "d"],
+    );
+    assert.strictEqual(body.type, "outputs");
 });

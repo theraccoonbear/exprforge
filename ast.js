@@ -62,6 +62,27 @@ function letIn(name, value, body) {
     return { type: "let", name, value, body };
 }
 
+// Chains N letIn bindings without hand-nesting them (and hand-balancing the
+// resulting N closing parens — the nesting depth reflects no real
+// hierarchy, only that each binding must be lifted ahead of anything using
+// it). Builds the exact same nested `let` structure letIn() would if
+// written out by hand: pure authoring sugar, not a new node type, so
+// collectLets and every emitter already understand the result unchanged.
+//
+// `bindings` is an ORDERED array of [name, valueNode] pairs, not a
+// {name: valueNode} object like outputs() takes — order is load-bearing
+// here (a later binding's value can reference an earlier one's name via
+// v(name)), and a plain object's key order isn't reliably that: a binding
+// named e.g. "0" would silently sort ahead of everything else. An array
+// keeps "this is a strict sequence" explicit instead of resting on that.
+//
+// Doesn't check for duplicate names itself — collectLets already does,
+// with the whole function body in view (see its doc comment); duplicating
+// that check here would only see this one chain, not the whole picture.
+function letChain(bindings, body) {
+    return bindings.reduceRight((acc, [name, value]) => letIn(name, value, acc), body);
+}
+
 // Comparison predicate — only valid as the `cond` of a select(); not a
 // general boolean expression, and shouldn't appear anywhere else in a tree.
 function cmp(left, op, right) {
@@ -139,4 +160,4 @@ function collectLets(node) {
     return { bindings, body };
 }
 
-module.exports = { num, v, bin, call, add, mul, sub, div, neg, letIn, cmp, select, outputs, collectLets };
+module.exports = { num, v, bin, call, add, mul, sub, div, neg, letIn, letChain, cmp, select, outputs, collectLets };
