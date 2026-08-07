@@ -69,6 +69,9 @@ package individually, or together as `samples`):
   purely as a conformance-test fixture. It's what caught Go's and Rust's
   `sign()` disagreeing with everyone else at exactly zero (see below) —
   the other samples between them only ever exercised 5 of the 22.
+- `samples/math-demo.js` — also not a worked example: a conformance-test
+  fixture exercising every `exprforge/math` helper (see below) in one
+  suite.
 
 `npm run build` emits all of them, for every target language, into `out/`.
 
@@ -79,6 +82,46 @@ floor ceil round trunc sign min max hypot`
 
 Add more by extending a target's `calls` table in `emitters/<lang>.js`.
 Requesting an unmapped function throws at build time, not silently.
+
+## Math utilities (`exprforge/math`)
+
+A separate, additive export — `require("exprforge")` is unchanged — of
+pre-built compositions of the core AST builders for common 3-D math
+patterns, so consumers stop re-implementing the same safe-math and vector
+code in every project (`samples/spline-frame.js` had local, hand-rolled
+versions of most of these before this module existed).
+
+```js
+const { num, v } = require("exprforge");
+const { safeDiv, dot3, len3, cross3, normalize3, clamp, EPS } = require("exprforge/math");
+
+// Safe-normalize x component, falling back to 0 near zero length.
+safeDiv(v("x"), len3(v("x"), v("y"), v("z")), num(0));
+```
+
+- `safeDiv(numerator, denominatorExpr, fallback)` — `numerator /
+  denominatorExpr` when `|denominatorExpr| > EPS`, else `fallback`. Clamps
+  the denominator before dividing rather than guarding the division
+  directly, since `select()` always evaluates both branches (see below).
+- `dot3(ax, ay, az, bx, by, bz)` — `ax*bx + ay*by + az*bz`.
+- `len3(x, y, z)` — `sqrt(x² + y² + z²)`.
+- `cross3(ax, ay, az, bx, by, bz)` — 3-D cross product. Returns a plain JS
+  object `{ x, y, z }` of AST nodes (not a Node itself), for destructuring
+  into your own `letIn` chain.
+- `normalize3(x, y, z, fx?, fy?, fz?)` — safe-normalize; same `{ x, y, z }`
+  shape as `cross3`. Falls back to `(fx, fy, fz)` (default `(0, 1, 0)`)
+  below `EPS` length. Computes the length once and shares it across all
+  three divisions.
+- `clamp(val, lo, hi)` — clamps to `[lo, hi]` via nested `select`/`cmp`; no
+  runtime intrinsic.
+- `EPS` — `num(0.000001)`, the epsilon every guard above uses; exported for
+  callers who want the same threshold in their own `cmp()` calls.
+
+What deliberately stays out (project-specific conventions, not general
+math): a "near-vertical" world-up check, baked-in-PI degree/radian
+conversion, Rodrigues rotation, and a full Gram-Schmidt frame — see
+`samples/spline-frame.js` for those, and
+`docs/v0.2.0-math-utilities.md` for the full design rationale.
 
 ## Adding a language
 

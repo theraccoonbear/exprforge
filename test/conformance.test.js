@@ -39,6 +39,7 @@ const {
     fibonacciAst,
     splineFrameAsts,
     kitchenSinkAst,
+    mathDemoAst,
     emitters,
 } = require("../index.js");
 
@@ -774,6 +775,66 @@ for (const ast of splineFrameAsts) {
     }
     registerSuiteConformance(`splineFrame.${ast.name}`, { ast, inputs });
 }
+
+// --- samples/math-demo.js -------------------------------------------------
+//
+// Cross-language coverage for require("exprforge/math") (see
+// /v0.2.0-spec.md and math/index.js). One suite exercising every helper at
+// once, same shape as the splineFrame wiring above. Input rows are chosen
+// to hit both the safe and degenerate/fallback path of each guarded
+// helper, not just the easy case:
+//   row 0: everything comfortably in the "normal" branch.
+//   row 1: vector a is (0,0,0) -- normalize3's fallback kicks in for normA;
+//          t is below lo -- clamp's low branch.
+//   row 2: vector b is (0,0,0) -- normalize3's fallback for normB, AND
+//          bx == 0 -- safeDiv's fallback (-1); t is above hi -- clamp's
+//          high branch.
+//   row 3: two non-axis-aligned, non-degenerate vectors; t inside [lo,hi]
+//          -- clamp is a no-op, both normalize3 calls take the safe path.
+const MATH_DEMO_INPUTS = [
+    [3, 4, 0, 1, 0, 0, 0.5, 0, 1],
+    [0, 0, 0, 1, 1, 1, -0.5, 0, 1],
+    [1, 0, 0, 0, 0, 0, 1.5, 0, 1],
+    [0.577, 0.577, 0.577, 0.577, -0.577, 0.577, 0.3, -1, 1],
+];
+
+registerSuiteConformance("mathDemo", { ast: mathDemoAst, inputs: MATH_DEMO_INPUTS });
+
+test("math-demo: normalize3's fallback is used exactly when the input vector is (0,0,0)", () => {
+    const mathDemo = loadJsFn(mathDemoAst);
+    const safe = mathDemo(1, 0, 0, 1, 0, 0, 0.5, 0, 1);
+    assert.ok(Math.abs(safe.normAX ** 2 + safe.normAY ** 2 + safe.normAZ ** 2 - 1) < 1e-9, "normal input normalizes to unit length");
+
+    const degenerate = mathDemo(0, 0, 0, 1, 0, 0, 0.5, 0, 1);
+    // Default fallback per math/index.js: (0, 1, 0).
+    assertClose(degenerate.normAX, 0, "degenerate normA.x falls back to 0");
+    assertClose(degenerate.normAY, 1, "degenerate normA.y falls back to 1");
+    assertClose(degenerate.normAZ, 0, "degenerate normA.z falls back to 0");
+});
+
+test("math-demo: clamp actually clamps at both ends and is a no-op inside range", () => {
+    const mathDemo = loadJsFn(mathDemoAst);
+    assertClose(mathDemo(1, 0, 0, 1, 0, 0, -0.5, 0, 1).clamped, 0, "below lo clamps to lo");
+    assertClose(mathDemo(1, 0, 0, 1, 0, 0, 1.5, 0, 1).clamped, 1, "above hi clamps to hi");
+    assertClose(mathDemo(1, 0, 0, 1, 0, 0, 0.5, 0, 1).clamped, 0.5, "inside range passes through unchanged");
+});
+
+test("math-demo: safeDiv falls back to its third argument exactly when the denominator is 0", () => {
+    const mathDemo = loadJsFn(mathDemoAst);
+    assertClose(mathDemo(1, 0, 0, 1, 0, 0, 0.5, 0, 1).safeDivResult, 1, "1/1 takes the safe path");
+    assertClose(mathDemo(1, 0, 0, 0, 0, 0, 0.5, 0, 1).safeDivResult, -1, "bx=0 falls back to -1");
+});
+
+test("math-demo: cross3's result is orthogonal to both input vectors", () => {
+    const mathDemo = loadJsFn(mathDemoAst);
+    const dot = (ux, uy, uz, wx, wy, wz) => ux * wx + uy * wy + uz * wz;
+    for (const args of MATH_DEMO_INPUTS) {
+        const [ax, ay, az, bx, by, bz] = args;
+        const { crossX, crossY, crossZ } = mathDemo(...args);
+        assertClose(dot(crossX, crossY, crossZ, ax, ay, az), 0, `cross·a at args=${JSON.stringify(args)}`);
+        assertClose(dot(crossX, crossY, crossZ, bx, by, bz), 0, `cross·b at args=${JSON.stringify(args)}`);
+    }
+});
 
 test("spline-frame: SpEfMkFrame's R is unit length, including at the degenerate tangent", () => {
     const mkFrame = loadJsFn(splineFrameAsts.find((a) => a.name === "SpEfMkFrame"));

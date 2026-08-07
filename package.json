@@ -4,13 +4,19 @@
   "description": "Author a math expression once as an AST, emit identical-behavior implementations in JS, TypeScript, Python, C#, Lua, QB64, C, Java, Go, and Rust.",
   "main": "index.js",
   "type": "commonjs",
+  "exports": {
+    ".": "./index.js",
+    "./math": "./math/index.js",
+    "./package.json": "./package.json"
+  },
   "files": [
     "index.js",
     "ast.js",
     "util.js",
     "build.js",
     "emitters/",
-    "samples/"
+    "samples/",
+    "math/"
   ],
   "scripts": {
     "build": "node build.js",
