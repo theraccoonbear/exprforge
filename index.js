@@ -6,6 +6,7 @@ const { catmullRomAst } = require("./samples/catmull-rom.js");
 const { fibonacciAst } = require("./samples/fibonacci.js");
 const { splineFrameAsts } = require("./samples/spline-frame.js");
 const { kitchenSinkAst } = require("./samples/kitchen-sink.js");
+const { mathDemoAst } = require("./samples/math-demo.js");
 
 /**
  * Run every registered emitter against one AST function definition.
@@ -31,11 +32,15 @@ module.exports = {
     // Not a worked example -- a conformance-test fixture that calls every
     // supported Math function once. See samples/kitchen-sink.js.
     kitchenSinkAst,
+    // Also not a worked example -- a conformance-test fixture for
+    // require("exprforge/math"). See samples/math-demo.js.
+    mathDemoAst,
     samples: {
         catmullRom: catmullRomAst,
         fibonacci: fibonacciAst,
         splineFrame: splineFrameAsts,
         kitchenSink: kitchenSinkAst,
+        mathDemo: mathDemoAst,
     },
     // Per-language emitter instances, keyed by name (js, qb64, c, java, go, rust).
     emitters,
