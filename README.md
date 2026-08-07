@@ -50,9 +50,11 @@ package individually, or together as `samples`):
   (see below) — this is what "fibonacci" looks like as a pure expression.
 - `samples/spline-frame.js` — Gram-Schmidt frame construction for spline
   paths (worldUp selection, tangent normalization with a safe-division
-  fallback, roll). 19 functions exercising `letIn`/`cmp`/`select` on a
-  real-world case — this is the actual motivating use case for those three
-  node types, not a toy.
+  fallback, roll). 4 suites exercising `letIn`/`cmp`/`select`/`outputs` on
+  a real-world case — this is the actual motivating use case for those
+  node types, not a toy. Used to be 19 separate functions, each
+  independently re-deriving the same let-chain (including a `sqrt`) for
+  one output; now each related group shares that work once per call.
 - `samples/kitchen-sink.js` — not a worked example: a synthetic function
   that calls all 22 supported Math functions in one expression, existing
   purely as a conformance-test fixture. It's what caught Go's and Rust's
@@ -74,6 +76,28 @@ Requesting an unmapped function throws at build time, not silently.
 Write `emitters/<lang>.js` exporting an `Emitter` instance (see any
 existing file as a template), then add one line to
 `emitters/registry.js`. Nothing else changes.
+
+## YAML (de)serialization — optional
+
+```js
+const { toYAML, fromYAML } = require("exprforge"); // needs: npm install js-yaml
+```
+
+Every node is already plain, JSON-serializable data, so `toYAML`/`fromYAML`
+just add a YAML encoding on top — for storing a formula definition, diffing
+it in review, or having a non-JS tool produce or consume one. `js-yaml` is
+an **optional peer dependency**, lazily required only when you call these;
+everything else in the package stays dependency-free.
+
+This is *not* an alternative authoring format. It's a literal, structural
+dump of the node tree — one YAML mapping per `num`/`var`/`bin`/`call`/etc.
+node — so a real expression gets deep and verbose fast (the ~30-character
+`add(v("a"), mul(sub(v("b"), v("a")), v("t")))` is well over 30 lines of
+nested YAML). Composing formulas with real code — sharing a subexpression
+with a JS `const`, stamping out near-identical functions with
+`forComponents`/a loop — has no equivalent in plain data. Use the JS
+builders to *write* formulas; use YAML to *store or move* an already-built
+one.
 
 ## Named subexpressions and conditional values
 
@@ -100,6 +124,45 @@ expression model without introducing control flow:
 See [`docs/planned-additions.md`](./docs/planned-additions.md) for the
 full design rationale, including why the naive "guard division with
 select" pattern is wrong.
+
+## Multiple named outputs
+
+`outputs({ name: Node, ... })` computes several named values from ONE
+shared `letIn` chain, instead of one function per value each re-deriving
+the whole chain from scratch:
+
+```js
+const { num, v, add, sub, letIn, outputs } = require("exprforge");
+
+const sumAndDiff = {
+    name: "sumAndDiff",
+    params: ["a", "b"],
+    body: letIn("total", add(v("a"), v("b")),
+          letIn("delta", sub(v("a"), v("b")),
+              outputs({ sum: v("total"), diff: v("delta") })
+          )),
+};
+```
+
+Only valid as a function's top-level body (wrap it in `letIn`s, don't nest
+it inside `bin`/`call`/`select`). Each target renders it as whatever
+multi-value idiom it has, since none of them agree:
+
+| Target | Shape |
+|---|---|
+| JS | object literal |
+| Go | native multiple return values (unnamed types — see below) |
+| C / Rust | a small `...Result` struct, returned by value |
+| Java | a nested static `Result` class |
+| QB64 | a `SUB` with the outputs as trailing by-reference parameters |
+
+Go specifically does **not** use *named* return values (`(rx, ry float64)`)
+even though Go supports them and it reads nicer: those are sugar for
+pre-declared locals in the function's own scope, and that collides — for
+real, on the first suite this feature was built for — whenever an output
+name matches an internal `letIn` name. Plain unnamed return types side-step
+the whole collision class regardless of naming; a leading comment documents
+the order instead.
 
 ## What this deliberately doesn't do
 

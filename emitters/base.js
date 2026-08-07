@@ -19,6 +19,12 @@
 //   emitSelect     — optional override: (condNode, thenStr, elseStr) => string
 //                    Default is a ternary; QB64 has no ternary and overrides
 //                    this with the equivalent arithmetic expression instead.
+//   formatSuite    — (fn: {name, params}, outputStrs: {name: string}, letBindings) => string
+//                    Only needed for targets that support multi-output
+//                    suites (see ast.js's outputs()). Renders whatever
+//                    multi-value idiom the language has. Required if any
+//                    suite gets emitted through this emitter; omitted
+//                    otherwise.
 
 const { collectLets } = require("../ast.js");
 
@@ -28,6 +34,7 @@ class Emitter {
         this.formatNumber = config.formatNumber;
         this.calls = config.calls || {};
         this.formatFunctionImpl = config.formatFunction;
+        this.formatSuiteImpl = config.formatSuite || null;
         this.emitSelectImpl = config.emitSelect
             ? config.emitSelect.bind(this)
             : this._defaultSelect.bind(this);
@@ -88,6 +95,16 @@ class Emitter {
             name,
             valueStr: this.emitExpr(node),
         }));
+        if (body.type === "outputs") {
+            if (!this.formatSuiteImpl) {
+                throw new Error(`emitter for .${this.ext}: no formatSuite configured — multi-output suites aren't supported for this target yet`);
+            }
+            const outputStrs = {};
+            for (const [name, node] of Object.entries(body.fields)) {
+                outputStrs[name] = this.emitExpr(node);
+            }
+            return this.formatSuiteImpl(fn, outputStrs, letBindings);
+        }
         const bodyStr = this.emitExpr(body);
         return this.formatFunctionImpl(fn, bodyStr, letBindings);
     }

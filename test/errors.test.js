@@ -7,7 +7,8 @@
 
 const test = require("node:test");
 const assert = require("node:assert");
-const { num, v, add, call, cmp, letIn, emitters } = require("../index.js");
+const { num, v, add, call, cmp, letIn, outputs, emitters } = require("../index.js");
+const Emitter = require("../emitters/base.js");
 
 test("requesting an unmapped Math function throws, for every emitter", () => {
     const fn = { name: "f", params: ["x"], body: call("definitely_not_a_real_math_fn", v("x")) };
@@ -36,6 +37,18 @@ test("two let bindings sharing a name throw across sibling subtrees, not just di
         body: add(letIn("a", num(1), v("a")), letIn("a", num(2), v("a"))),
     };
     assert.throws(() => emitters.js.emitFunction(fn), /duplicate let binding name "a"/);
+});
+
+test("emitting a suite through an emitter with no formatSuite configured throws clearly", () => {
+    const bareEmitter = new Emitter({
+        ext: "bare",
+        formatNumber: (n) => String(n),
+        calls: {},
+        formatFunction: (fn, body) => body,
+        // no formatSuite
+    });
+    const fn = { name: "f", params: ["x"], body: outputs({ a: v("x"), b: num(1) }) };
+    assert.throws(() => bareEmitter.emitFunction(fn), /no formatSuite configured/);
 });
 
 test("a cmp node used outside select() throws, for every emitter", () => {

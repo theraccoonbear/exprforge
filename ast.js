@@ -10,6 +10,7 @@
 //   { type: "let",    name: string, value: Node, body: Node }
 //   { type: "cmp",    op: ">" | "<" | ">=" | "<=" | "==" | "!=", left: Node, right: Node }
 //   { type: "select", cond: CmpNode, then: Node, else: Node }
+//   { type: "outputs", fields: { [name: string]: Node } }
 //
 // Every "bin" node is emitted with explicit parens in every target, so
 // operation order (and therefore floating-point rounding behavior) is
@@ -77,6 +78,17 @@ function select(cond, thenNode, elseNode) {
     return { type: "select", cond, then: thenNode, else: elseNode };
 }
 
+// Multiple named outputs computed from ONE shared let-chain, instead of N
+// separate function definitions each re-deriving the whole chain from
+// scratch. Only valid as a function's (post-let-lifting) top-level body —
+// wrap it, don't nest it inside bin/call/select. Each emitter renders it as
+// whatever multi-value idiom its language has (a struct, a native multiple
+// return, an object literal, output parameters) — see formatSuite in each
+// emitters/<lang>.js.
+function outputs(fields) {
+    return { type: "outputs", fields };
+}
+
 // Lifts every `let` node out of the tree into a flat, ordered list of
 // { name, node } bindings, replacing each with a plain v(name) reference.
 // The list is in dependency order — safe to declare/assign top-to-bottom.
@@ -104,6 +116,13 @@ function collectLets(node) {
                 cond: { ...n.cond, left: walk(n.cond.left), right: walk(n.cond.right) },
             };
         }
+        if (n.type === "outputs") {
+            const fields = {};
+            for (const [name, fieldNode] of Object.entries(n.fields)) {
+                fields[name] = walk(fieldNode);
+            }
+            return { ...n, fields };
+        }
         return n; // num, var
     }
 
@@ -120,4 +139,4 @@ function collectLets(node) {
     return { bindings, body };
 }
 
-module.exports = { num, v, bin, call, add, mul, sub, div, neg, letIn, cmp, select, collectLets };
+module.exports = { num, v, bin, call, add, mul, sub, div, neg, letIn, cmp, select, outputs, collectLets };

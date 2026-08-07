@@ -1,6 +1,7 @@
 // exprforge/index.js
-const { num, v, bin, call, add, mul, sub, div, neg, letIn, cmp, select, collectLets } = require("./ast.js");
+const { num, v, bin, call, add, mul, sub, div, neg, letIn, cmp, select, outputs, collectLets } = require("./ast.js");
 const { forComponents } = require("./util.js");
+const { toYAML, fromYAML } = require("./yaml.js");
 const emitters = require("./emitters/registry.js");
 const { catmullRomAst } = require("./samples/catmull-rom.js");
 const { fibonacciAst } = require("./samples/fibonacci.js");
@@ -21,9 +22,13 @@ function emitAll(fn) {
 
 module.exports = {
     // AST builders — use these to define your own formulas.
-    num, v, bin, call, add, mul, sub, div, neg, letIn, cmp, select, collectLets,
+    num, v, bin, call, add, mul, sub, div, neg, letIn, cmp, select, outputs, collectLets,
     // Authoring convenience — not an AST primitive, see util.js.
     forComponents,
+    // Optional (de)serialization to/from YAML text — needs the optional
+    // peer dependency "js-yaml" installed. See yaml.js.
+    toYAML,
+    fromYAML,
     // Built-in example formulas — see samples/ for the source.
     catmullRomAst,
     fibonacciAst,

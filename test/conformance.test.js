@@ -33,6 +33,7 @@ const {
     letIn,
     cmp,
     select,
+    collectLets,
     catmullRomAst,
     fibonacciAst,
     splineFrameAsts,
@@ -266,6 +267,160 @@ function runJava(ast, inputs) {
     return results;
 }
 
+// --- suite (multi-output) variants ----------------------------------------
+//
+// Same idea as the four run* functions above, but a suite returns several
+// named values (see ast.js's outputs()), not one -- each harness prints one
+// value per line, in the same field order the emitter itself used
+// (Object.keys order, matching suiteOutputNames below), and each result
+// comes back as a { [fieldName]: number } record instead of a bare number.
+
+function suiteOutputNames(ast) {
+    const { body } = collectLets(ast.body);
+    if (body.type !== "outputs") {
+        throw new Error(`test/conformance.test.js: ${ast.name} is not a suite (body.type is "${body.type}")`);
+    }
+    return Object.keys(body.fields);
+}
+
+function parseSuiteOutput(stdout, outputNames) {
+    const lines = stdout.toString().trim().split("\n");
+    const record = {};
+    outputNames.forEach((name, i) => {
+        record[name] = Number(lines[i]);
+    });
+    return record;
+}
+
+function runSuiteC(ast, inputs, outputNames) {
+    const source = emitters.c.emitFunction(ast);
+    const dir = tmpDir("ef-c-");
+    fs.writeFileSync(path.join(dir, "fn.c"), source);
+    const decls = ast.params.map((p, i) => `double ${p} = atof(argv[${i + 1}]);`).join(" ");
+    const callArgs = ast.params.join(", ");
+    const structName = `${capitalize(ast.name)}Result`;
+    const prints = outputNames.map((n) => `printf("%.17f\\n", r.${n});`).join(" ");
+    const harness =
+        `#include <stdio.h>\n#include <stdlib.h>\n#include "fn.c"\n` +
+        `int main(int argc, char **argv) {\n    ${decls}\n    ${structName} r = ${ast.name}(${callArgs});\n    ${prints}\n    return 0;\n}\n`;
+    fs.writeFileSync(path.join(dir, "main.c"), harness);
+    const bin = path.join(dir, "bin");
+    execFileSync("gcc", [path.join(dir, "main.c"), "-o", bin, "-lm"]);
+    const results = inputs.map((args) => parseSuiteOutput(execFileSync(bin, args.map(String)), outputNames));
+    fs.rmSync(dir, { recursive: true, force: true });
+    return results;
+}
+
+function runSuiteGo(ast, inputs, outputNames) {
+    const source = emitters.go.emitFunction(ast);
+    const funcDecl = source.slice(source.indexOf("func "));
+    const usesMath = funcDecl.includes("math.");
+    const dir = tmpDir("ef-go-");
+    execFileSync("go", ["mod", "init", "ef"], { cwd: dir, stdio: "ignore" });
+    const parses = ast.params
+        .map((p, i) => `\t${p}, _ := strconv.ParseFloat(os.Args[${i + 1}], 64)`)
+        .join("\n");
+    const callArgs = ast.params.join(", ");
+    const resultVars = outputNames.map((_, i) => `r${i}`).join(", ");
+    const printFmt = outputNames.map(() => "%.17f").join("\\n");
+    const mainSrc =
+        `package main\n\n` +
+        `import (\n\t"fmt"\n${usesMath ? `\t"math"\n` : ""}\t"os"\n\t"strconv"\n)\n\n` +
+        `${funcDecl}\n` +
+        `func main() {\n${parses}\n\t${resultVars} := ${capitalize(ast.name)}(${callArgs})\n\tfmt.Printf("${printFmt}\\n", ${resultVars})\n}\n`;
+    fs.writeFileSync(path.join(dir, "main.go"), mainSrc);
+    const bin = path.join(dir, "bin");
+    execFileSync("go", ["build", "-o", bin, "."], { cwd: dir });
+    const results = inputs.map((args) => parseSuiteOutput(execFileSync(bin, args.map(String)), outputNames));
+    fs.rmSync(dir, { recursive: true, force: true });
+    return results;
+}
+
+function runSuiteRust(ast, inputs, outputNames) {
+    const source = emitters.rust.emitFunction(ast);
+    const dir = tmpDir("ef-rs-");
+    const parses = ast.params
+        .map((p, i) => `    let ${p}: f64 = args[${i + 1}].parse().unwrap();`)
+        .join("\n");
+    const callArgs = ast.params.join(", ");
+    const prints = outputNames.map((n) => `println!("{:.17}", r.${n});`).join("\n    ");
+    const mainSrc =
+        `${source}\n` +
+        `fn main() {\n` +
+        `    let args: Vec<String> = std::env::args().collect();\n` +
+        `${parses}\n` +
+        `    let r = ${ast.name}(${callArgs});\n` +
+        `    ${prints}\n` +
+        `}\n`;
+    const srcPath = path.join(dir, "main.rs");
+    fs.writeFileSync(srcPath, mainSrc);
+    const bin = path.join(dir, "bin");
+    execFileSync("rustc", ["-O", srcPath, "-o", bin], { stdio: "ignore" });
+    const results = inputs.map((args) => parseSuiteOutput(execFileSync(bin, args.map(String)), outputNames));
+    fs.rmSync(dir, { recursive: true, force: true });
+    return results;
+}
+
+function runSuiteJava(ast, inputs, outputNames) {
+    const source = emitters.java.emitFunction(ast);
+    const className = capitalize(ast.name);
+    const dir = tmpDir("ef-java-");
+    fs.writeFileSync(path.join(dir, `${className}.java`), source);
+    const parses = ast.params
+        .map((p, i) => `        double ${p} = Double.parseDouble(args[${i}]);`)
+        .join("\n");
+    const callArgs = ast.params.join(", ");
+    const printFmt = outputNames.map(() => "%.17f").join("\\n");
+    const printArgs = outputNames.map((n) => `r.${n}`).join(", ");
+    const mainSrc =
+        `public class Main {\n` +
+        `    public static void main(String[] args) {\n` +
+        `${parses}\n` +
+        `        ${className}.Result r = ${className}.${ast.name}(${callArgs});\n` +
+        `        System.out.printf("${printFmt}\\n", ${printArgs});\n` +
+        `    }\n` +
+        `}\n`;
+    fs.writeFileSync(path.join(dir, "Main.java"), mainSrc);
+    execFileSync("javac", ["-d", dir, path.join(dir, `${className}.java`), path.join(dir, "Main.java")]);
+    const results = inputs.map((args) =>
+        parseSuiteOutput(execFileSync("java", ["-cp", dir, "Main", ...args.map(String)]), outputNames),
+    );
+    fs.rmSync(dir, { recursive: true, force: true });
+    return results;
+}
+
+function registerSuiteConformance(sampleName, { ast, inputs }) {
+    const outputNames = suiteOutputNames(ast);
+    const targets = [
+        ["C", TOOLS.gcc, runSuiteC],
+        ["Go", TOOLS.go, runSuiteGo],
+        ["Rust", TOOLS.rustc, runSuiteRust],
+        ["Java", TOOLS.java, runSuiteJava],
+    ];
+
+    for (const [label, available, run] of targets) {
+        test(
+            `${sampleName}: ${label} emitted output matches JS`,
+            { skip: !available && `${label} toolchain not available` },
+            () => {
+                const jsFn = loadJsFn(ast);
+                const expected = inputs.map((args) => jsFn(...args));
+                const actual = run(ast, inputs, outputNames);
+                assert.strictEqual(actual.length, expected.length);
+                for (let i = 0; i < inputs.length; i++) {
+                    for (const name of outputNames) {
+                        assertClose(
+                            actual[i][name],
+                            expected[i][name],
+                            `${label} vs JS at args=${JSON.stringify(inputs[i])}, field "${name}"`,
+                        );
+                    }
+                }
+            },
+        );
+    }
+}
+
 // --- test registration ---------------------------------------------------
 
 function registerConformance(sampleName, { ast, reference, inputs }) {
@@ -308,13 +463,15 @@ for (const [sampleName, sample] of Object.entries(SAMPLES)) {
 
 // --- samples/spline-frame.js ---------------------------------------------
 //
-// The real-world motivating case for let/select/cmp: 19 functions across
-// four parameter shapes. No independent per-function reference (that would
-// mean re-deriving the whole Gram-Schmidt frame math by hand) — instead,
-// cross-language conformance (every target vs. JS) for all 19, plus one
-// independent check of a property the math must satisfy regardless of how
-// it's computed: the constructed R basis vector is unit length, including
-// at the degenerate (0,0,0) tangent where safeDiv's fallback kicks in.
+// The real-world motivating case for let/select/cmp, and now for outputs()
+// (see ast.js): 4 suites, each replacing what used to be several separate
+// functions independently re-deriving the same let-chain. No independent
+// per-suite reference (that would mean re-deriving the whole Gram-Schmidt
+// frame math by hand) — instead, cross-language conformance (every target
+// vs. JS) for all 4, plus one independent check of a property the math
+// must satisfy regardless of how it's computed: the constructed R basis
+// vector is unit length, including at the degenerate (0,0,0) tangent
+// where safeDiv's fallback kicks in.
 
 const SPLINE_FRAME_INPUTS = {
     "tx,ty,tz": [
@@ -341,13 +498,11 @@ for (const ast of splineFrameAsts) {
     if (!inputs) {
         throw new Error(`test/conformance.test.js: no sample inputs registered for params ${ast.params.join(",")}`);
     }
-    registerConformance(`splineFrame.${ast.name}`, { ast, inputs });
+    registerSuiteConformance(`splineFrame.${ast.name}`, { ast, inputs });
 }
 
-test("spline-frame: SpEfMkFrR is unit length, including at the degenerate tangent", () => {
-    const rx = loadJsFn(splineFrameAsts.find((a) => a.name === "SpEfMkFrRX"));
-    const ry = loadJsFn(splineFrameAsts.find((a) => a.name === "SpEfMkFrRY"));
-    const rz = loadJsFn(splineFrameAsts.find((a) => a.name === "SpEfMkFrRZ"));
+test("spline-frame: SpEfMkFrame's R is unit length, including at the degenerate tangent", () => {
+    const mkFrame = loadJsFn(splineFrameAsts.find((a) => a.name === "SpEfMkFrame"));
     const tangents = [
         [1, 0, 0],
         [0, 1, 0],
@@ -356,10 +511,8 @@ test("spline-frame: SpEfMkFrR is unit length, including at the degenerate tangen
         [0, 0, 0], // degenerate -- fallback frame (0,0,1) must still be unit length
     ];
     for (const [tx, ty, tz] of tangents) {
-        const x = rx(tx, ty, tz);
-        const y = ry(tx, ty, tz);
-        const z = rz(tx, ty, tz);
-        const len = Math.sqrt(x * x + y * y + z * z);
+        const { rx, ry, rz } = mkFrame(tx, ty, tz);
+        const len = Math.sqrt(rx * rx + ry * ry + rz * rz);
         assert.ok(Math.abs(len - 1) < 1e-9, `R not unit length for tangent (${tx},${ty},${tz}): len=${len}`);
     }
 });
