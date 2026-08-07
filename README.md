@@ -79,28 +79,6 @@ existing file as a template), then add one line to
 `emitters/registry.js`. Nothing else changes — proven by the TypeScript
 emitter, added with no changes to `base.js`, `build.js`, or `index.js`.
 
-## YAML (de)serialization — optional
-
-```js
-const { toYAML, fromYAML } = require("exprforge"); // needs: npm install js-yaml
-```
-
-Every node is already plain, JSON-serializable data, so `toYAML`/`fromYAML`
-just add a YAML encoding on top — for storing a formula definition, diffing
-it in review, or having a non-JS tool produce or consume one. `js-yaml` is
-an **optional peer dependency**, lazily required only when you call these;
-everything else in the package stays dependency-free.
-
-This is *not* an alternative authoring format. It's a literal, structural
-dump of the node tree — one YAML mapping per `num`/`var`/`bin`/`call`/etc.
-node — so a real expression gets deep and verbose fast (the ~30-character
-`add(v("a"), mul(sub(v("b"), v("a")), v("t")))` is well over 30 lines of
-nested YAML). Composing formulas with real code — sharing a subexpression
-with a JS `const`, stamping out near-identical functions with
-`forComponents`/a loop — has no equivalent in plain data. Use the JS
-builders to *write* formulas; use YAML to *store or move* an already-built
-one.
-
 ## Named subexpressions and conditional values
 
 Beyond `num`/`v`/`bin`/`call`, two more node types stay inside the
@@ -190,16 +168,37 @@ Runs `node --test`. For each sample, that's two kinds of check:
 
 The compiled-language checks need their toolchain on `PATH` and skip
 (not fail) when it's missing, so `npm test` degrades gracefully on any
-one machine — CI (`.github/workflows/test.yml`) installs gcc, Go, Rust,
-and a JDK so all of those actually run on every push/PR, not just JS.
-TypeScript needs no separate CI setup: `typescript` is a devDependency
-(only used to verify the emitted `.ts` output — it's never a runtime
-dependency of exprforge or of anything it emits), so `npm ci` already
-provides it.
+one machine. `tsc` and `qb64pe` are treated exactly like gcc/go/rustc/
+javac here: looked up on `PATH`, never a project dependency — exprforge
+only ever generates source text for these, it doesn't execute or
+type-check it itself. CI (`.github/workflows/test.yml`) installs all
+six (gcc, Go, Rust, a JDK, `tsc`, and a built-from-source QB64-PE,
+cached by version) so every target actually runs on every push/PR, not
+just JS.
 
-QB64 isn't wired into this harness yet — it's compiled by eye against
-the other targets' output, not automatically. That's the one gap left
-in "verified" above; contributions welcome.
+QB64 in particular took real debugging to get right — worth knowing if
+you touch `emitters/qb64.js`:
+
+- `Dim x# AS DOUBLE` (sigil *and* an `AS` clause together) is a QB64
+  syntax error; it has to be `Dim x AS DOUBLE`.
+- QB64's own exponential notation uses `D`, not `E` (`1D-9`, not
+  `1e-9#`) — and that applies to reading its `PRINT` output back too,
+  not just to literals.
+- A chunk of QB64/BASIC builtins (`len`, `val`, `pos`, `log`, ... —
+  see `QB64_RESERVED` in `emitters/qb64.js`) silently conflict with a
+  variable of the same name; the emitter now throws a clear error at
+  emission time instead of failing to compile later with no context.
+- The test harness runs compiled binaries headless via the `$CONSOLE:ONLY`
+  metacommand, so no display (real or virtual) is needed at all — no
+  `xvfb-run` required for these console-only test programs, unlike a
+  typical QB64 build.
+
+One test (`normalizeX`) is deliberately excluded from the QB64 check:
+it exists specifically to demonstrate the "don't guard division with
+`select`" pitfall from the section above, and QB64 is the one target
+where that pitfall actually produces `NaN` (everywhere else short-
+circuits around it) — that's the AST being correctly unsafe on
+purpose, not an emitter bug.
 
 ## License
 

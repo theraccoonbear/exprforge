@@ -51,6 +51,19 @@ test("emitting a suite through an emitter with no formatSuite configured throws 
     assert.throws(() => bareEmitter.emitFunction(fn), /no formatSuite configured/);
 });
 
+test("QB64: a let binding named after a reserved builtin throws", () => {
+    // "len" collides with QB64's LEN() -- confirmed against a real
+    // compiler: `Dim len AS DOUBLE` fails to build there. Case-insensitive
+    // since QB64 identifiers are.
+    const fn = { name: "f", params: ["x"], body: letIn("LEN", num(1), v("LEN")) };
+    assert.throws(() => emitters.qb64.emitFunction(fn), /"LEN" is a reserved QB64 builtin/);
+});
+
+test("QB64: a suite output field named after a reserved builtin throws", () => {
+    const fn = { name: "f", params: ["x"], body: outputs({ a: v("x"), val: num(1) }) };
+    assert.throws(() => emitters.qb64.emitFunction(fn), /"val" is a reserved QB64 builtin/);
+});
+
 test("a cmp node used outside select() throws, for every emitter", () => {
     // cmp is only meant to be select()'s cond; using it as a plain operand
     // (here, one argument to add) isn't supported.

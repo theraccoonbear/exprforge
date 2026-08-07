@@ -8,7 +8,6 @@
     "index.js",
     "ast.js",
     "util.js",
-    "yaml.js",
     "build.js",
     "emitters/",
     "samples/"
@@ -41,17 +40,5 @@
   "homepage": "https://github.com/theraccoonbear/exprforge#readme",
   "bugs": {
     "url": "https://github.com/theraccoonbear/exprforge/issues"
-  },
-  "devDependencies": {
-    "js-yaml": "^5.2.3",
-    "typescript": "^7.0.2"
-  },
-  "peerDependencies": {
-    "js-yaml": "^4.0.0 || ^5.0.0"
-  },
-  "peerDependenciesMeta": {
-    "js-yaml": {
-      "optional": true
-    }
   }
 }

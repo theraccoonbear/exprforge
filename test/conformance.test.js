@@ -64,15 +64,30 @@ function fibonacciReference(n) {
 // then select() picks between the normalized value and a safe fallback.
 // Covers the near-zero case specifically, since that's the one a naive
 // select-as-a-guard implementation gets wrong (see ast.js's select() doc
-// comment and samples/spline-frame.js's safeDiv).
+// comment and samples/spline-frame.js's safeDiv) -- and this AST
+// deliberately IS that naive pattern (div(x, mag) directly in the guarded
+// branch, not clamped first), specifically to demonstrate the divergence:
+// JS/C/Go/Rust/Java/TS all short-circuit their ternary/if, so div-by-zero
+// never actually executes there, but QB64's select always evaluates both
+// branches -- 0/0 there really does produce NaN, confirmed against a real
+// QB64 compiler. That's not a QB64 bug to fix; it's this AST correctly
+// being unsafe on the one target that can't short-circuit around it, which
+// is exactly why samples/spline-frame.js's safeDiv clamps the denominator
+// instead of guarding the division directly. QB64 is excluded from this
+// one test's targets below for that reason -- everywhere else, expected
+// and required to agree.
 const EPS = num(1e-9);
 const normalizeXAst = {
     name: "normalizeX",
     params: ["x", "y", "z"],
+    // "mag", not "len": LEN is a reserved QB64 builtin (string/array
+    // length) -- Dim'ing a local named "len" fails to compile there. See
+    // the QB64 gotchas this project's memory records from a sibling
+    // project's experience.
     body: letIn(
-        "len",
+        "mag",
         call("sqrt", add(mul(v("x"), v("x")), mul(v("y"), v("y")), mul(v("z"), v("z")))),
-        select(cmp(v("len"), ">", EPS), div(v("x"), v("len")), num(0)),
+        select(cmp(v("mag"), ">", EPS), div(v("x"), v("mag")), num(0)),
     ),
 };
 
@@ -106,6 +121,9 @@ const SAMPLES = {
             [1, 1, 1],
             [0, 0, 0], // degenerate: len=0, must fall back to 0, not divide
         ],
+        // Deliberately excludes QB64 -- see the comment on normalizeXAst
+        // above for why it's expected (not a bug) to diverge there.
+        skipTargets: ["QB64"],
     },
     // Calls all 22 supported Math functions in one expression -- coverage,
     // not a formula with real meaning, so no independent reference (there
@@ -142,18 +160,19 @@ function hasTool(cmd, args) {
     }
 }
 
-// typescript is a local devDependency (needed to verify the .ts output
-// actually type-checks and runs), not a system tool like gcc/go/rustc/javac
-// -- but it's guarded with the same hasTool/skip pattern anyway, in case
-// tests ever run against a partial node_modules.
-const TSC_BIN = path.join(__dirname, "..", "node_modules", ".bin", "tsc");
-
 const TOOLS = {
     gcc: hasTool("gcc", ["--version"]),
     go: hasTool("go", ["version"]),
     rustc: hasTool("rustc", ["--version"]),
     java: hasTool("javac", ["-version"]) && hasTool("java", ["-version"]),
-    tsc: hasTool(TSC_BIN, ["--version"]),
+    // tsc is a system tool here exactly like gcc/go/rustc/javac -- looked
+    // up on PATH, never a project dependency. exprforge only ever
+    // generates .ts source text; it doesn't execute or type-check
+    // TypeScript itself, so there's nothing for the package to depend on.
+    // If tsc isn't installed wherever this runs, these tests just skip,
+    // same as Java does without a local JDK.
+    tsc: hasTool("tsc", ["--version"]),
+    qb64: hasTool("qb64pe", ["-v"]),
 };
 
 function tmpDir(prefix) {
@@ -290,9 +309,73 @@ function runTS(ast, inputs) {
     const dir = tmpDir("ef-ts-");
     const srcPath = path.join(dir, "fn.ts");
     fs.writeFileSync(srcPath, source);
-    execFileSync(TSC_BIN, ["--strict", "--target", "es2020", "--module", "commonjs", "--outDir", dir, srcPath]);
+    execFileSync("tsc", ["--strict", "--target", "es2020", "--module", "commonjs", "--outDir", dir, srcPath]);
     const mod = require(path.join(dir, "fn.js"));
     const results = inputs.map((args) => mod[ast.name](...args));
+    fs.rmSync(dir, { recursive: true, force: true });
+    return results;
+}
+
+// --- QB64 --------------------------------------------------------------
+//
+// Headless via `$CONSOLE:ONLY`: makes the compiled binary a pure text-
+// console program with no SDL/graphics window, so no display (real or
+// virtual) is needed, unlike a typical QB64 build. Args come in via
+// COMMAND$(n); a suite's output params are just plain local variables
+// passed to the SUB and read back after the CALL, since QB64 SUB params
+// are by reference by default.
+
+// QB64's PRINT, like its own literal syntax, uses D (not E) as the
+// exponent marker for a double in scientific notation ("...D-17") --
+// confirmed against a real compiler. Plain Number() doesn't understand
+// that and silently gives NaN, so this is needed on every value QB64
+// prints, not just ones near the E/D-notation-vs-fixed threshold.
+function qb64ToNumber(str) {
+    return Number(str.replace(/D([+-]?\d+)/i, "E$1"));
+}
+
+function runQB64(ast, inputs) {
+    const source = emitters.qb64.emitFunction(ast);
+    const dir = tmpDir("ef-qb64-");
+    const argReads = ast.params
+        .map((p, i) => `DIM ${p} AS DOUBLE : ${p} = VAL(COMMAND$(${i + 1}))`)
+        .join("\n");
+    const callArgs = ast.params.join(", ");
+    const harness =
+        `$CONSOLE:ONLY\n${source}\n${argReads}\nPRINT ${ast.name}#(${callArgs})\nSYSTEM\n`;
+    const srcPath = path.join(dir, "main.bas");
+    fs.writeFileSync(srcPath, harness);
+    const bin = path.join(dir, "bin");
+    execFileSync("qb64pe", ["-x", srcPath, "-o", bin], { stdio: "ignore" });
+    const results = inputs.map((args) => qb64ToNumber(execFileSync(bin, args.map(String)).toString().trim()));
+    fs.rmSync(dir, { recursive: true, force: true });
+    return results;
+}
+
+function runSuiteQB64(ast, inputs, outputNames) {
+    const source = emitters.qb64.emitFunction(ast);
+    const dir = tmpDir("ef-qb64-");
+    const argReads = ast.params
+        .map((p, i) => `DIM ${p} AS DOUBLE : ${p} = VAL(COMMAND$(${i + 1}))`)
+        .join("\n");
+    const callArgs = ast.params.join(", ");
+    const outDecl = `DIM ${outputNames.join(" AS DOUBLE, ")} AS DOUBLE`;
+    const prints = outputNames.map((n) => `PRINT ${n}`).join("\n");
+    const harness =
+        `$CONSOLE:ONLY\n${source}\n${argReads}\n${outDecl}\n` +
+        `CALL ${ast.name}(${callArgs}, ${outputNames.join(", ")})\n${prints}\nSYSTEM\n`;
+    const srcPath = path.join(dir, "main.bas");
+    fs.writeFileSync(srcPath, harness);
+    const bin = path.join(dir, "bin");
+    execFileSync("qb64pe", ["-x", srcPath, "-o", bin], { stdio: "ignore" });
+    const results = inputs.map((args) => {
+        const lines = execFileSync(bin, args.map(String)).toString().trim().split("\n");
+        const record = {};
+        outputNames.forEach((name, i) => {
+            record[name] = qb64ToNumber(lines[i]);
+        });
+        return record;
+    });
     fs.rmSync(dir, { recursive: true, force: true });
     return results;
 }
@@ -427,6 +510,7 @@ function registerSuiteConformance(sampleName, { ast, inputs }) {
         ["Rust", TOOLS.rustc, runSuiteRust],
         ["Java", TOOLS.java, runSuiteJava],
         ["TypeScript", TOOLS.tsc, runTS],
+        ["QB64", TOOLS.qb64, runSuiteQB64],
     ];
 
     for (const [label, available, run] of targets) {
@@ -454,7 +538,7 @@ function registerSuiteConformance(sampleName, { ast, inputs }) {
 
 // --- test registration ---------------------------------------------------
 
-function registerConformance(sampleName, { ast, reference, inputs }) {
+function registerConformance(sampleName, { ast, reference, inputs, skipTargets = [] }) {
     if (reference) {
         test(`${sampleName}: emitted JS matches an independent reference implementation`, () => {
             const fn = loadJsFn(ast);
@@ -470,7 +554,8 @@ function registerConformance(sampleName, { ast, reference, inputs }) {
         ["Rust", TOOLS.rustc, runRust],
         ["Java", TOOLS.java, runJava],
         ["TypeScript", TOOLS.tsc, runTS],
-    ];
+        ["QB64", TOOLS.qb64, runQB64],
+    ].filter(([label]) => !skipTargets.includes(label));
 
     for (const [label, available, run] of targets) {
         test(

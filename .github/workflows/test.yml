@@ -11,8 +11,8 @@ jobs:
   conformance:
     # The whole point of this project is emitted-code conformance across
     # targets, so CI provisions every toolchain the test suite knows how to
-    # drive (C, Go, Rust, Java) rather than letting them silently skip.
-    # QB64 isn't wired up here yet -- see README.
+    # drive (C, Go, Rust, Java, TypeScript, QB64) rather than letting them
+    # silently skip.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -37,5 +37,56 @@ jobs:
         with:
           distribution: temurin
           java-version: "21"
+
+      # tsc is a system tool here exactly like gcc/go/rustc/javac above --
+      # exprforge only ever generates .ts source text, never executes or
+      # type-checks it itself, so this is not a project dependency
+      # (package.json has none). Global install just puts `tsc` on PATH
+      # for the test step below, same as the JDK does for `javac`/`java`.
+      - name: Install tsc
+        run: npm install -g typescript
+
+      # QB64-PE setup, adapted from a sibling game project's proven CI
+      # recipe (Super-Spaceguy-Shooter's .github/workflows/build.yml) --
+      # download the latest release, build it locally (its release is a
+      # source bundle plus a setup script, not a ready-to-run binary), and
+      # cache that build keyed on version so it isn't repeated every run.
+      - name: Resolve QB64-PE release version
+        id: qb64pe_release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          RELEASE_JSON=$(gh api repos/QB64-Phoenix-Edition/QB64pe/releases/latest)
+          ASSET_URL=$(echo "$RELEASE_JSON" \
+            | python3 -c "import sys,json; assets=json.load(sys.stdin)['assets']; print(next(a['browser_download_url'] for a in assets if 'lnx' in a['name'].lower()))")
+          VERSION=$(echo "$RELEASE_JSON" | python3 -c "import sys,json; print(json.load(sys.stdin)['tag_name'])")
+          echo "asset_url=$ASSET_URL" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Cache QB64-PE
+        id: cache_qb64pe
+        uses: actions/cache@v4
+        with:
+          path: qb64pe-bin
+          key: qb64pe-${{ steps.qb64pe_release.outputs.version }}-${{ runner.os }}
+
+      - name: Install QB64-PE build dependencies
+        if: steps.cache_qb64pe.outputs.cache-hit != 'true'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y libgl1-mesa-dev libglu1-mesa-dev libasound2-dev libx11-dev libxext-dev libpng-dev xvfb libcurl4-openssl-dev
+
+      - name: Build QB64-PE
+        if: steps.cache_qb64pe.outputs.cache-hit != 'true'
+        run: |
+          curl -fsSL -o qb64pe.tar.gz "${{ steps.qb64pe_release.outputs.asset_url }}"
+          tar xzf qb64pe.tar.gz
+          cd qb64pe && bash setup_lnx.sh 1 && cd ..
+          mv qb64pe qb64pe-bin
+
+      # Puts `qb64pe` on PATH as a bare command, matching how the test
+      # suite invokes it (same convention as gcc/go/rustc/javac/tsc above).
+      - name: Add QB64-PE to PATH
+        run: echo "$GITHUB_WORKSPACE/qb64pe-bin" >> "$GITHUB_PATH"
 
       - run: npm test
