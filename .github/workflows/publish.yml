@@ -1,0 +1,45 @@
+name: Publish to npm
+
+# Fires only on an explicit GitHub Release (not on every tag push), so
+# publishing is always a deliberate action, not a side effect of tagging.
+# Authenticates via npm Trusted Publishing (OIDC) -- no NPM_TOKEN secret
+# lives in this repo. One-time setup required on npmjs.com's side: package
+# Settings -> Trusted Publishers -> add this repo, workflow filename
+# (publish.yml), and (if used) environment name.
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          registry-url: "https://registry.npmjs.org"
+      # Trusted Publishing needs a recent npm CLI -- the one bundled with
+      # Node 22 predates it.
+      - run: npm install -g npm@latest
+      # The release tag (e.g. "v0.2.0") must match package.json's version
+      # exactly, so a forgotten version bump fails loudly here instead of
+      # publishing the wrong code under the wrong number.
+      - name: Verify release tag matches package.json version
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          if [ "$TAG" != "$PKG_VERSION" ]; then
+            echo "Release tag $GITHUB_REF_NAME does not match package.json version $PKG_VERSION" >&2
+            exit 1
+          fi
+      - run: npm ci
+      # Also runs via the "prepublishOnly" script below, but a named step
+      # here gives a clear, separately-attributed CI failure if it's the
+      # tests (not the publish itself) that break.
+      - run: npm test
+      - run: npm publish --provenance
