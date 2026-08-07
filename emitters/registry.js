@@ -3,6 +3,7 @@
 // then add one line here. Nothing else in the project needs to change.
 module.exports = {
     js: require("./js.js"),
+    ts: require("./typescript.js"),
     qb64: require("./qb64.js"),
     c: require("./c.js"),
     java: require("./java.js"),

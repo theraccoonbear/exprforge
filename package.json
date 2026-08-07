@@ -1,7 +1,7 @@
 {
   "name": "exprforge",
   "version": "0.1.0",
-  "description": "Author a math expression once as an AST, emit identical-behavior implementations in JS, QB64, C, Java, Go, and Rust.",
+  "description": "Author a math expression once as an AST, emit identical-behavior implementations in JS, TypeScript, QB64, C, Java, Go, and Rust.",
   "main": "index.js",
   "type": "commonjs",
   "files": [
@@ -43,7 +43,8 @@
     "url": "https://github.com/theraccoonbear/exprforge/issues"
   },
   "devDependencies": {
-    "js-yaml": "^5.2.3"
+    "js-yaml": "^5.2.3",
+    "typescript": "^7.0.2"
   },
   "peerDependencies": {
     "js-yaml": "^4.0.0 || ^5.0.0"

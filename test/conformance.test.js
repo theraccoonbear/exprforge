@@ -142,11 +142,18 @@ function hasTool(cmd, args) {
     }
 }
 
+// typescript is a local devDependency (needed to verify the .ts output
+// actually type-checks and runs), not a system tool like gcc/go/rustc/javac
+// -- but it's guarded with the same hasTool/skip pattern anyway, in case
+// tests ever run against a partial node_modules.
+const TSC_BIN = path.join(__dirname, "..", "node_modules", ".bin", "tsc");
+
 const TOOLS = {
     gcc: hasTool("gcc", ["--version"]),
     go: hasTool("go", ["version"]),
     rustc: hasTool("rustc", ["--version"]),
     java: hasTool("javac", ["-version"]) && hasTool("java", ["-version"]),
+    tsc: hasTool(TSC_BIN, ["--version"]),
 };
 
 function tmpDir(prefix) {
@@ -263,6 +270,29 @@ function runJava(ast, inputs) {
     const results = inputs.map((args) =>
         Number(execFileSync("java", ["-cp", dir, "Main", ...args.map(String)]).toString()),
     );
+    fs.rmSync(dir, { recursive: true, force: true });
+    return results;
+}
+
+// --- TypeScript ------------------------------------------------------------
+//
+// Unlike C/Go/Rust/Java, this doesn't need an argv-parsing harness or a
+// printf/parse round trip: tsc both type-checks AND compiles to plain JS
+// (catching a type error the same way C/Go/Rust catch build errors), and
+// the result can just be require()'d and called in-process. That also
+// means one function handles both scalar and suite results unchanged --
+// tsc's output returns a number or an object either way, matching
+// whatever registerConformance/registerSuiteConformance expects; the
+// (unused, for suites) outputNames parameter is only there so this fits
+// the same run(ast, inputs, outputNames) shape as the suite runners below.
+function runTS(ast, inputs) {
+    const source = emitters.ts.emitFunction(ast);
+    const dir = tmpDir("ef-ts-");
+    const srcPath = path.join(dir, "fn.ts");
+    fs.writeFileSync(srcPath, source);
+    execFileSync(TSC_BIN, ["--strict", "--target", "es2020", "--module", "commonjs", "--outDir", dir, srcPath]);
+    const mod = require(path.join(dir, "fn.js"));
+    const results = inputs.map((args) => mod[ast.name](...args));
     fs.rmSync(dir, { recursive: true, force: true });
     return results;
 }
@@ -396,6 +426,7 @@ function registerSuiteConformance(sampleName, { ast, inputs }) {
         ["Go", TOOLS.go, runSuiteGo],
         ["Rust", TOOLS.rustc, runSuiteRust],
         ["Java", TOOLS.java, runSuiteJava],
+        ["TypeScript", TOOLS.tsc, runTS],
     ];
 
     for (const [label, available, run] of targets) {
@@ -438,6 +469,7 @@ function registerConformance(sampleName, { ast, reference, inputs }) {
         ["Go", TOOLS.go, runGo],
         ["Rust", TOOLS.rustc, runRust],
         ["Java", TOOLS.java, runJava],
+        ["TypeScript", TOOLS.tsc, runTS],
     ];
 
     for (const [label, available, run] of targets) {

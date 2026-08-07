@@ -3,7 +3,8 @@
 [![test](https://github.com/theraccoonbear/exprforge/actions/workflows/test.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test.yml)
 
 Author a math expression once, as a small AST, and emit verified,
-identical-behavior implementations in JavaScript, QB64, C, Java, Go, and Rust.
+identical-behavior implementations in JavaScript, TypeScript, QB64, C,
+Java, Go, and Rust.
 
 No parser, no dependencies. You build the AST directly with plain JS
 functions; the same tree is walked once per target language.
@@ -75,7 +76,8 @@ Requesting an unmapped function throws at build time, not silently.
 
 Write `emitters/<lang>.js` exporting an `Emitter` instance (see any
 existing file as a template), then add one line to
-`emitters/registry.js`. Nothing else changes.
+`emitters/registry.js`. Nothing else changes — proven by the TypeScript
+emitter, added with no changes to `base.js`, `build.js`, or `index.js`.
 
 ## YAML (de)serialization — optional
 
@@ -182,13 +184,18 @@ Runs `node --test`. For each sample, that's two kinds of check:
 
 - Emitted JS vs. an independently hand-written reference implementation
   (catches a wrong formula in the AST itself).
-- Every other emitted target vs. that same JS, compiled and run as a real
-  subprocess with the sample inputs as argv (catches an emitter bug).
+- Every other emitted target vs. that same JS, compiled (and, for
+  TypeScript, also type-checked under `--strict`) and run, with the sample
+  inputs as arguments (catches an emitter bug).
 
 The compiled-language checks need their toolchain on `PATH` and skip
 (not fail) when it's missing, so `npm test` degrades gracefully on any
 one machine — CI (`.github/workflows/test.yml`) installs gcc, Go, Rust,
 and a JDK so all of those actually run on every push/PR, not just JS.
+TypeScript needs no separate CI setup: `typescript` is a devDependency
+(only used to verify the emitted `.ts` output — it's never a runtime
+dependency of exprforge or of anything it emits), so `npm ci` already
+provides it.
 
 QB64 isn't wired into this harness yet — it's compiled by eye against
 the other targets' output, not automatically. That's the one gap left
