@@ -1,5 +1,6 @@
 # ExprForge 🔢🔨
 
+[![npm version](https://img.shields.io/npm/v/exprforge.svg)](https://www.npmjs.com/package/exprforge)
 [![TypeScript](https://github.com/theraccoonbear/exprforge/actions/workflows/test-typescript.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test-typescript.yml)
 [![Python](https://github.com/theraccoonbear/exprforge/actions/workflows/test-python.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test-python.yml)
 [![C#](https://github.com/theraccoonbear/exprforge/actions/workflows/test-csharp.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test-csharp.yml)
