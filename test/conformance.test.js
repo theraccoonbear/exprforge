@@ -4,7 +4,8 @@
 // the emitted targets agree numerically, not just that they compile. Each
 // compiled-language block is skipped (not failed) when its toolchain isn't
 // on PATH, so this suite degrades gracefully across machines — see
-// .github/workflows/test.yml for the CI image that has all of them.
+// .github/workflows/test-*.yml (one file per language) for the CI images
+// that have them.
 //
 // Two independent checks per sample:
 //   1. the emitted JS vs. a hand-written reference implementation that
@@ -182,10 +183,11 @@ const TOOLS = {
 // the Go-labeled checks (plus the toolchain-independent JS/reference ones,
 // which aren't gated by this at all). Unset locally, so `npm test` on a
 // dev machine still runs everything its installed toolchains allow --
-// this exists so CI can run each language's checks in its own parallel
-// job (installing just that one toolchain) instead of one job serially
+// this exists so CI can run each language's checks in its own workflow
+// (installing just that one toolchain) instead of one job serially
 // installing all of them, most of which have nothing to do with each
-// other. See .github/workflows/test.yml.
+// other -- also what gets each language its own status badge. See
+// .github/workflows/test-*.yml.
 const TARGET_FILTER = process.env.EXPRFORGE_TEST_TARGETS
     ? new Set(process.env.EXPRFORGE_TEST_TARGETS.split(",").map((s) => s.trim()))
     : null;

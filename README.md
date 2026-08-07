@@ -1,6 +1,14 @@
 # ExprForge 🔢🔨
 
-[![test](https://github.com/theraccoonbear/exprforge/actions/workflows/test.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test.yml)
+[![TypeScript](https://github.com/theraccoonbear/exprforge/actions/workflows/test-typescript.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test-typescript.yml)
+[![Python](https://github.com/theraccoonbear/exprforge/actions/workflows/test-python.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test-python.yml)
+[![C#](https://github.com/theraccoonbear/exprforge/actions/workflows/test-csharp.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test-csharp.yml)
+[![Lua](https://github.com/theraccoonbear/exprforge/actions/workflows/test-lua.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test-lua.yml)
+[![QB64](https://github.com/theraccoonbear/exprforge/actions/workflows/test-qb64.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test-qb64.yml)
+[![C](https://github.com/theraccoonbear/exprforge/actions/workflows/test-c.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test-c.yml)
+[![Java](https://github.com/theraccoonbear/exprforge/actions/workflows/test-java.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test-java.yml)
+[![Go](https://github.com/theraccoonbear/exprforge/actions/workflows/test-go.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test-go.yml)
+[![Rust](https://github.com/theraccoonbear/exprforge/actions/workflows/test-rust.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test-rust.yml)
 
 Author a math expression once, as a small AST, and emit verified,
 identical-behavior implementations in JavaScript, TypeScript, Python, C#,
@@ -181,17 +189,20 @@ project dependency — exprforge only ever generates source text for these,
 it doesn't execute or type-check any of it itself. `package.json` has
 zero dependencies of any kind, matching this.
 
-CI (`.github/workflows/test.yml`) runs one job per target language, in
-parallel — they have nothing to do with each other, so there's no reason
-to serialize installing nine different toolchains (QB64-PE alone, built
-from source and cached by version, takes several minutes) into one job.
-Each job installs only its own toolchain and runs
-`EXPRFORGE_TEST_TARGETS=<Label> npm test`; that environment variable
-(read once in `test/conformance.test.js`) filters the target lists down
-to just that one language, plus the toolchain-independent JS/reference
-checks, which every job repeats — cheap, and a redundant sanity check
-per job. Unset locally, so a plain `npm test` still runs everything your
-own machine's installed toolchains allow.
+CI is one workflow file per target language (`.github/workflows/test-*.yml`),
+run in parallel — they have nothing to do with each other, so there's no
+reason to serialize installing nine different toolchains (QB64-PE alone,
+built from source and cached by version, takes several minutes) into one
+job, and splitting by file rather than by job within one file is also
+what gets each language its own real status badge above, not just one
+combined "did everything pass" badge. Each workflow installs only its own
+toolchain and runs `EXPRFORGE_TEST_TARGETS=<Label> npm test`; that
+environment variable (read once in `test/conformance.test.js`) filters
+the target lists down to just that one language, plus the toolchain-
+independent JS/reference checks, which every workflow repeats — cheap,
+and a redundant sanity check each time. Unset locally, so a plain
+`npm test` still runs everything your own machine's installed toolchains
+allow.
 
 A few of these needed real debugging to get right, all found by actually
 compiling/running against a real toolchain rather than assumed to work:
