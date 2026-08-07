@@ -141,6 +141,33 @@ expression model without introducing control flow:
   components by it). Every `let` in a function gets lifted into an ordered
   list of local declarations ahead of the return statement/expression, in
   every target.
+
+  Chaining several is normally hand-nested `letIn` calls, one inside the
+  next, closing parens piling up at the end with no real hierarchy behind
+  them — just bookkeeping to get everything hoisted before it's used.
+  **`letChain(bindings, body)`** is that same nesting, built for you from a
+  flat, ordered list instead:
+
+  ```js
+  const { v, num, mul, add, letChain, outputs } = require("exprforge");
+
+  letChain(
+      [
+          ["t2", mul(v("t"), v("t"))],
+          ["t3", mul(v("t2"), v("t"))],
+      ],
+      outputs({ t2: v("t2"), t3: v("t3") }),
+  );
+  // same tree as letIn("t2", ..., letIn("t3", ..., outputs({...})))
+  ```
+
+  `bindings` is an ordered array of `[name, valueNode]` pairs, not a
+  `{name: valueNode}` object like `outputs()` takes — order is
+  load-bearing here (a later binding's value can reference an earlier
+  one's name), and that's clearer as an explicit sequence than resting on
+  an object's key order. Pure authoring sugar: builds the identical `let`
+  node structure `letIn` would, so it needs no emitter changes and
+  round-trips through `collectLets` the same way.
 - **`select(cond, then, else)` + `cmp(left, op, right)`** — conditional
   *value* selection. Every target has a genuinely different way to spell
   this: a native ternary where one exists (C, Java, C#), `if`-as-expression

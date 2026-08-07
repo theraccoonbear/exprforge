@@ -1,5 +1,5 @@
 // exprforge/index.js
-const { num, v, bin, call, add, mul, sub, div, neg, letIn, cmp, select, outputs, collectLets } = require("./ast.js");
+const { num, v, bin, call, add, mul, sub, div, neg, letIn, letChain, cmp, select, outputs, collectLets } = require("./ast.js");
 const { forComponents } = require("./util.js");
 const emitters = require("./emitters/registry.js");
 const { catmullRomAst } = require("./samples/catmull-rom.js");
@@ -22,7 +22,7 @@ function emitAll(fn) {
 
 module.exports = {
     // AST builders — use these to define your own formulas.
-    num, v, bin, call, add, mul, sub, div, neg, letIn, cmp, select, outputs, collectLets,
+    num, v, bin, call, add, mul, sub, div, neg, letIn, letChain, cmp, select, outputs, collectLets,
     // Authoring convenience — not an AST primitive, see util.js.
     forComponents,
     // Built-in example formulas — see samples/ for the source.

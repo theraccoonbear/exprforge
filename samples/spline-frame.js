@@ -15,7 +15,12 @@
 // IMPORTANT for QB64: function/SUB names must be unique across the entire
 // QB64 compilation unit. The SpEf prefix (SplineExprforge) exists to avoid
 // collisions with hand-written code elsewhere in that project.
-const { num, v, call, add, mul, sub, div, neg, letIn, select, cmp, outputs } = require("../ast.js");
+//
+// mfLetChain/apLetChain/rfLetChain/SpEfCrWeights use letChain() (ast.js)
+// instead of hand-nested letIn calls -- apLetChain was 14 levels deep
+// before, all hand-balanced closing parens with no real hierarchy behind
+// the nesting, exactly the kind of thing that's easy to miscount editing.
+const { num, v, call, add, mul, sub, div, neg, letChain, select, cmp, outputs } = require("../ast.js");
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 const PI = num(3.141592653589793);
@@ -66,17 +71,20 @@ const MF_PARAMS = ["tx", "ty", "tz"];
 const nearVert = cmp(call("abs", v("ty")), ">", num(0.98));
 
 function mfLetChain(body) {
-    return letIn("wy", select(nearVert, num(0), num(1)),
-           letIn("wz", select(nearVert, num(1), num(0)),
-           letIn("crossX", sub(mul(v("ty"), v("wz")), mul(v("tz"), v("wy"))),
-           letIn("crossY", neg(mul(v("tx"), v("wz"))),
-           letIn("crossZ", mul(v("tx"), v("wy")),
-           letIn("rLen", len3(v("crossX"), v("crossY"), v("crossZ")),
-           letIn("rxN", safeDiv(v("crossX"), "rLen", num(0)),
-           letIn("ryN", safeDiv(v("crossY"), "rLen", num(0)),
-           letIn("rzN", safeDiv(v("crossZ"), "rLen", num(1)),
-               body
-           )))))))));
+    return letChain(
+        [
+            ["wy", select(nearVert, num(0), num(1))],
+            ["wz", select(nearVert, num(1), num(0))],
+            ["crossX", sub(mul(v("ty"), v("wz")), mul(v("tz"), v("wy")))],
+            ["crossY", neg(mul(v("tx"), v("wz")))],
+            ["crossZ", mul(v("tx"), v("wy"))],
+            ["rLen", len3(v("crossX"), v("crossY"), v("crossZ"))],
+            ["rxN", safeDiv(v("crossX"), "rLen", num(0))],
+            ["ryN", safeDiv(v("crossY"), "rLen", num(0))],
+            ["rzN", safeDiv(v("crossZ"), "rLen", num(1))],
+        ],
+        body,
+    );
 }
 
 // U = R × T (using normalized R) — a cyclic permutation, not one formula,
@@ -101,23 +109,26 @@ const SpEfMkFrame = {
 const AP_PARAMS = ["wx", "wy_wire", "wz_wire", "tx", "ty", "tz", "prDeg", "so"];
 
 function apLetChain(body) {
-    return letIn("wy", select(nearVert, num(0), num(1)),
-           letIn("wz", select(nearVert, num(1), num(0)),
-           letIn("crossX", sub(mul(v("ty"), v("wz")), mul(v("tz"), v("wy"))),
-           letIn("crossY", neg(mul(v("tx"), v("wz"))),
-           letIn("crossZ", mul(v("tx"), v("wy")),
-           letIn("rLen", len3(v("crossX"), v("crossY"), v("crossZ")),
-           letIn("rxN", safeDiv(v("crossX"), "rLen", num(0)),
-           letIn("ryN", safeDiv(v("crossY"), "rLen", num(0)),
-           letIn("rzN", safeDiv(v("crossZ"), "rLen", num(1)),
-           letIn("ux", sub(mul(v("ryN"), v("tz")), mul(v("rzN"), v("ty"))),
-           letIn("uy", sub(mul(v("rzN"), v("tx")), mul(v("rxN"), v("tz"))),
-           letIn("uz", sub(mul(v("rxN"), v("ty")), mul(v("ryN"), v("tx"))),
-           letIn("rad", degToRad(v("prDeg")),
-           letIn("c", call("cos", v("rad")),
-           letIn("s", call("sin", v("rad")),
-               body
-           )))))))))))))));
+    return letChain(
+        [
+            ["wy", select(nearVert, num(0), num(1))],
+            ["wz", select(nearVert, num(1), num(0))],
+            ["crossX", sub(mul(v("ty"), v("wz")), mul(v("tz"), v("wy")))],
+            ["crossY", neg(mul(v("tx"), v("wz")))],
+            ["crossZ", mul(v("tx"), v("wy"))],
+            ["rLen", len3(v("crossX"), v("crossY"), v("crossZ"))],
+            ["rxN", safeDiv(v("crossX"), "rLen", num(0))],
+            ["ryN", safeDiv(v("crossY"), "rLen", num(0))],
+            ["rzN", safeDiv(v("crossZ"), "rLen", num(1))],
+            ["ux", sub(mul(v("ryN"), v("tz")), mul(v("rzN"), v("ty")))],
+            ["uy", sub(mul(v("rzN"), v("tx")), mul(v("rxN"), v("tz")))],
+            ["uz", sub(mul(v("rxN"), v("ty")), mul(v("ryN"), v("tx")))],
+            ["rad", degToRad(v("prDeg"))],
+            ["c", call("cos", v("rad"))],
+            ["s", call("sin", v("rad"))],
+        ],
+        body,
+    );
 }
 
 const SpEfActualPos = {
@@ -139,10 +150,14 @@ const SpEfActualPos = {
 const RF_PARAMS = ["ux", "uy", "uz", "rx", "ry", "rz", "crDeg"];
 
 function rfLetChain(body) {
-    return letIn("rad", degToRad(v("crDeg")),
-           letIn("c", call("cos", v("rad")),
-           letIn("s", call("sin", v("rad")),
-               body)));
+    return letChain(
+        [
+            ["rad", degToRad(v("crDeg"))],
+            ["c", call("cos", v("rad"))],
+            ["s", call("sin", v("rad"))],
+        ],
+        body,
+    );
 }
 
 const SpEfRollFrame = {
@@ -167,15 +182,18 @@ const CRW_PARAMS = ["t"];
 const SpEfCrWeights = {
     name: "SpEfCrWeights",
     params: CRW_PARAMS,
-    body: letIn("t2", mul(v("t"), v("t")),
-          letIn("t3", mul(v("t2"), v("t")),
-              outputs({
-                  w0: mul(num(0.5), add(neg(v("t3")), mul(num(2), v("t2")), neg(v("t")))),
-                  w1: mul(num(0.5), add(mul(num(3), v("t3")), mul(num(-5), v("t2")), num(2))),
-                  w2: mul(num(0.5), add(mul(num(-3), v("t3")), mul(num(4), v("t2")), v("t"))),
-                  w3: mul(num(0.5), add(v("t3"), neg(v("t2")))),
-              })
-          )),
+    body: letChain(
+        [
+            ["t2", mul(v("t"), v("t"))],
+            ["t3", mul(v("t2"), v("t"))],
+        ],
+        outputs({
+            w0: mul(num(0.5), add(neg(v("t3")), mul(num(2), v("t2")), neg(v("t")))),
+            w1: mul(num(0.5), add(mul(num(3), v("t3")), mul(num(-5), v("t2")), num(2))),
+            w2: mul(num(0.5), add(mul(num(-3), v("t3")), mul(num(4), v("t2")), v("t"))),
+            w3: mul(num(0.5), add(v("t3"), neg(v("t2")))),
+        }),
+    ),
 };
 
 // ── Exports ──────────────────────────────────────────────────────────────
