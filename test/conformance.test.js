@@ -830,6 +830,29 @@ function runSuiteScheme(ast, inputs, outputNames) {
 // function's return type has to be redeclared in the caller (Fortran has
 // no header/prototype file here), matching how it was actually verified
 // working during development (see emitters/fortran.js).
+//
+// wrapFortranLine mirrors emitters/fortran.js's own wrapLine -- needed
+// here too, not just in the emitter, since this harness builds its own
+// declaration/call lines (confirmed against real CI: mathDemo's 9 params
+// + 13 outputs made both exceed Fortran's real 132-character free-form
+// line limit here, in the hand-written harness, even after the emitter
+// itself was already fixed).
+function wrapFortranLine(line, maxWidth = 100) {
+    if (line.length <= maxWidth) return line;
+    const words = line.split(" ");
+    const wrapped = [];
+    let current = "";
+    for (const word of words) {
+        if (current && current.length + 1 + word.length > maxWidth) {
+            wrapped.push(`${current} &`);
+            current = `        ${word}`;
+        } else {
+            current = current ? `${current} ${word}` : word;
+        }
+    }
+    if (current) wrapped.push(current);
+    return wrapped.join("\n");
+}
 
 function runFortran(ast, inputs) {
     const source = emitters.fortran.emitFunction(ast);
@@ -843,10 +866,10 @@ function runFortran(ast, inputs) {
     const harness =
         `program main\n` +
         `    implicit none\n` +
-        `    double precision :: ${varDecl}\n` +
+        wrapFortranLine(`    double precision :: ${varDecl}`) + "\n" +
         `    character(len=64) :: argstr\n` +
         reads + "\n" +
-        `    write(*, '(F0.17)') ${ast.name}(${callArgs})\n` +
+        wrapFortranLine(`    write(*, '(F0.17)') ${ast.name}(${callArgs})`) + "\n" +
         `end program main\n`;
     fs.writeFileSync(path.join(dir, "main.f90"), harness);
     const bin = path.join(dir, "bin");
@@ -869,10 +892,10 @@ function runSuiteFortran(ast, inputs, outputNames) {
     const harness =
         `program main\n` +
         `    implicit none\n` +
-        `    double precision :: ${varDecl}\n` +
+        wrapFortranLine(`    double precision :: ${varDecl}`) + "\n" +
         `    character(len=64) :: argstr\n` +
         reads + "\n" +
-        `    call ${ast.name}(${callArgs})\n` +
+        wrapFortranLine(`    call ${ast.name}(${callArgs})`) + "\n" +
         prints + "\n" +
         `end program main\n`;
     fs.writeFileSync(path.join(dir, "main.f90"), harness);
