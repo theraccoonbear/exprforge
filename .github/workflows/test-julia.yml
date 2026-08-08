@@ -17,9 +17,16 @@ jobs:
           node-version: "22"
           cache: npm
       - run: npm ci
+
+      # No apt package -- confirmed the hard way ("Package julia is not
+      # available") that Ubuntu's default repos don't carry one. Same
+      # "download a release tarball, add it to PATH" recipe as the
+      # QB64/Zig workflows use for the same reason.
       - name: Install Julia
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y julia
+          curl -fsSL -o julia.tar.gz "https://julialang-s3.julialang.org/bin/linux/x64/1.11/julia-1.11.5-linux-x86_64.tar.gz"
+          tar xzf julia.tar.gz
+          echo "$GITHUB_WORKSPACE/julia-1.11.5/bin" >> "$GITHUB_PATH"
+
       - run: julia --version
       - run: EXPRFORGE_TEST_TARGETS=Julia npm test

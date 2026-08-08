@@ -162,6 +162,22 @@ function hasTool(cmd, args) {
     }
 }
 
+// Guile's binary name is NOT consistent across distros -- confirmed the
+// hard way (CI failure) that Ubuntu's guile-3.0 package installs
+// /usr/bin/guile-3.0 (hyphenated), while Fedora's installs /usr/bin/guile3.0
+// (no hyphen). Rather than hardcode one and break local dev on whichever
+// distro didn't get guessed, this resolves whichever candidate is actually
+// on PATH at runtime -- GUILE_BIN is that resolved command name (or null,
+// meaning skip), used everywhere below instead of a hardcoded string.
+function resolveTool(candidates, args) {
+    for (const cmd of candidates) {
+        if (hasTool(cmd, args)) return cmd;
+    }
+    return null;
+}
+
+const GUILE_BIN = resolveTool(["guile3.0", "guile-3.0", "guile"], ["--version"]);
+
 const TOOLS = {
     gcc: hasTool("gcc", ["--version"]),
     go: hasTool("go", ["version"]),
@@ -183,11 +199,7 @@ const TOOLS = {
     julia: hasTool("julia", ["--version"]),
     gfortran: hasTool("gfortran", ["--version"]),
     zig: hasTool("zig", ["version"]),
-    // Package name across distros is "guile-3.0"/"guile30", but the binary
-    // itself is consistently "guile3.0" (Fedora and Debian/Ubuntu both
-    // install it under that versioned name, not a bare "guile") -- see
-    // .github/workflows/test-scheme.yml for the matching apt package name.
-    guile: hasTool("guile3.0", ["--version"]),
+    guile: GUILE_BIN !== null,
     cobc: hasTool("cobc", ["--version"]),
 };
 
@@ -256,7 +268,7 @@ function runGo(ast, inputs) {
     const funcDecl = source.slice(source.indexOf("func "));
     const usesMath = funcDecl.includes("math.");
     const dir = tmpDir("ef-go-");
-    execFileSync("go", ["mod", "init", "ef"], { cwd: dir, stdio: "ignore" });
+    execFileSync("go", ["mod", "init", "ef"], { cwd: dir });
     const parses = ast.params
         .map((p, i) => `\t${p}, _ := strconv.ParseFloat(os.Args[${i + 1}], 64)`)
         .join("\n");
@@ -293,7 +305,7 @@ function runRust(ast, inputs) {
     const srcPath = path.join(dir, "main.rs");
     fs.writeFileSync(srcPath, mainSrc);
     const bin = path.join(dir, "bin");
-    execFileSync("rustc", ["-O", srcPath, "-o", bin], { stdio: "ignore" });
+    execFileSync("rustc", ["-O", srcPath, "-o", bin]);
     const results = inputs.map((args) => Number(execFileSync(bin, args.map(String)).toString()));
     fs.rmSync(dir, { recursive: true, force: true });
     return results;
@@ -379,7 +391,7 @@ function runQB64(ast, inputs) {
     const srcPath = path.join(dir, "main.bas");
     fs.writeFileSync(srcPath, harness);
     const bin = path.join(dir, "bin");
-    execFileSync("qb64pe", ["-x", srcPath, "-o", bin], { stdio: "ignore" });
+    execFileSync("qb64pe", ["-x", srcPath, "-o", bin]);
     const results = inputs.map((args) => qb64ToNumber(execFileSync(bin, args.map(String)).toString().trim()));
     fs.rmSync(dir, { recursive: true, force: true });
     return results;
@@ -400,7 +412,7 @@ function runSuiteQB64(ast, inputs, outputNames) {
     const srcPath = path.join(dir, "main.bas");
     fs.writeFileSync(srcPath, harness);
     const bin = path.join(dir, "bin");
-    execFileSync("qb64pe", ["-x", srcPath, "-o", bin], { stdio: "ignore" });
+    execFileSync("qb64pe", ["-x", srcPath, "-o", bin]);
     const results = inputs.map((args) => {
         const lines = execFileSync(bin, args.map(String)).toString().trim().split("\n");
         const record = {};
@@ -462,7 +474,7 @@ function runSuiteGo(ast, inputs, outputNames) {
     const funcDecl = source.slice(source.indexOf("func "));
     const usesMath = funcDecl.includes("math.");
     const dir = tmpDir("ef-go-");
-    execFileSync("go", ["mod", "init", "ef"], { cwd: dir, stdio: "ignore" });
+    execFileSync("go", ["mod", "init", "ef"], { cwd: dir });
     const parses = ast.params
         .map((p, i) => `\t${p}, _ := strconv.ParseFloat(os.Args[${i + 1}], 64)`)
         .join("\n");
@@ -501,7 +513,7 @@ function runSuiteRust(ast, inputs, outputNames) {
     const srcPath = path.join(dir, "main.rs");
     fs.writeFileSync(srcPath, mainSrc);
     const bin = path.join(dir, "bin");
-    execFileSync("rustc", ["-O", srcPath, "-o", bin], { stdio: "ignore" });
+    execFileSync("rustc", ["-O", srcPath, "-o", bin]);
     const results = inputs.map((args) => parseSuiteOutput(execFileSync(bin, args.map(String)), outputNames));
     fs.rmSync(dir, { recursive: true, force: true });
     return results;
@@ -573,7 +585,7 @@ function runCSharp(ast, inputs) {
     const mainSrc = `${parses}\nConsole.WriteLine(${className}.${ast.name}(${callArgs}).ToString("G17"));\n`;
     fs.writeFileSync(path.join(dir, "Program.cs"), mainSrc);
     const outDir = path.join(dir, "out");
-    execFileSync("dotnet", ["build", "-c", "Release", "-o", outDir], { cwd: dir, stdio: "ignore" });
+    execFileSync("dotnet", ["build", "-c", "Release", "-o", outDir], { cwd: dir });
     const dll = path.join(outDir, "app.dll");
     const results = inputs.map((args) => Number(execFileSync("dotnet", [dll, ...args.map(String)]).toString().trim()));
     fs.rmSync(dir, { recursive: true, force: true });
@@ -592,7 +604,7 @@ function runSuiteCSharp(ast, inputs, outputNames) {
     const mainSrc = `${parses}\nvar r = ${className}.${ast.name}(${callArgs});\n${prints}\n`;
     fs.writeFileSync(path.join(dir, "Program.cs"), mainSrc);
     const outDir = path.join(dir, "out");
-    execFileSync("dotnet", ["build", "-c", "Release", "-o", outDir], { cwd: dir, stdio: "ignore" });
+    execFileSync("dotnet", ["build", "-c", "Release", "-o", outDir], { cwd: dir });
     const dll = path.join(outDir, "app.dll");
     const results = inputs.map((args) => parseSuiteOutput(execFileSync("dotnet", [dll, ...args.map(String)]), outputNames));
     fs.rmSync(dir, { recursive: true, force: true });
@@ -783,7 +795,7 @@ function runScheme(ast, inputs) {
     const srcPath = path.join(dir, "main.scm");
     fs.writeFileSync(srcPath, harness);
     const results = inputs.map((args) =>
-        Number(execFileSync("guile3.0", ["--no-auto-compile", srcPath, ...args.map(String)]).toString().trim()),
+        Number(execFileSync(GUILE_BIN, ["--no-auto-compile", srcPath, ...args.map(String)]).toString().trim()),
     );
     fs.rmSync(dir, { recursive: true, force: true });
     return results;
@@ -804,7 +816,7 @@ function runSuiteScheme(ast, inputs, outputNames) {
     const srcPath = path.join(dir, "main.scm");
     fs.writeFileSync(srcPath, harness);
     const results = inputs.map((args) =>
-        parseSuiteOutput(execFileSync("guile3.0", ["--no-auto-compile", srcPath, ...args.map(String)]), outputNames),
+        parseSuiteOutput(execFileSync(GUILE_BIN, ["--no-auto-compile", srcPath, ...args.map(String)]), outputNames),
     );
     fs.rmSync(dir, { recursive: true, force: true });
     return results;
@@ -838,7 +850,7 @@ function runFortran(ast, inputs) {
         `end program main\n`;
     fs.writeFileSync(path.join(dir, "main.f90"), harness);
     const bin = path.join(dir, "bin");
-    execFileSync("gfortran", ["-O2", "-o", bin, path.join(dir, "main.f90"), path.join(dir, "fn.f90")], { stdio: "ignore" });
+    execFileSync("gfortran", ["-O2", "-o", bin, path.join(dir, "main.f90"), path.join(dir, "fn.f90")]);
     const results = inputs.map((args) => Number(execFileSync(bin, args.map(String)).toString()));
     fs.rmSync(dir, { recursive: true, force: true });
     return results;
@@ -865,7 +877,7 @@ function runSuiteFortran(ast, inputs, outputNames) {
         `end program main\n`;
     fs.writeFileSync(path.join(dir, "main.f90"), harness);
     const bin = path.join(dir, "bin");
-    execFileSync("gfortran", ["-O2", "-o", bin, path.join(dir, "main.f90"), path.join(dir, "fn.f90")], { stdio: "ignore" });
+    execFileSync("gfortran", ["-O2", "-o", bin, path.join(dir, "main.f90"), path.join(dir, "fn.f90")]);
     const results = inputs.map((args) => parseSuiteOutput(execFileSync(bin, args.map(String)), outputNames));
     fs.rmSync(dir, { recursive: true, force: true });
     return results;
@@ -903,7 +915,7 @@ function runZig(ast, inputs) {
         `}\n`;
     fs.writeFileSync(path.join(dir, "main.zig"), harness);
     const bin = path.join(dir, "bin");
-    execFileSync("zig", ["build-exe", path.join(dir, "main.zig"), "-O", "ReleaseFast", `-femit-bin=${bin}`], { cwd: dir, stdio: "ignore" });
+    execFileSync("zig", ["build-exe", path.join(dir, "main.zig"), "-O", "ReleaseFast", `-femit-bin=${bin}`], { cwd: dir });
     const results = inputs.map((args) => Number(execFileSync(bin, args.map(String)).toString().trim()));
     fs.rmSync(dir, { recursive: true, force: true });
     return results;
@@ -930,7 +942,7 @@ function runSuiteZig(ast, inputs, outputNames) {
         `}\n`;
     fs.writeFileSync(path.join(dir, "main.zig"), harness);
     const bin = path.join(dir, "bin");
-    execFileSync("zig", ["build-exe", path.join(dir, "main.zig"), "-O", "ReleaseFast", `-femit-bin=${bin}`], { cwd: dir, stdio: "ignore" });
+    execFileSync("zig", ["build-exe", path.join(dir, "main.zig"), "-O", "ReleaseFast", `-femit-bin=${bin}`], { cwd: dir });
     const results = inputs.map((args) => parseSuiteOutput(execFileSync(bin, args.map(String)), outputNames));
     fs.rmSync(dir, { recursive: true, force: true });
     return results;
@@ -978,7 +990,7 @@ function runCobol(ast, inputs) {
     const srcPath = path.join(dir, "main.cob");
     fs.writeFileSync(srcPath, harness);
     const bin = path.join(dir, "bin");
-    execFileSync("cobc", ["-x", "-free", "-o", bin, srcPath, path.join(dir, "fn.cob")], { stdio: "ignore" });
+    execFileSync("cobc", ["-x", "-free", "-o", bin, srcPath, path.join(dir, "fn.cob")]);
     const results = inputs.map((args) => Number(execFileSync(bin, args.map(String)).toString().trim()));
     fs.rmSync(dir, { recursive: true, force: true });
     return results;
@@ -1015,7 +1027,7 @@ function runSuiteCobol(ast, inputs, outputNames) {
     const srcPath = path.join(dir, "main.cob");
     fs.writeFileSync(srcPath, harness);
     const bin = path.join(dir, "bin");
-    execFileSync("cobc", ["-x", "-free", "-o", bin, srcPath, path.join(dir, "fn.cob")], { stdio: "ignore" });
+    execFileSync("cobc", ["-x", "-free", "-o", bin, srcPath, path.join(dir, "fn.cob")]);
     const results = inputs.map((args) => parseSuiteOutput(execFileSync(bin, args.map(String)), outputNames));
     fs.rmSync(dir, { recursive: true, force: true });
     return results;
