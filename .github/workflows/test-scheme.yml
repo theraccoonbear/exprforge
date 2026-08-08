@@ -1,0 +1,27 @@
+name: Scheme
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch: {}
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+      - name: Install Guile
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y guile-3.0
+      # Package name has a hyphen ("guile-3.0"), the binary doesn't
+      # ("guile3.0") -- see test/conformance.test.js's TOOLS.guile comment.
+      - run: guile3.0 --version
+      - run: EXPRFORGE_TEST_TARGETS=Scheme npm test

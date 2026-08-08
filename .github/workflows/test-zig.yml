@@ -1,0 +1,33 @@
+name: Zig
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch: {}
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+
+      # No apt package -- Ubuntu doesn't ship one. Same "download a release
+      # tarball, add it to PATH" recipe as the QB64 workflow uses for the
+      # same reason. Pinned to the version this emitter was actually
+      # developed and verified against (see emitters/zig.js's comptime-
+      # precision comment on formatNumber -- worth re-verifying that
+      # behavior hasn't changed before bumping this).
+      - name: Install Zig
+        run: |
+          curl -fsSL -o zig.tar.xz "https://ziglang.org/download/0.14.1/zig-linux-x86_64-0.14.1.tar.xz"
+          tar xJf zig.tar.xz
+          echo "$GITHUB_WORKSPACE/zig-linux-x86_64-0.14.1" >> "$GITHUB_PATH"
+      - run: zig version
+      - run: EXPRFORGE_TEST_TARGETS=Zig npm test

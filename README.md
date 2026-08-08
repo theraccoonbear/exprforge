@@ -10,10 +10,18 @@
 [![Java](https://github.com/theraccoonbear/exprforge/actions/workflows/test-java.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test-java.yml)
 [![Go](https://github.com/theraccoonbear/exprforge/actions/workflows/test-go.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test-go.yml)
 [![Rust](https://github.com/theraccoonbear/exprforge/actions/workflows/test-rust.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test-rust.yml)
+[![Perl](https://github.com/theraccoonbear/exprforge/actions/workflows/test-perl.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test-perl.yml)
+[![PHP](https://github.com/theraccoonbear/exprforge/actions/workflows/test-php.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test-php.yml)
+[![Julia](https://github.com/theraccoonbear/exprforge/actions/workflows/test-julia.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test-julia.yml)
+[![Fortran](https://github.com/theraccoonbear/exprforge/actions/workflows/test-fortran.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test-fortran.yml)
+[![Zig](https://github.com/theraccoonbear/exprforge/actions/workflows/test-zig.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test-zig.yml)
+[![Scheme](https://github.com/theraccoonbear/exprforge/actions/workflows/test-scheme.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test-scheme.yml)
+[![COBOL](https://github.com/theraccoonbear/exprforge/actions/workflows/test-cobol.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test-cobol.yml)
 
 Author a math expression once, as a small AST, and emit verified,
 identical-behavior implementations in JavaScript, TypeScript, Python, C#,
-Lua, QB64, C, Java, Go, and Rust.
+Lua, QB64, C, Java, Go, Rust, Perl, PHP, Julia, Fortran, Zig, Scheme
+(Guile), and COBOL (GnuCOBOL).
 
 No parser, no dependencies. You build the AST directly with plain JS
 functions; the same tree is walked once per target language.
@@ -26,6 +34,23 @@ mainstream languages. This exists for two things SymPy doesn't do:
 - Targets like QB64/BASIC that no general codegen project supports.
 - A conformance test harness that actually proves the emitted targets
   agree numerically, not just that they compile.
+
+Two shapes of real use this tends to fall into:
+
+- **Keeping concurrent codebases in sync.** A client/server split (game
+  client prediction + authoritative server, or any two independently
+  deployed services) where both sides need to compute the *same* formula
+  and disagree — desync, or a cheat signal — the moment they drift. One
+  AST, not two hand-maintained implementations that quietly diverge.
+- **De-risking a migration.** Replacing an older implementation (a COBOL
+  batch job, a Fortran numerical kernel) with a new one doesn't require
+  trusting a manual port — emit the same formula into both the legacy
+  target and the new one, and let the conformance suite prove they agree
+  before cutover, not after.
+
+Neither is "translate my code for me" — it's "prove two independent
+implementations of one formula actually match," which is a narrower,
+checkable claim.
 
 ## Install
 
@@ -130,6 +155,29 @@ Write `emitters/<lang>.js` exporting an `Emitter` instance (see any
 existing file as a template), then add one line to
 `emitters/registry.js`. Nothing else changes — proven by the TypeScript
 emitter, added with no changes to `base.js`, `build.js`, or `index.js`.
+`Emitter` is a real class (not just a factory function), so a target that
+needs to intercept how expressions themselves get rendered — not just
+`calls`/`emitSelect`/`formatFunction`, all ordinary config — can subclass
+it instead: Perl/PHP override `emitExpr`'s `"var"` case to add the `$`
+sigil every reference needs, Scheme overrides the `"bin"` case for prefix
+notation. See `emitters/scheme.js` and `emitters/perl.js`.
+
+### Reserved-word collisions
+
+Several emitters (QB64, Fortran, Zig, Scheme, COBOL) guard against a
+generated variable/parameter/function name colliding with that language's
+own reserved words or builtins — a `<LANG>_RESERVED` set checked at
+emission time, throwing a clear error instead of producing code that fails
+to compile somewhere downstream with no context (see e.g. `QB64_RESERVED`
+in `emitters/qb64.js`). **These lists are not, and can't practically be,
+exhaustive** — each covers the collisions that came up in this project's
+own samples plus the obvious/common ones for that language, not every
+reserved word in every language's full grammar. If you're naming your own
+functions/params/`letIn` bindings, especially ones you know will target a
+specific language, it's still on you to know that language's reserved
+words — Perl/PHP mostly sidestep this (every variable is `$`-sigiled, so
+it can't collide with a bareword keyword), but the sigil-free languages
+above genuinely can't be fully guarded against in advance.
 
 ## Named subexpressions and conditional values
 
@@ -214,11 +262,14 @@ multi-value idiom it has, since none of them agree:
 | Target | Shape |
 |---|---|
 | JS | object literal |
-| Go, Lua | native multiple return values |
-| C# | a native named value tuple (`(double rx, double ry)`) |
-| C / Rust | a small `...Result` struct, returned by value |
+| Go, Lua, Scheme | native multiple return values (`(values ...)` in Scheme) |
+| C#, Julia | a native named value tuple / named tuple |
+| C / Rust / Zig | a small `...Result` struct, returned by value |
 | Java, Python | a nested/local `Result` class |
-| QB64 | a `SUB` with the outputs as trailing by-reference parameters |
+| QB64, Fortran | a `SUB`/`subroutine` with the outputs as trailing by-reference (`intent(out)`) parameters |
+| Perl | a hash ref (`{ rx => ..., ry => ... }`) |
+| PHP | an associative array (`['rx' => ..., 'ry' => ...]`) |
+| COBOL | a callable `PROGRAM-ID`, every output as a trailing `BY REFERENCE` parameter, invoked via `CALL "name" USING ...` — COBOL's *scalar* case uses this same shape too, not a `FUNCTION`-style return (see Testing below) |
 
 Go specifically does **not** use *named* return values (`(rx, ry float64)`)
 even though Go supports them and it reads nicer: those are sugar for
@@ -254,20 +305,21 @@ Runs `node --test`. For each sample, that's two kinds of check:
 
 The compiled/interpreted-language checks need their toolchain on `PATH`
 and skip (not fail) when it's missing, so `npm test` degrades gracefully
-on any one machine. Every one of `tsc`/`qb64pe`/`dotnet`/`python3`/`lua`
-is treated exactly like gcc/go/rustc/javac: looked up on `PATH`, never a
-project dependency — exprforge only ever generates source text for these,
-it doesn't execute or type-check any of it itself. `package.json` has
-zero dependencies of any kind, matching this.
+on any one machine. Every one of `tsc`/`qb64pe`/`dotnet`/`python3`/`lua`/
+`perl`/`php`/`julia`/`gfortran`/`zig`/`guile3.0`/`cobc` is treated exactly
+like gcc/go/rustc/javac: looked up on `PATH`, never a project
+dependency — exprforge only ever generates source text for these, it
+doesn't execute or type-check any of it itself. `package.json` has zero
+dependencies of any kind, matching this.
 
 CI is one workflow file per target language (`.github/workflows/test-*.yml`),
 run in parallel — they have nothing to do with each other, so there's no
-reason to serialize installing nine different toolchains (QB64-PE alone,
-built from source and cached by version, takes several minutes) into one
-job, and splitting by file rather than by job within one file is also
-what gets each language its own real status badge above, not just one
-combined "did everything pass" badge. Each workflow installs only its own
-toolchain and runs `EXPRFORGE_TEST_TARGETS=<Label> npm test`; that
+reason to serialize installing sixteen different toolchains (QB64-PE
+alone, built from source and cached by version, takes several minutes)
+into one job, and splitting by file rather than by job within one file is
+also what gets each language its own real status badge above, not just
+one combined "did everything pass" badge. Each workflow installs only its
+own toolchain and runs `EXPRFORGE_TEST_TARGETS=<Label> npm test`; that
 environment variable (read once in `test/conformance.test.js`) filters
 the target lists down to just that one language, plus the toolchain-
 independent JS/reference checks, which every workflow repeats — cheap,
@@ -304,6 +356,66 @@ compiling/running against a real toolchain rather than assumed to work:
   `math.atan2` (use two-argument `math.atan(y, x)`); there's no
   `math.round` or `math.trunc` or `math.sign` at any version (manual
   `floor(x+0.5)`, `math.modf(x)`, and an `and`/`or` chain respectively).
+- **Perl / PHP**: every variable reference needs a `$` sigil, which
+  `base.js`'s shared `emitExpr` doesn't produce for anything — both
+  subclass `Emitter` to override just the `"var"` case (see "Adding a
+  language" above) rather than needing a new hook every other emitter
+  would have to ignore. Perl has no `log2()`/`trunc()`/`hypot()` in core
+  (POSIX supplies `trunc`/`hypot`, `log2` is derived); PHP has no
+  `trunc()` at all (`floor`/`ceil` picked by sign instead, not an `(int)`
+  cast, which would misbehave outside PHP's platform integer range).
+- **Julia**: `round()` defaults to ties-to-even (banker's rounding), not
+  ties-away-from-zero like every other target here —
+  `round(x, RoundNearestTiesAway)` used explicitly to actually match,
+  not just avoid the untested case. `sign(-0.0)` returns `-0.0`, which is
+  numerically equal to `0.0` for the tolerance-based comparisons this
+  project uses, so it isn't a real divergence.
+- **Fortran**: a literal without the `D0` exponent marker is parsed as
+  *single*-precision first, then widened — silently losing precision
+  before it reaches a `real(8)` variable, unlike every other target's
+  literals — so every literal gets it, not just ones already in
+  scientific notation. `FLOOR`/`CEILING` return the default `INTEGER`
+  kind, not `REAL`, wrapped back with `REAL(..., 8)`. No ternary, but
+  `MERGE(then, else, mask)` is a genuine expression-level conditional —
+  confirmed to evaluate both branches regardless of `mask`, matching
+  `select()`'s own contract exactly. The native 2-argument `SIGN(A, B)`
+  ("magnitude of A, sign of B") is *not* this project's `sign(x)` —
+  `SIGN(1.0, 0.0)` returns `1.0`, not `0.0` — built from `MERGE` instead.
+- **Zig**: `std.debug.print` writes to **stderr** by design, not
+  stdout — the conformance harness has to use
+  `std.io.getStdOut().writer()` instead, or every result silently comes
+  back empty. A fully-literal expression with no runtime operand (e.g.
+  `sqrt(2.0)` alone) gets evaluated at Zig's extended `comptime_float`
+  precision instead of truncated to an actual IEEE double, unless
+  explicitly `@as(f64, ...)`-cast — every literal gets that cast, not
+  just ones that would otherwise hit this.
+- **Scheme (Guile)**: a bare integer literal like `2` is *exact* in
+  Scheme's reader syntax, and exact arithmetic that never touches an
+  inexact (float) operand stays exact — `(/ 1 3)` prints as the fraction
+  `1/3`, not `0.333...`. Every literal gets `.0` appended unless it
+  already has a decimal point or exponent, forcing inexactness by literal
+  syntax alone rather than relying on some other operand in the same
+  expression happening to already be a float.
+- **COBOL (GnuCOBOL)**: has no expression-level conditional at all — no
+  ternary, no `MERGE`-equivalent. `select()` is built from six small
+  helper `FUNCTION-ID` modules (one per comparator), but confirmed
+  against a real compile+run that a user-defined `FUNCTION` call
+  *silently miscomputes* — no error, just a wrong number — when given a
+  complex argument (one containing its own nested call); every argument
+  to a helper gets spilled into its own `COMPUTE`d temp first, always,
+  not just when an argument "looks complex." `BY VALUE` parameter passing
+  is explicitly flagged "unfinished" by the compiler — every function
+  uses `BY REFERENCE` (the default) instead, which is also why COBOL is
+  the one target where even a *scalar* function's return value is a
+  trailing by-reference parameter (see the outputs table above), not a
+  `FUNCTION`-style return: calling a user `FUNCTION` by name breaks if
+  that name contains an underscore (confirmed against a real compiler),
+  while `CALL "name"` takes it as a plain string literal, immune to that.
+  Source lines have a real ~512-byte cap — long expressions (e.g.
+  `samples/kitchen-sink.js`'s summed call to all 22 functions) get
+  wrapped at word boundaries. The native `FUNCTION SIGN` is
+  1-argument (`SIGN(x)`), unlike Fortran's identically-named
+  2-argument intrinsic — and unlike Fortran's, is genuinely zero-safe.
 
 One test (`normalizeX`) is deliberately excluded from the QB64 check
 only: it exists specifically to demonstrate the "don't guard division
