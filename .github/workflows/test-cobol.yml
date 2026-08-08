@@ -1,0 +1,25 @@
+name: COBOL
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch: {}
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+      - name: Install GnuCOBOL
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y gnucobol4
+      - run: cobc --version
+      - run: EXPRFORGE_TEST_TARGETS=COBOL npm test

@@ -10,17 +10,21 @@
 const { v, num, outputs } = require("../ast.js");
 const { safeDiv, dot3, len3, cross3, normalize3, clamp } = require("../math/index.js");
 
-const MATH_DEMO_PARAMS = ["ax", "ay", "az", "bx", "by", "bz", "t", "lo", "hi"];
+// "byy", not "by": BY is a reserved COBOL keyword (BY REFERENCE/BY VALUE/
+// BY CONTENT) -- confirmed against a real compiler ("syntax error,
+// unexpected BY") that it can't be used as a data-item name there, same
+// kind of unavoidable per-language collision as "len"/"mag" below.
+const MATH_DEMO_PARAMS = ["ax", "ay", "az", "bx", "byy", "bz", "t", "lo", "hi"];
 
-const cross = cross3(v("ax"), v("ay"), v("az"), v("bx"), v("by"), v("bz"));
+const cross = cross3(v("ax"), v("ay"), v("az"), v("bx"), v("byy"), v("bz"));
 const normA = normalize3(v("ax"), v("ay"), v("az"));
-const normB = normalize3(v("bx"), v("by"), v("bz"));
+const normB = normalize3(v("bx"), v("byy"), v("bz"));
 
 const MathDemo = {
     name: "MathDemo",
     params: MATH_DEMO_PARAMS,
     body: outputs({
-        dot: dot3(v("ax"), v("ay"), v("az"), v("bx"), v("by"), v("bz")),
+        dot: dot3(v("ax"), v("ay"), v("az"), v("bx"), v("byy"), v("bz")),
         // "mag", not "len": LEN is a reserved QB64 builtin (string/array
         // length) -- see test/conformance.test.js's normalizeXAst comment.
         mag: len3(v("ax"), v("ay"), v("az")),

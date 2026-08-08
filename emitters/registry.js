@@ -12,4 +12,11 @@ module.exports = {
     csharp: require("./csharp.js"),
     python: require("./python.js"),
     lua: require("./lua.js"),
+    perl: require("./perl.js"),
+    php: require("./php.js"),
+    julia: require("./julia.js"),
+    fortran: require("./fortran.js"),
+    zig: require("./zig.js"),
+    scheme: require("./scheme.js"),
+    cobol: require("./cobol.js"),
 };

@@ -67,6 +67,14 @@ function cross3(ax, ay, az, bx, by, bz) {
 // with another normalize3() binding inside the same function body, and a
 // process-wide counter trivially guarantees that regardless of how many
 // times normalize3 is called across however many functions.
+//
+// The name itself starts with a letter, not "__" -- confirmed against a
+// real Fortran compiler ("Invalid character in name") that a leading
+// underscore isn't a valid identifier start there, unlike JS/Python/etc.
+// This is an internal implementation detail (never part of any documented
+// return value or public name), so there's nothing for a leading-"__"
+// convention to usefully signal here that a portable identifier can't
+// signal just as well.
 let normalizeGensymCounter = 0;
 
 // Safe-normalize a 3-D vector. Returns { x, y, z } (same shape as cross3).
@@ -85,7 +93,7 @@ let normalizeGensymCounter = 0;
 // name avoids a "duplicate let binding name" throw if normalize3 is called
 // more than once inside one function (e.g. normalizing two vectors).
 function normalize3(x, y, z, fx = num(0), fy = num(1), fz = num(0)) {
-    const lenName = `__exprforgeMathNrmLen${normalizeGensymCounter++}`;
+    const lenName = `efMathNrmLen${normalizeGensymCounter++}`;
     return {
         x: letIn(lenName, len3(x, y, z), safeDiv(x, v(lenName), fx)),
         y: safeDiv(y, v(lenName), fy),
