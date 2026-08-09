@@ -52,4 +52,47 @@ fib(n):
   return val < lo ? lo : val > hi ? hi : val;
 `,
     },
+    {
+        id: "haversine",
+        label: "Haversine distance (great-circle, km)",
+        source: `# Great-circle distance between two lat/lon points on a sphere of
+# Earth's radius (6371 km) -- NYC to London is roughly 5570 km.
+haversineDistance(lat1, lon1, lat2, lon2):
+  let toRad = 0.017453292519943295;
+  let dLat = (lat2 - lat1) * toRad;
+  let dLon = (lon2 - lon1) * toRad;
+  let a = sin(dLat / 2)^2 + cos(lat1 * toRad) * cos(lat2 * toRad) * sin(dLon / 2)^2;
+  let c = 2 * atan2(sqrt(a), sqrt(1 - a));
+  return 6371 * c;
+`,
+    },
+    {
+        id: "smoothstep",
+        label: "Smoothstep",
+        source: `# Classic graphics/shader easing curve -- 0 below edge0, 1 above
+# edge1, smoothly interpolated (zero first derivative at both ends)
+# in between.
+smoothstep(edge0, edge1, x):
+  let t = x < edge0 ? 0 : x > edge1 ? 1 : (x - edge0) / (edge1 - edge0);
+  return t^2 * (3 - 2 * t);
+`,
+    },
+    {
+        id: "catmullRom",
+        label: "Catmull-Rom spline (1 component)",
+        source: `# Same formula samples/catmull-rom.js uses in the core library --
+# passes exactly through p1 at t=0 and p2 at t=1.
+catmullRom(p0, p1, p2, p3, t):
+  let t2 = t * t;
+  let t3 = t2 * t;
+  return 0.5 * (2 * p1 + (p2 - p0) * t + (2 * p0 - 5 * p1 + 4 * p2 - p3) * t2 + (3 * p1 - 3 * p2 + p3 - p0) * t3);
+`,
+    },
+    {
+        id: "sigmoid",
+        label: "Sigmoid (logistic function)",
+        source: `sigmoid(x):
+  return 1 / (1 + exp(-x));
+`,
+    },
 ];

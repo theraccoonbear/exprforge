@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import CodeMirror from "@uiw/react-codemirror";
-import { javascript } from "@codemirror/lang-javascript";
 import { oneDark } from "@codemirror/theme-one-dark";
+import { exprForgeLanguage } from "./exprForgeMode";
 import { useExprForge } from "./useExprForge";
 import { LanguageCard } from "./LanguageCard";
 import { InterpreterCard } from "./InterpreterCard";
@@ -29,13 +29,13 @@ function defaultToggledLanguages(): Set<string> {
     return new Set(ids);
 }
 
-// CodeMirror's built-in JavaScript mode isn't fn/expr's real grammar --
-// it's a deliberate, documented approximation (see the plan: a real
-// language grammar overlaps with the separate, unstarted
-// docs/editor-support-spec.md editor-tooling work and isn't required
-// for this to be useful). Identifiers/keywords/numbers/punctuation still
-// highlight sensibly since the token shapes are similar enough.
-const editorExtensions = [javascript()];
+// A real fn/expr mode (exprForgeMode.ts), not a borrowed approximation
+// -- an earlier version of this used @codemirror/lang-javascript as a
+// stand-in, which broke visibly on "#" comments containing an
+// apostrophe (JS has no "#" comment syntax, so its tokenizer read the
+// apostrophe in e.g. "Binet's formula" as the start of a string
+// literal, corrupting highlighting for the rest of the line).
+const editorExtensions = [exprForgeLanguage];
 
 export function PlaygroundTool() {
     const [source, setSource] = useState(() => readSourceFromUrl() ?? EXAMPLES[0].source);

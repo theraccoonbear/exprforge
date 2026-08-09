@@ -23,6 +23,7 @@ import { fortran as legacyFortran } from "@codemirror/legacy-modes/mode/fortran"
 import { scheme as legacyScheme } from "@codemirror/legacy-modes/mode/scheme";
 import { cobol as legacyCobol } from "@codemirror/legacy-modes/mode/cobol";
 import type { Extension } from "@codemirror/state";
+import { exprForgeLanguage } from "./exprForgeMode";
 
 const CSHARP = StreamLanguage.define(legacyCSharp);
 const LUA = StreamLanguage.define(legacyLua);
@@ -51,9 +52,9 @@ const HIGHLIGHT: Record<string, Extension> = {
     fortran: FORTRAN,
     scheme: SCHEME,
     cobol: COBOL,
-    // Our own printer output -- close enough to JS-family punctuation
-    // that the same approximation the main editor already uses fits.
-    expr: javascript(),
+    // Our own printer output -- the real mode (exprForgeMode.ts), same
+    // one the main editor uses, not a borrowed approximation.
+    expr: exprForgeLanguage,
     // No CodeMirror language exists for either -- confirmed by checking
     // the actual package registry, not assumed. Falls through to
     // `undefined`, which LanguageCard renders as plain text.
