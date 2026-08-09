@@ -112,23 +112,20 @@ function normalizeXReference(x, y, z) {
 // specifically -- confirmed against a real compiler and now guarded at
 // emission time too (see COBOL_USING_RESERVED in emitters/cobol.js).
 //
-// "a^2 + b^2", not "sqrt(a^2 + b^2)": confirmed against real CI (not
-// reproducible against this project's own older local GnuCOBOL) that some
-// GnuCOBOL 4.x builds route "**" through a broken internal decimal codegen
-// path specifically when it's nested INSIDE another function call's
-// argument (sqrt(...) here) -- samples/kitchen-sink.js's pow(x, y) never
-// hits this because it's always a direct, standalone call term there,
-// summed at the top level, never nested as another call's argument. This
-// fixture still exercises "^" lowering to pow() and its interaction with
-// "+" and the ternary; it just doesn't ALSO wrap the result in sqrt().
+// sqrt(a^2 + b^2) here specifically -- not simplified to avoid it -- is
+// deliberate: a "**" expression nested inside another function call's
+// argument once broke some GnuCOBOL 4.x builds (confirmed against real
+// CI; see spillPow's comment in emitters/cobol.js for the actual fix),
+// and this is exactly that shape. Left as the real thing being tested,
+// not routed around it.
 const exprSyntaxDemoAst = {
     name: "exprSyntaxDemo",
     params: ["a", "b", "fallback"],
-    body: expr`a > 0 ? a^2 + b^2 : fallback`,
+    body: expr`a > 0 ? sqrt(a^2 + b^2) : fallback`,
 };
 
 function exprSyntaxDemoReference(a, b, fallback) {
-    return a > 0 ? a ** 2 + b ** 2 : fallback;
+    return a > 0 ? Math.sqrt(a * a + b * b) : fallback;
 }
 
 const SAMPLES = {
@@ -164,7 +161,7 @@ const SAMPLES = {
         ast: exprSyntaxDemoAst,
         reference: exprSyntaxDemoReference,
         inputs: [
-            [3, 4, -1], // a>0 branch: 9 + 16 = 25
+            [3, 4, -1], // a>0 branch: sqrt(9 + 16) = 5
             [-1, 4, 7], // a<=0 branch: falls back to fallback
             [0, 5, 2], // a==0 -- also falls back (a>0 is strictly false)
             [0.5, 0.5, 0.5],

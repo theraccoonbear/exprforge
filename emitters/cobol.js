@@ -99,22 +99,6 @@ function fn2(name) {
     return ([a, b]) => `FUNCTION ${name}(${a}, ${b})`;
 }
 
-// Only touches a bare (possibly negative) integer-literal operand string
-// -- never a variable name, function call, or already-decimal literal, so
-// this can't corrupt anything but the exact case it targets. Exists for
-// "**" specifically: confirmed against real CI (not reproducible against
-// this project's own dev machine's older GnuCOBOL) that some GnuCOBOL 4.x
-// builds route "COMP-2 ** <bare integer literal>" through an internal
-// arbitrary-precision decimal codegen path (cob_decimal_*) that a broken
-// package build fails to declare a header for ("unknown type name
-// 'cob_decimal'") -- variable**variable (see kitchen-sink's pow(x, y),
-// which compiles fine there) doesn't hit it. Forcing the exponent to look
-// like a real/decimal literal instead of an integer one avoids whichever
-// codegen path that specific heuristic keys off.
-function ensureDecimalLiteral(s) {
-    return /^-?\d+$/.test(s) ? `${s}.0` : s;
-}
-
 // One helper FUNCTION-ID per comparator, each named ef-cmp-<suffix> --
 // hyphenated, never underscored (confirmed against a real compiler that a
 // user-defined FUNCTION call breaks on an underscored name -- see
@@ -286,6 +270,35 @@ function expandExponential(s) {
     return sign + result;
 }
 
+// "**" must never end up nested inside ANOTHER call's argument -- that's
+// the actual, general form of the confirmed bug (see the file header):
+// some GnuCOBOL 4.x builds route a "**" expression through a broken
+// internal decimal codegen path (missing header for cob_decimal) when
+// it's nested inside a FUNCTION(...) argument, e.g. sqrt(a^2 + b^2) --
+// confirmed against real CI, not reproducible against this project's own
+// (older) local GnuCOBOL. A plain top-level "**" (kitchen-sink's
+// pow(x, y), summed directly, never nested as another call's argument)
+// is fine.
+//
+// Rather than rely on every caller remembering to keep a pow() result out
+// of anywhere risky, pow ALWAYS spills its own result here: call("pow", a,
+// b) unconditionally evaluates to a bare temp name, so "**" can only ever
+// appear in its own dedicated COMPUTE statement, never nested inside
+// anything else regardless of what the surrounding expression does with
+// the result. hypot's internal sum-of-squares reuses this directly, since
+// it builds "**" itself rather than going through call("pow", ...).
+//
+// Arrow function callers below, not plain ones: base.js's emitExpr calls
+// `this.calls[node.name](args)` unbound -- this closes over the `emitter`
+// const the same way atan2 already does (see its own comment further
+// down), fully assigned by the time this ever actually runs.
+function spillPow(baseRaw, exponentRaw) {
+    const pool = emitter._pool;
+    const base = pool.spill(baseRaw);
+    const exponent = pool.spill(exponentRaw);
+    return pool.spill(`(${base} ** ${exponent})`);
+}
+
 const emitter = new CobolEmitter({
     ext: "cob",
     formatNumber: (v) => {
@@ -297,13 +310,21 @@ const emitter = new CobolEmitter({
         asin: fn1("ASIN"), acos: fn1("ACOS"), atan: fn1("ATAN"),
         exp: fn1("EXP"), log: fn1("LOG"), log10: fn1("LOG10"),
         min: fn2("MIN"), max: fn2("MAX"),
-        pow: ([x, y]) => `(${ensureDecimalLiteral(x)} ** ${ensureDecimalLiteral(y)})`,
+        pow: ([x, y]) => spillPow(x, y),
         // No LOG2 intrinsic -- derive it (nesting two intrinsics is fine;
         // only nesting a call inside a USER-DEFINED function's argument
         // was the confirmed problem -- see the file header).
         log2: ([x]) => `(FUNCTION LOG(${x}) / FUNCTION LOG(2.0))`,
-        // No HYPOT intrinsic -- derive it the same way.
-        hypot: ([a, b]) => `FUNCTION SQRT((${a}) ** 2 + (${b}) ** 2)`,
+        // No HYPOT intrinsic -- derive it via spillPow (see its own
+        // comment): the sum-of-squares itself also gets spilled to its
+        // own temp before FUNCTION SQRT ever sees it, so SQRT's argument
+        // is always a bare name, never a "**"-containing expression.
+        hypot: ([aRaw, bRaw]) => {
+            const aSq = spillPow(aRaw, "2.0");
+            const bSq = spillPow(bRaw, "2.0");
+            const sumSq = emitter._pool.spill(`${aSq} + ${bSq}`);
+            return `FUNCTION SQRT(${sumSq})`;
+        },
         // FUNCTION INTEGER is floor (greatest integer <= x, confirmed
         // against a real compiler, including for negatives). COMPUTE's
         // automatic numeric conversion hands it back as COMP-2 with no
