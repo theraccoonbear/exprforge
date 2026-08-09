@@ -99,6 +99,22 @@ function fn2(name) {
     return ([a, b]) => `FUNCTION ${name}(${a}, ${b})`;
 }
 
+// Only touches a bare (possibly negative) integer-literal operand string
+// -- never a variable name, function call, or already-decimal literal, so
+// this can't corrupt anything but the exact case it targets. Exists for
+// "**" specifically: confirmed against real CI (not reproducible against
+// this project's own dev machine's older GnuCOBOL) that some GnuCOBOL 4.x
+// builds route "COMP-2 ** <bare integer literal>" through an internal
+// arbitrary-precision decimal codegen path (cob_decimal_*) that a broken
+// package build fails to declare a header for ("unknown type name
+// 'cob_decimal'") -- variable**variable (see kitchen-sink's pow(x, y),
+// which compiles fine there) doesn't hit it. Forcing the exponent to look
+// like a real/decimal literal instead of an integer one avoids whichever
+// codegen path that specific heuristic keys off.
+function ensureDecimalLiteral(s) {
+    return /^-?\d+$/.test(s) ? `${s}.0` : s;
+}
+
 // One helper FUNCTION-ID per comparator, each named ef-cmp-<suffix> --
 // hyphenated, never underscored (confirmed against a real compiler that a
 // user-defined FUNCTION call breaks on an underscored name -- see
@@ -281,7 +297,7 @@ const emitter = new CobolEmitter({
         asin: fn1("ASIN"), acos: fn1("ACOS"), atan: fn1("ATAN"),
         exp: fn1("EXP"), log: fn1("LOG"), log10: fn1("LOG10"),
         min: fn2("MIN"), max: fn2("MAX"),
-        pow: ([x, y]) => `(${x} ** ${y})`,
+        pow: ([x, y]) => `(${ensureDecimalLiteral(x)} ** ${ensureDecimalLiteral(y)})`,
         // No LOG2 intrinsic -- derive it (nesting two intrinsics is fine;
         // only nesting a call inside a USER-DEFINED function's argument
         // was the confirmed problem -- see the file header).
