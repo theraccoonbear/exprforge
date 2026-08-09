@@ -13,6 +13,7 @@
     "index.js",
     "ast.js",
     "util.js",
+    "expr.js",
     "build.js",
     "emitters/",
     "samples/",
