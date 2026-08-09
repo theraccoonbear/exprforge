@@ -54,6 +54,45 @@ Neither is "translate my code for me" — it's "prove two independent
 implementations of one formula actually match," which is a narrower,
 checkable claim.
 
+## Layered by design
+
+Everything here is layered, and the layers don't reach back into each
+other — worth being explicit about, especially if you're evaluating this
+for something like a migration and want to know exactly what you're
+trusting:
+
+- **The AST and its emitters — the whole value proposition.** `ast.js`'s
+  builders (`num`, `v`, `add`, `mul`, `letIn`, `select`, `outputs`, ...)
+  build a plain tree of plain objects; every `emitters/<lang>.js` file
+  turns that tree into target-language source text. This is also the
+  *entire* dependency graph for it: every emitter requires only
+  `emitters/base.js` and `ast.js` — nothing else in this repo. No parser,
+  no custom syntax, no interpreter sits between your AST and the code it
+  emits. Every example in `samples/` is built this way, and the library
+  worked exactly this way for its first two published releases, before
+  anything below existed.
+- **`expr`/`fn` — optional authoring sugar.** Nested builder calls
+  (`add(mul(v("a"), v("b")), num(1))`) get hard to read past a few terms.
+  `expr`/`fn` are a small hand-rolled tokenizer and recursive-descent
+  parser that turn ordinary infix text (`` expr`a * b + 1` ``) into
+  *exactly* the same tree the builders would — checked by structural unit
+  tests and a full round-trip conformance pass, not just asserted. It's
+  genuinely optional: nothing in the AST/emitter layer above calls into
+  it or imports it. Don't want a parser in your dependency graph, for a
+  security review or otherwise? Don't call `expr`/`fn` — build the tree
+  with the plain functions instead, and every emitter behaves identically
+  either way.
+- **The native evaluator and the `expr`-syntax printer — additive
+  conveniences.** `evaluate()` (compute a result in-process, no
+  target-language toolchain needed) and the `expr` emitter target (print
+  any AST back out as readable text) sit off to the side the same way
+  `expr`/`fn` do — nothing else depends on them either.
+
+If you only care about "does this correctly turn my AST into
+COBOL/Java/whatever" — `ast.js` and the one `emitters/<lang>.js` file you
+care about are the entire surface that matters. Everything else is there
+if you want it, invisible if you don't.
+
 ## Install
 
 ```
