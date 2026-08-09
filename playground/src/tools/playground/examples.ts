@@ -35,7 +35,10 @@ fib(n):
         label: "Quadratic formula (multi-output: both roots)",
         source: `quadraticRoots(a, b, cc):
   let disc = sqrt(b^2 - 4 * a * cc);
-  return { root1: (-b + disc) / (2 * a), root2: (-b - disc) / (2 * a) };
+  return {
+    root1: (-b + disc) / (2 * a),
+    root2: (-b - disc) / (2 * a)
+  };
 `,
     },
     {

@@ -85,12 +85,27 @@ const emitter = new ExprSyntaxEmitter({
         const body = [...letLines(letBindings), `return ${bodyStr};`].map((line) => `  ${line}`);
         return [`${fn.name}(${fn.params.join(", ")}):`, ...body].join("\n") + "\n";
     },
+    // Each output field gets its own line (4 spaces -- one level deeper
+    // than "return {" itself, which sits at the usual 2), rather than
+    // cramming every field onto one line -- found the gap by comparing
+    // this against a hand-formatted multi-output example and noticing
+    // the printer didn't follow its own convention once a suite had
+    // more than a couple of fields (a real, wide, 5-output formula made
+    // this one very long line instead of something readable).
     formatSuite: (fn, outputStrs, letBindings = []) => {
-        const fields = Object.entries(outputStrs)
-            .map(([name, valueStr]) => `${name}: ${valueStr}`)
-            .join(", ");
-        const body = [...letLines(letBindings), `return { ${fields} };`].map((line) => `  ${line}`);
-        return [`${fn.name}(${fn.params.join(", ")}):`, ...body].join("\n") + "\n";
+        const entries = Object.entries(outputStrs);
+        const fieldLines = entries.map(([name, valueStr], i) => {
+            const comma = i < entries.length - 1 ? "," : "";
+            return `    ${name}: ${valueStr}${comma}`;
+        });
+        const lines = [
+            `${fn.name}(${fn.params.join(", ")}):`,
+            ...letLines(letBindings).map((line) => `  ${line}`),
+            "  return {",
+            ...fieldLines,
+            "  };",
+        ];
+        return lines.join("\n") + "\n";
     },
 });
 
