@@ -168,8 +168,24 @@ pre,
     overflow: hidden;
 }
 
+/* The actual drag-resizable element -- CSS `resize` needs a concrete
+   starting height plus `overflow` other than visible to draw its handle
+   at all, so that lives here rather than on .playground-editor-pane
+   itself (which also hosts the non-resizable error banner below it).
+   Cardano's-formula-sized examples are the whole reason this exists --
+   a fixed ~220px box meant a lot of scrolling to see a ~30-line
+   formula at once. */
+.playground-editor-resize {
+    height: 320px;
+    min-height: 120px;
+    max-height: 80vh;
+    resize: vertical;
+    overflow: auto;
+}
+
 .playground-editor-pane .cm-editor {
     font-size: 0.95rem;
+    height: 100%;
 }
 
 .playground-error {

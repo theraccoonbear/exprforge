@@ -133,14 +133,16 @@ export function PlaygroundTool() {
             </div>
 
             <div className="playground-editor-pane">
-                <CodeMirror
-                    value={source}
-                    height="220px"
-                    theme={oneDark}
-                    extensions={editorExtensions}
-                    onChange={setSource}
-                    basicSetup={{ lineNumbers: true, foldGutter: false }}
-                />
+                <div className="playground-editor-resize">
+                    <CodeMirror
+                        value={source}
+                        height="100%"
+                        theme={oneDark}
+                        extensions={editorExtensions}
+                        onChange={setSource}
+                        basicSetup={{ lineNumbers: true, foldGutter: false }}
+                    />
+                </div>
                 {error && <div className="playground-error">{error}</div>}
             </div>
 

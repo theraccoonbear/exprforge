@@ -110,4 +110,48 @@ normalize3(x, y, z):
   };
 `,
     },
+    {
+        id: "cardano",
+        label: "☠️ Cardano's cubic formula (all 3 roots, 16th century)",
+        source: `# Cardano's formula (1545) -- the general closed-form solution to
+# ax^3 + bx^2 + cx + d = 0. Legendary not just for its size: Cardano
+# published Tartaglia's method after swearing not to, which is its own
+# whole story.
+#
+# Real cube roots need sign(v) * abs(v)^(1/3), not v^(1/3) directly --
+# a fractional power of a negative base is NaN in real arithmetic (no
+# complex numbers in this grammar), so the sign has to be pulled out by
+# hand first.
+#
+# All 5 outputs are pure arithmetic composition, no branching at all --
+# root1 is the one guaranteed-real root; root2/root3 are a complex
+# conjugate pair, split into real/imaginary parts since there's no
+# complex number type here either. Verified against x^3-1=0 (roots are
+# exactly the cube roots of unity: 1, -0.5+-0.866i) and cross-checked
+# against Vieta's formulas (sum and product of all 3 roots, computed two
+# completely independent ways) before trusting this.
+#
+# "cc", not "c" -- a bare "c" param breaks GnuCOBOL's CALL...USING
+# clause specifically (see COBOL_USING_RESERVED in emitters/cobol.js),
+# same reason the quadratic example above uses "cc" too.
+cardanoAllRoots(a, b, cc, d):
+  let p = (3 * a * cc - b^2) / (3 * a^2);
+  let q = (2 * b^3 - 9 * a * b * cc + 27 * a^2 * d) / (27 * a^3);
+  let disc = (q / 2)^2 + (p / 3)^3;
+  let sqrtDisc = sqrt(disc);
+  let u = -(q / 2) + sqrtDisc;
+  let v = -(q / 2) - sqrtDisc;
+  let cbrtU = sign(u) * abs(u)^(1 / 3);
+  let cbrtV = sign(v) * abs(v)^(1 / 3);
+  let t1 = cbrtU + cbrtV;
+  let shift = b / (3 * a);
+  return {
+    root1: t1 - shift,
+    root2Real: -t1 / 2 - shift,
+    root2Imag: (sqrt(3) / 2) * (cbrtU - cbrtV),
+    root3Real: -t1 / 2 - shift,
+    root3Imag: -(sqrt(3) / 2) * (cbrtU - cbrtV)
+  };
+`,
+    },
 ];
