@@ -233,6 +233,17 @@ words — Perl/PHP mostly sidestep this (every variable is `$`-sigiled, so
 it can't collide with a bareword keyword), but the sigil-free languages
 above genuinely can't be fully guarded against in advance.
 
+**COBOL is a partial exception**: a *parameter* colliding with one of its
+narrow, syntax-specific quirks (e.g. a bare `c`, which breaks GnuCOBOL's
+`CALL ... USING` clause specifically) gets silently renamed internally
+(`EFLF_c`) rather than thrown at you — safe because every target here
+calls positionally, so a parameter's declared name is never visible to a
+caller in any of them. The function's own name and any `outputs()` field
+names are **not** covered by this — both remain part of the actual
+calling contract (a suite's field names are genuinely consumer-visible in
+every other target's return shape), so those still throw, same as before.
+See `renameConflictingParams` in `emitters/cobol.js`.
+
 ## Named subexpressions and conditional values
 
 Beyond `num`/`v`/`bin`/`call`, two more node types stay inside the

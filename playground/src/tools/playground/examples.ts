@@ -33,8 +33,8 @@ fib(n):
     {
         id: "quadratic",
         label: "Quadratic formula (multi-output: both roots)",
-        source: `quadraticRoots(a, b, cc):
-  let disc = sqrt(b^2 - 4 * a * cc);
+        source: `quadraticRoots(a, b, c):
+  let disc = sqrt(b^2 - 4 * a * c);
   return {
     root1: (-b + disc) / (2 * a),
     root2: (-b - disc) / (2 * a)
@@ -134,12 +134,9 @@ normalize3(x, y, z):
 # against Vieta's formulas (sum and product of all 3 roots, computed two
 # completely independent ways) before trusting this.
 #
-# "cc", not "c" -- a bare "c" param breaks GnuCOBOL's CALL...USING
-# clause specifically (see COBOL_USING_RESERVED in emitters/cobol.js),
-# same reason the quadratic example above uses "cc" too.
-cardanoAllRoots(a, b, cc, d):
-  let p = (3 * a * cc - b^2) / (3 * a^2);
-  let q = (2 * b^3 - 9 * a * b * cc + 27 * a^2 * d) / (27 * a^3);
+cardanoAllRoots(a, b, c, d):
+  let p = (3 * a * c - b^2) / (3 * a^2);
+  let q = (2 * b^3 - 9 * a * b * c + 27 * a^2 * d) / (27 * a^3);
   let disc = (q / 2)^2 + (p / 3)^3;
   let sqrtDisc = sqrt(disc);
   let u = -(q / 2) + sqrtDisc;
