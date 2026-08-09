@@ -8,10 +8,11 @@ interface InterpreterCardProps {
     def: FnDef;
 }
 
-// The native evaluate() panel -- unlike every LanguageCard, this needs
-// actual argument VALUES, not just the parsed AST, so it's its own
-// component with a small inline input per parameter rather than a
-// straight emitted-source display.
+// Lives directly under the editor, not among the toggleable output
+// cards -- this is an input to editing/testing the formula (param
+// values feeding evaluate()), not a target-language output view, so it
+// shouldn't compete visually or structurally with the language grid
+// below it.
 export function InterpreterCard({ def }: InterpreterCardProps) {
     const [values, setValues] = useState<Record<string, string>>({});
 
@@ -26,12 +27,9 @@ export function InterpreterCard({ def }: InterpreterCardProps) {
     }, [def, args]);
 
     return (
-        <section className="lang-card lang-card--interpreter">
-            <header className="lang-card-header">
-                <span className="lang-card-label">Interpreter</span>
-                <span className="lang-card-ext">evaluate()</span>
-            </header>
-            <div className="interpreter-inputs">
+        <div className="interpreter-panel">
+            <span className="interpreter-panel-label">Try it</span>
+            <div className="interpreter-panel-inputs">
                 {def.params.map((p) => (
                     <label key={p} className="interpreter-input">
                         <span>{p}</span>
@@ -45,19 +43,18 @@ export function InterpreterCard({ def }: InterpreterCardProps) {
                     </label>
                 ))}
             </div>
-            {result.error ? (
-                <pre className="lang-card-source lang-card-source--error">{result.error}</pre>
-            ) : (
-                <pre className="lang-card-source">
-                    <code>{formatResult(result.value)}</code>
-                </pre>
-            )}
-        </section>
+            <span className="interpreter-panel-arrow" aria-hidden="true">
+                →
+            </span>
+            <div className={result.error ? "interpreter-panel-result interpreter-panel-result--error" : "interpreter-panel-result"}>
+                {result.error ?? formatResult(result.value)}
+            </div>
+        </div>
     );
 }
 
 function formatResult(value: number | Record<string, number> | null): string {
     if (value === null) return "";
     if (typeof value === "number") return String(value);
-    return JSON.stringify(value, null, 2);
+    return JSON.stringify(value);
 }

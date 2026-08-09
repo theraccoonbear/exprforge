@@ -37,6 +37,11 @@ declare module "exprforge" {
         source: string;
     }
 
+    export interface Emitter {
+        ext: string;
+        emitFunction(def: FnDef): string;
+    }
+
     // fn(strings, ...values) is a tagged-template function; called
     // directly (not as a template literal) with a plain string array
     // and no interpolation values, e.g. fn([sourceText]). Returns a
@@ -45,5 +50,11 @@ declare module "exprforge" {
     export function fn(strings: readonly string[], ...values: unknown[]): Node | FnDef;
     export function evaluate(def: FnDef, args: number[]): number | Record<string, number>;
     export function emitAll(def: FnDef): Record<string, EmitResult>;
-    export const emitters: Record<string, { ext: string }>;
+    // Real Emitter instances, not just {ext} -- the playground calls
+    // emitFunction() per-language itself (see useExprForge.ts) rather
+    // than emitAll(), so one target's failure (an unsupported call name,
+    // a reserved-name collision, ...) doesn't blank every other card;
+    // emitAll() itself has no such isolation (see index.js), it throws
+    // on the first emitter that does.
+    export const emitters: Record<string, Emitter>;
 }

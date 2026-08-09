@@ -1,30 +1,24 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import CodeMirror from "@uiw/react-codemirror";
 import { javascript } from "@codemirror/lang-javascript";
 import { oneDark } from "@codemirror/theme-one-dark";
-import { useDebouncedValue } from "../../hooks/useDebouncedValue";
 import { useExprForge } from "./useExprForge";
 import { LanguageCard } from "./LanguageCard";
 import { InterpreterCard } from "./InterpreterCard";
-import { LANGUAGE_META, INTERPRETER_ID } from "./languageMeta";
-
-const DEFAULT_SOURCE = `normalize(x, y):
-let mag = sqrt(x^2 + y^2);
-return mag > 0 ? x / mag : 0;
-`;
+import { LANGUAGE_META } from "./languageMeta";
+import { EXAMPLES } from "./examples";
 
 const SOURCE_PARAM = "src";
 const MOBILE_BREAKPOINT_PX = 640;
 
 function readSourceFromUrl(): string | null {
-    const params = new URLSearchParams(window.location.search);
-    const encoded = params.get(SOURCE_PARAM);
-    if (!encoded) return null;
-    try {
-        return decodeURIComponent(encoded);
-    } catch {
-        return null;
-    }
+    // URLSearchParams.get() already decodes -- do NOT also call
+    // decodeURIComponent() here (found the hard way: doing both, paired
+    // with the equally-doubled encode in copyLink() below, happened to
+    // round-trip correctly by accident since both sides were doubled
+    // symmetrically, but produced needlessly mangled URLs and would
+    // break the moment only one side ever changed).
+    return new URLSearchParams(window.location.search).get(SOURCE_PARAM);
 }
 
 function defaultToggledLanguages(): Set<string> {
@@ -32,7 +26,7 @@ function defaultToggledLanguages(): Set<string> {
     const ids = Object.entries(LANGUAGE_META)
         .filter(([, meta]) => (isMobile ? meta.defaultOnMobile : meta.defaultOn))
         .map(([id]) => id);
-    return new Set([...ids, INTERPRETER_ID]);
+    return new Set(ids);
 }
 
 // CodeMirror's built-in JavaScript mode isn't fn/expr's real grammar --
@@ -44,22 +38,11 @@ function defaultToggledLanguages(): Set<string> {
 const editorExtensions = [javascript()];
 
 export function PlaygroundTool() {
-    const [source, setSource] = useState(() => readSourceFromUrl() ?? DEFAULT_SOURCE);
+    const [source, setSource] = useState(() => readSourceFromUrl() ?? EXAMPLES[0].source);
     const [enabled, setEnabled] = useState(defaultToggledLanguages);
+    const [linkCopied, setLinkCopied] = useState(false);
 
-    const debouncedSource = useDebouncedValue(source, 200);
-    const { error, def, outputs } = useExprForge(debouncedSource);
-
-    // Keep the URL in sync so the current example is always shareable --
-    // replaceState (not push) so every keystroke doesn't spam browser
-    // history.
-    useEffect(() => {
-        const params = new URLSearchParams(window.location.search);
-        params.set(SOURCE_PARAM, encodeURIComponent(debouncedSource));
-        const next = `${window.location.pathname}?${params.toString()}`;
-        window.history.replaceState(null, "", next);
-    }, [debouncedSource]);
-
+    const { error, def, outputs } = useExprForge(source);
     const languageIds = useMemo(() => Object.keys(LANGUAGE_META), []);
 
     function toggle(id: string) {
@@ -71,8 +54,52 @@ export function PlaygroundTool() {
         });
     }
 
+    function loadExample(id: string) {
+        const example = EXAMPLES.find((e) => e.id === id);
+        if (example) setSource(example.source);
+    }
+
+    // Explicit, on-demand sharing -- NOT a live URL that mutates on
+    // every keystroke. The address bar stays exactly what you'd expect
+    // while editing; this builds and copies a shareable link only when
+    // asked, using the CURRENT (not debounced) source so what you copy
+    // always matches what's on screen right now.
+    async function copyLink() {
+        const params = new URLSearchParams();
+        // .set() already encodes -- see readSourceFromUrl()'s comment.
+        params.set(SOURCE_PARAM, source);
+        const url = `${window.location.origin}${window.location.pathname}?${params.toString()}`;
+        try {
+            await navigator.clipboard.writeText(url);
+            setLinkCopied(true);
+            setTimeout(() => setLinkCopied(false), 1500);
+        } catch {
+            // Clipboard access denied -- nothing better to fall back to
+            // here without a modal; not worth the complexity for v1.
+        }
+    }
+
     return (
         <div className="playground">
+            <div className="playground-toolbar">
+                <label className="playground-examples">
+                    <span>Load example</span>
+                    <select onChange={(e) => loadExample(e.target.value)} value="">
+                        <option value="" disabled>
+                            Choose a formula…
+                        </option>
+                        {EXAMPLES.map((ex) => (
+                            <option key={ex.id} value={ex.id}>
+                                {ex.label}
+                            </option>
+                        ))}
+                    </select>
+                </label>
+                <button type="button" className="playground-copy-link" onClick={copyLink}>
+                    {linkCopied ? "Link copied" : "Copy link to this formula"}
+                </button>
+            </div>
+
             <div className="playground-editor-pane">
                 <CodeMirror
                     value={source}
@@ -85,14 +112,9 @@ export function PlaygroundTool() {
                 {error && <div className="playground-error">{error}</div>}
             </div>
 
+            {def && <InterpreterCard def={def} />}
+
             <div className="playground-toggles" role="group" aria-label="Toggle visible outputs">
-                <button
-                    type="button"
-                    className={enabled.has(INTERPRETER_ID) ? "toggle-chip toggle-chip--active" : "toggle-chip"}
-                    onClick={() => toggle(INTERPRETER_ID)}
-                >
-                    Interpreter
-                </button>
                 {languageIds.map((id) => (
                     <button
                         key={id}
@@ -106,11 +128,10 @@ export function PlaygroundTool() {
             </div>
 
             <div className="lang-card-grid">
-                {def && enabled.has(INTERPRETER_ID) && <InterpreterCard def={def} />}
                 {outputs &&
                     languageIds
                         .filter((id) => enabled.has(id))
-                        .map((id) => <LanguageCard key={id} label={LANGUAGE_META[id].label} ext={outputs[id].ext} source={outputs[id].source} />)}
+                        .map((id) => <LanguageCard key={id} languageId={id} label={LANGUAGE_META[id].label} result={outputs[id]} />)}
             </div>
         </div>
     );
