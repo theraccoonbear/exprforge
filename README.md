@@ -373,8 +373,8 @@ const { fn, emitAll, evaluate } = require("exprforge");
 
 const normalize2 = fn`
     normalize2(x, y):
-    let mag = sqrt(x^2 + y^2);
-    return { nx: x / mag, ny: y / mag };
+      let mag = sqrt(x^2 + y^2);
+      return { nx: x / mag, ny: y / mag };
 `;
 // normalize2 is now the full {name, params, body} shape directly --
 // no wrapping object needed.
@@ -407,7 +407,7 @@ handles, backed by the real `Math.*` functions.
 const { emitAll, evaluate } = require("exprforge");
 
 emitAll(normalize2).expr.source;
-// "let mag = sqrt(((x^2) + (y^2)));\nreturn { nx: (x / mag), ny: (y / mag) };\n"
+// "normalize2(x, y):\n  let mag = sqrt(((x^2) + (y^2)));\n  return { nx: (x / mag), ny: (y / mag) };\n"
 
 evaluate(normalize2, [3, 4]);
 // { nx: 0.6, ny: 0.8 }

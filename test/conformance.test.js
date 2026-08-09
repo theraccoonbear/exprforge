@@ -1365,7 +1365,16 @@ const { fn: exprFn } = require("../fn.js");
 
 function assertExprSyntaxRoundTrips(ast, inputs) {
     const printed = emitters.expr.emitFunction(ast);
-    const reparsedDef = { name: ast.name, params: ast.params, body: exprFn([printed]) };
+    // The printed text always carries its own "name(params):" signature
+    // line (emitters/exprsyntax.js) -- reparsing it via fn() recovers a
+    // full {name, params, body} directly, with no need to borrow
+    // ast.name/ast.params from the original the way an earlier version
+    // of this test did. Asserting on the reparsed values themselves
+    // (not just reusing the source ones) is what actually proves the
+    // signature line round-trips, not just the body.
+    const reparsedDef = exprFn([printed]);
+    assert.strictEqual(reparsedDef.name, ast.name, `${ast.name}: signature name didn't round-trip -- printed:\n${printed}`);
+    assert.deepStrictEqual(reparsedDef.params, ast.params, `${ast.name}: signature params didn't round-trip -- printed:\n${printed}`);
     for (const args of inputs) {
         const original = evaluate(ast, args);
         const roundTripped = evaluate(reparsedDef, args);
