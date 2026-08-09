@@ -1,6 +1,16 @@
 # Build output (node build.js)
 out/
 
+# Stray toolchain debugging artifacts (e.g. cobc -save-temps, gfortran -save-temps)
+# left in the repo root by manual `cobc`/`gfortran` runs outside the test
+# harness's own tmpDir(), which already cleans up after itself.
+*.c.h
+*.c.l.h
+*.i
+*.o
+/*.c
+/*.f90
+
 # Dependencies
 node_modules/
 
