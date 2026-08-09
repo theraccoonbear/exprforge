@@ -21,10 +21,12 @@
 Author a math expression once, as a small AST, and emit verified,
 identical-behavior implementations in JavaScript, TypeScript, Python, C#,
 Lua, QB64, C, Java, Go, Rust, Perl, PHP, Julia, Fortran, Zig, Scheme
-(Guile), and COBOL (GnuCOBOL).
+(Guile), and COBOL (GnuCOBOL) — plus a native in-process evaluator and a
+printer for exprforge's own readable syntax (see `fn`/`expr` below).
 
-No parser, no dependencies. You build the AST directly with plain JS
-functions; the same tree is walked once per target language.
+No required dependencies. You can build the AST directly with plain JS
+functions, or author it as readable infix text via `expr`/`fn` (see
+below) — either way, the same tree is walked once per target.
 
 ## Why
 
@@ -52,6 +54,46 @@ Neither is "translate my code for me" — it's "prove two independent
 implementations of one formula actually match," which is a narrower,
 checkable claim.
 
+## Layered by design
+
+Everything here is layered, and the layers don't reach back into each
+other — worth being explicit about, especially if you're evaluating this
+for something like a migration and want to know exactly what you're
+trusting:
+
+- **The AST and its emitters — the whole value proposition.** `ast.js`'s
+  builders (`num`, `v`, `add`, `mul`, `letIn`, `select`, `outputs`, ...)
+  build a plain tree of plain objects; every `emitters/<lang>.js` file
+  turns that tree into target-language source text. This is also the
+  *entire* dependency graph for it: every emitter requires only
+  `emitters/base.js` and `ast.js` — nothing else in this repo. No parser,
+  no custom syntax, no interpreter sits between your AST and the code it
+  emits. Every example in `samples/` is built this way, and the library
+  worked exactly this way for its first two published releases, before
+  anything below existed.
+- **`expr`/`fn` — optional authoring sugar.** Nested builder calls
+  (`add(mul(v("a"), v("b")), num(1))`) get hard to read past a few terms.
+  `expr`/`fn` are a small hand-rolled tokenizer and recursive-descent
+  parser that turn ordinary infix text (`` expr`a * b + 1` ``) into
+  *exactly* the same tree the builders would — checked by structural unit
+  tests and a full print-reparse-evaluate round trip across every sample
+  this project has (see "Testing" below), not just asserted. It's
+  genuinely optional: nothing in the AST/emitter layer above calls into
+  it or imports it. Don't want a parser in your dependency graph, for a
+  security review or otherwise? Don't call `expr`/`fn` — build the tree
+  with the plain functions instead, and every emitter behaves identically
+  either way.
+- **The native evaluator and the `expr`-syntax printer — additive
+  conveniences.** `evaluate()` (compute a result in-process, no
+  target-language toolchain needed) and the `expr` emitter target (print
+  any AST back out as readable text) sit off to the side the same way
+  `expr`/`fn` do — nothing else depends on them either.
+
+If you only care about "does this correctly turn my AST into
+COBOL/Java/whatever" — `ast.js` and the one `emitters/<lang>.js` file you
+care about are the entire surface that matters. Everything else is there
+if you want it, invisible if you don't.
+
 ## Install
 
 ```
@@ -61,18 +103,25 @@ npm install exprforge
 ## Usage
 
 ```js
-const { num, v, bin, mul, add, sub, emitAll } = require("exprforge");
+const { expr, emitAll } = require("exprforge");
 
 const fn = {
     name: "lerp",
     params: ["a", "b", "t"],
-    body: add(v("a"), mul(sub(v("b"), v("a")), v("t"))),
+    body: expr`(b - a) * t + a`,
 };
 
 const outputs = emitAll(fn);
 console.log(outputs.rust.source);
 console.log(outputs.c.source);
 ```
+
+`` expr`(b - a) * t + a` `` and `add(v("a"), mul(sub(v("b"), v("a")), v("t")))`
+build the *exact same tree* — `expr` (see below) is optional infix syntax
+sugar over the same builders, not a different API. Every example below
+still uses the builders directly, since that's what `expr` compiles down
+to and what you'll reach for once a formula needs `${...}`-spliced
+sub-expressions.
 
 ## Samples
 
@@ -236,6 +285,98 @@ See [`docs/planned-additions.md`](./docs/planned-additions.md) for the
 full design rationale, including why the naive "guard division with
 select" pattern is wrong.
 
+## Infix expression syntax (`` expr` ` ``)
+
+`add(mul(v("a"), v("b")), num(1))` is exactly what gets built, but it's
+not what a human reads at a glance. `expr` is a tagged template literal
+that parses ordinary infix math syntax into that same tree — same nodes,
+different spelling, no new capability:
+
+```js
+const { v, expr } = require("exprforge");
+
+expr`a * b + 1`
+// identical tree to add(mul(v("a"), v("b")), num(1))
+
+expr`(-b + sqrt(b^2 - 4*a*c)) / (2*a)`
+// the quadratic formula, readable as the quadratic formula
+```
+
+| Syntax | Lowers to |
+|---|---|
+| `+ - * /` | `add`/`sub`/`mul`/`div` — standard precedence, left-associative |
+| `^` | `call("pow", base, exponent)` — **not** a `bin` node (there is no `"^"` operator in the AST; every emitter's `calls` table keys `pow` by name, even targets whose own syntax has a native `^`/`**`). Right-associative and binds *tighter* than unary minus, standard math convention: `-2^2` is `-4`, `2^3^2` is `512`. |
+| `-x` | `neg(x)` |
+| `name(args...)` | `call("name", ...args)` — not checked against the 22 known functions at parse time, same deferred-to-emission-time error every hand-built `call()` already gets |
+| bare `name` | `v("name")` |
+| `cond ? then : else` | `select(cmp(left, op, right), then, else)` — the **only** place a comparison (`> < >= <= == !=`) is valid, matching `cmp()`'s own documented constraint that it's never a general boolean expression. A bare `a > b` with no `?` is a parse-time error, not a deferred one. Chains naturally: `a>0 ? 1 : b>0 ? 2 : 3`. |
+| `${...}` | Splices in an existing AST node as-is, or a plain JS number (auto-wrapped via `num()`). Anything else throws immediately. Plain strings aren't interpolatable — a bare identifier in the template text already means "variable", with no `${}` needed. |
+
+Deliberately **not** in the grammar: `let`/`outputs` blocks (it's a pure
+expression grammar, same "expression AST, not a program AST" boundary as
+the rest of exprforge — wrap the result in `letIn`/`letChain`/`outputs`,
+or reach for `fn` below, which adds exactly that) and `&&`/`||` (the AST
+has no boolean-combinator node to lower them to).
+
+```js
+// Named subexpressions still go around expr(), not inside it:
+letIn("mag", expr`sqrt(x^2 + y^2)`, expr`x / mag`)
+```
+
+## Full-program syntax (`` fn`...` ``)
+
+`expr` covers one expression; `fn` covers a whole function body —
+`let` bindings plus a `return`, on top of the exact same expression
+grammar (every expression inside a `fn` template is parsed by the same
+engine `expr` uses). Lowers to real `letChain`/`outputs` calls, same
+"same nodes, different spelling" guarantee as `expr` itself:
+
+```js
+const { fn } = require("exprforge");
+
+const body = fn`
+    let mag = sqrt(x^2 + y^2);
+    return { nx: x / mag, ny: y / mag };
+`;
+// identical tree to:
+//   letIn("mag", call("sqrt", ...), outputs({ nx: div(v("x"), v("mag")), ny: ... }))
+
+const normalize2 = { name: "normalize2", params: ["x", "y"], body };
+```
+
+| Syntax | Lowers to |
+|---|---|
+| `let name = expr;` | one `[name, valueNode]` pair, in order — a later `let` can reference an earlier one's name |
+| `return expr;` | the chain's final expression |
+| `return { name: expr, ... };` | `outputs({ name: node, ... })` as the chain's final expression |
+
+Duplicate `let` names aren't rejected by the parser itself — same
+deferred-to-`collectLets` behavior every hand-built `letIn`/`letChain`
+already has. A `fn` body with no `let` statements at all is just
+`return expr;`, equivalent to a bare `expr` call.
+
+## Printing an AST back out, and a native evaluator
+
+Two things that fall out of `fn` existing: `emitters.expr` is a real,
+registered 18th target that prints any AST *back out* as `fn`/`expr`
+source text (the reverse of parsing it) — useful for debugging a
+formula built from several composed helpers, or just getting a readable
+string to log or paste into a future `fn`/`expr` call. And `evaluate(fn,
+args)` (also exported from the main package) is a native tree-walking
+interpreter over the same AST, computing a result directly in JS with no
+codegen or compile step — the same node types every emitter already
+handles, backed by the real `Math.*` functions.
+
+```js
+const { emitAll, evaluate } = require("exprforge");
+
+emitAll(normalize2).expr.source;
+// "let mag = sqrt(((x^2) + (y^2)));\nreturn { nx: (x / mag), ny: (y / mag) };\n"
+
+evaluate(normalize2, [3, 4]);
+// { nx: 0.6, ny: 0.8 }
+```
+
 ## Multiple named outputs
 
 `outputs({ name: Node, ... })` computes several named values from ONE
@@ -295,13 +436,27 @@ pre-declared locals the way Go's named returns are.
 npm test
 ```
 
-Runs `node --test`. For each sample, that's two kinds of check:
+Runs `node --test`. For each sample, that's three kinds of check:
 
 - Emitted JS vs. an independently hand-written reference implementation
   (catches a wrong formula in the AST itself).
 - Every other emitted target vs. that same JS, compiled (and, for
   TypeScript, also type-checked under `--strict`) and run, with the sample
   inputs as arguments (catches an emitter bug).
+- The `expr`-syntax printer (`emitters/exprsyntax.js`) vs. `fn`'s own
+  parser: every sample AST in this suite is printed back out as `fn`/
+  `expr` source text, reparsed, and evaluated (via `evaluate()`) to
+  confirm the round trip behaves identically to the original. This is a
+  stronger claim than either piece being separately unit-tested — the
+  printer and the parser are two independent pieces of code that have to
+  agree with each other across every real formula this project has, not
+  just cases either one's own author thought to hand-write a test for.
+  It's also not hypothetical: this exact check caught a real bug during
+  development (a ternary printed without enough parens, so
+  `crossX / (rLen > eps ? rLen : 1)` reparsed with the wrong grouping)
+  that every other check here — including full cross-language conformance
+  — had no way to catch, since it's specific to the printer/parser pair
+  and nothing else in the pipeline touches that code path.
 
 The compiled/interpreted-language checks need their toolchain on `PATH`
 and skip (not fail) when it's missing, so `npm test` degrades gracefully

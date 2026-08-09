@@ -62,6 +62,35 @@ function checkReservedNames(names) {
     }
 }
 
+// Separate from COBOL_RESERVED above (general keywords/intrinsics, safe
+// to forbid everywhere including internal let-bindings) and checked only
+// against names that end up in a CALL/PROCEDURE DIVISION USING clause
+// (fn.name, params, output fields) -- NOT let-bindings. A bare "c"
+// (case-insensitive) breaks specifically in a USING identifier list --
+// confirmed against a real compiler ("syntax error, unexpected C"),
+// reproducible in isolation, and not shared by neighboring single letters
+// (b/d/e/... all compile fine in the identical position; likely GnuCOBOL
+// misparsing it as an attempted abbreviation of BY CONTENT). Deliberately
+// NOT added to COBOL_RESERVED: a plain WORKING-STORAGE item named "c"
+// referenced only in COMPUTE statements compiles fine (confirmed too),
+// and samples/spline-frame.js already has a working "c" let-binding (for
+// cos(rad)) that would break for no real reason if this were checked
+// there as well.
+const COBOL_USING_RESERVED = new Set(["c"]);
+
+function checkUsingClauseNames(names) {
+    for (const name of names) {
+        if (COBOL_USING_RESERVED.has(name.toLowerCase())) {
+            throw new Error(
+                `emitter for .cob: "${name}" can't be a function/parameter/output name -- it breaks ` +
+                `GnuCOBOL's CALL ... USING clause specifically (confirmed against a real compiler), ` +
+                `even though it's fine as an internal let-binding name (see COBOL_USING_RESERVED in ` +
+                `emitters/cobol.js) -- rename it`,
+            );
+        }
+    }
+}
+
 function fn1(name) {
     return ([x]) => `FUNCTION ${name}(${x})`;
 }
@@ -241,6 +270,35 @@ function expandExponential(s) {
     return sign + result;
 }
 
+// "**" must never end up nested inside ANOTHER call's argument -- that's
+// the actual, general form of the confirmed bug (see the file header):
+// some GnuCOBOL 4.x builds route a "**" expression through a broken
+// internal decimal codegen path (missing header for cob_decimal) when
+// it's nested inside a FUNCTION(...) argument, e.g. sqrt(a^2 + b^2) --
+// confirmed against real CI, not reproducible against this project's own
+// (older) local GnuCOBOL. A plain top-level "**" (kitchen-sink's
+// pow(x, y), summed directly, never nested as another call's argument)
+// is fine.
+//
+// Rather than rely on every caller remembering to keep a pow() result out
+// of anywhere risky, pow ALWAYS spills its own result here: call("pow", a,
+// b) unconditionally evaluates to a bare temp name, so "**" can only ever
+// appear in its own dedicated COMPUTE statement, never nested inside
+// anything else regardless of what the surrounding expression does with
+// the result. hypot's internal sum-of-squares reuses this directly, since
+// it builds "**" itself rather than going through call("pow", ...).
+//
+// Arrow function callers below, not plain ones: base.js's emitExpr calls
+// `this.calls[node.name](args)` unbound -- this closes over the `emitter`
+// const the same way atan2 already does (see its own comment further
+// down), fully assigned by the time this ever actually runs.
+function spillPow(baseRaw, exponentRaw) {
+    const pool = emitter._pool;
+    const base = pool.spill(baseRaw);
+    const exponent = pool.spill(exponentRaw);
+    return pool.spill(`(${base} ** ${exponent})`);
+}
+
 const emitter = new CobolEmitter({
     ext: "cob",
     formatNumber: (v) => {
@@ -252,13 +310,21 @@ const emitter = new CobolEmitter({
         asin: fn1("ASIN"), acos: fn1("ACOS"), atan: fn1("ATAN"),
         exp: fn1("EXP"), log: fn1("LOG"), log10: fn1("LOG10"),
         min: fn2("MIN"), max: fn2("MAX"),
-        pow: ([x, y]) => `(${x} ** ${y})`,
+        pow: ([x, y]) => spillPow(x, y),
         // No LOG2 intrinsic -- derive it (nesting two intrinsics is fine;
         // only nesting a call inside a USER-DEFINED function's argument
         // was the confirmed problem -- see the file header).
         log2: ([x]) => `(FUNCTION LOG(${x}) / FUNCTION LOG(2.0))`,
-        // No HYPOT intrinsic -- derive it the same way.
-        hypot: ([a, b]) => `FUNCTION SQRT((${a}) ** 2 + (${b}) ** 2)`,
+        // No HYPOT intrinsic -- derive it via spillPow (see its own
+        // comment): the sum-of-squares itself also gets spilled to its
+        // own temp before FUNCTION SQRT ever sees it, so SQRT's argument
+        // is always a bare name, never a "**"-containing expression.
+        hypot: ([aRaw, bRaw]) => {
+            const aSq = spillPow(aRaw, "2.0");
+            const bSq = spillPow(bRaw, "2.0");
+            const sumSq = emitter._pool.spill(`${aSq} + ${bSq}`);
+            return `FUNCTION SQRT(${sumSq})`;
+        },
         // FUNCTION INTEGER is floor (greatest integer <= x, confirmed
         // against a real compiler, including for negatives). COMPUTE's
         // automatic numeric conversion hands it back as COMP-2 with no
@@ -358,6 +424,7 @@ const emitter = new CobolEmitter({
     // the program name as a plain string literal, immune to that.
     formatFunction: (fn, body, letLines, letDecls, bodyLines) => {
         checkReservedNames([fn.name, ...fn.params]);
+        checkUsingClauseNames([fn.name, ...fn.params]);
         const linkageParams = [...fn.params, "ef-result"];
         const paramDecls = linkageParams.map((p) => `       01 ${p} USAGE COMP-2.`).join("\n");
         const wsDecls = letDecls.map((n) => `       01 ${n} USAGE COMP-2.`).join("\n");
@@ -382,6 +449,7 @@ const emitter = new CobolEmitter({
     formatSuite: (fn, outputStrs, letLines, letDecls, outputLines) => {
         const outputNames = Object.keys(outputStrs);
         checkReservedNames([fn.name, ...fn.params, ...outputNames]);
+        checkUsingClauseNames([fn.name, ...fn.params, ...outputNames]);
         const linkageParams = [...fn.params, ...outputNames];
         const paramDecls = linkageParams.map((p) => `       01 ${p} USAGE COMP-2.`).join("\n");
         const wsDecls = letDecls.map((n) => `       01 ${n} USAGE COMP-2.`).join("\n");

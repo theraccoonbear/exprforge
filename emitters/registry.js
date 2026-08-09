@@ -19,4 +19,5 @@ module.exports = {
     zig: require("./zig.js"),
     scheme: require("./scheme.js"),
     cobol: require("./cobol.js"),
+    expr: require("./exprsyntax.js"),
 };
