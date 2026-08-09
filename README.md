@@ -21,10 +21,12 @@
 Author a math expression once, as a small AST, and emit verified,
 identical-behavior implementations in JavaScript, TypeScript, Python, C#,
 Lua, QB64, C, Java, Go, Rust, Perl, PHP, Julia, Fortran, Zig, Scheme
-(Guile), and COBOL (GnuCOBOL).
+(Guile), and COBOL (GnuCOBOL) — plus a native in-process evaluator and a
+printer for exprforge's own readable syntax (see `fn`/`expr` below).
 
-No parser, no dependencies. You build the AST directly with plain JS
-functions; the same tree is walked once per target language.
+No required dependencies. You can build the AST directly with plain JS
+functions, or author it as readable infix text via `expr`/`fn` (see
+below) — either way, the same tree is walked once per target.
 
 ## Why
 
@@ -272,13 +274,67 @@ expr`(-b + sqrt(b^2 - 4*a*c)) / (2*a)`
 
 Deliberately **not** in the grammar: `let`/`outputs` blocks (it's a pure
 expression grammar, same "expression AST, not a program AST" boundary as
-the rest of exprforge — wrap the result in `letIn`/`letChain`/`outputs`
-instead) and `&&`/`||` (the AST has no boolean-combinator node to lower
-them to).
+the rest of exprforge — wrap the result in `letIn`/`letChain`/`outputs`,
+or reach for `fn` below, which adds exactly that) and `&&`/`||` (the AST
+has no boolean-combinator node to lower them to).
 
 ```js
 // Named subexpressions still go around expr(), not inside it:
 letIn("mag", expr`sqrt(x^2 + y^2)`, expr`x / mag`)
+```
+
+## Full-program syntax (`` fn`...` ``)
+
+`expr` covers one expression; `fn` covers a whole function body —
+`let` bindings plus a `return`, on top of the exact same expression
+grammar (every expression inside a `fn` template is parsed by the same
+engine `expr` uses). Lowers to real `letChain`/`outputs` calls, same
+"same nodes, different spelling" guarantee as `expr` itself:
+
+```js
+const { fn } = require("exprforge");
+
+const body = fn`
+    let mag = sqrt(x^2 + y^2);
+    return { nx: x / mag, ny: y / mag };
+`;
+// identical tree to:
+//   letIn("mag", call("sqrt", ...), outputs({ nx: div(v("x"), v("mag")), ny: ... }))
+
+const normalize2 = { name: "normalize2", params: ["x", "y"], body };
+```
+
+| Syntax | Lowers to |
+|---|---|
+| `let name = expr;` | one `[name, valueNode]` pair, in order — a later `let` can reference an earlier one's name |
+| `return expr;` | the chain's final expression |
+| `return { name: expr, ... };` | `outputs({ name: node, ... })` as the chain's final expression |
+
+Duplicate `let` names aren't rejected by the parser itself — same
+deferred-to-`collectLets` behavior every hand-built `letIn`/`letChain`
+already has. A `fn` body with no `let` statements at all is just
+`return expr;`, equivalent to a bare `expr` call.
+
+## Printing an AST back out, and a native evaluator
+
+Two things that fall out of `fn` existing: `emitters.expr` is a real,
+registered 18th target that prints any AST *back out* as `fn`/`expr`
+source text (the reverse of parsing it) — useful for debugging a
+formula built from several composed helpers, or just getting a readable
+string to log or paste into a future `fn`/`expr` call. And `evaluate(fn,
+args)` (also exported from the main package) is a native tree-walking
+interpreter over the same AST, computing a result directly in JS with no
+codegen or compile step — the same node types every emitter already
+handles, backed by the real `Math.*` functions.
+
+```js
+const { emitAll, evaluate } = require("exprforge");
+
+emitAll(normalize2).expr.source;
+// "let mag = sqrt(((x^2) + (y^2)));\nreturn { nx: (x / mag), ny: (y / mag) };\n"
+
+evaluate(normalize2, [3, 4]);
+// { nx: 0.6, ny: 0.8 }
 ```
 
 ## Multiple named outputs

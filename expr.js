@@ -47,7 +47,10 @@ const COMPARE_OPS = [">", "<", ">=", "<=", "==", "!="];
 // Tokenizes one template-literal string segment, appending {type, value,
 // pos} tokens to `tokens` (pos is an offset into the reconstructed full
 // source string built in expr() below, used only for error messages).
-function tokenizeSegment(str, offset, tokens) {
+// `label` is just which tag function's name shows up in error messages
+// -- fn.js passes "fn()" here so a lex error inside `` fn`...` `` isn't
+// misattributed to expr().
+function tokenizeSegment(str, offset, tokens, label = "expr()") {
     let i = 0;
     while (i < str.length) {
         const ch = str[i];
@@ -89,34 +92,44 @@ function tokenizeSegment(str, offset, tokens) {
             i += 2;
             continue;
         }
-        if ("+-*/^(),?:><".includes(ch)) {
+        // ";", "{", "}", "=" aren't used by expr()'s own grammar -- they're
+        // here for fn.js's statement syntax (let name = ...; / return
+        // {...};) to reuse this same tokenizer instead of forking it.
+        // Inert for expr(): nothing that parses successfully today could
+        // contain them anyway ("=" alone was always a lex error before,
+        // since only "==" was recognized).
+        if ("+-*/^(),?:><;{}=".includes(ch)) {
             tokens.push({ type: "OP", value: ch, pos: offset + start });
             i++;
             continue;
         }
-        throw new Error(`expr(): unexpected character "${ch}" at position ${offset + start}`);
+        throw new Error(`${label}: unexpected character "${ch}" at position ${offset + start}`);
     }
 }
 
 // A HOLE's value is resolved to a Node right where it's produced (not
 // deferred into the parser), so a bad interpolation fails immediately
 // with a clear error rather than surfacing as a confusing parse error
-// somewhere else in the tree.
-function holeToNode(value) {
+// somewhere else in the tree. `label` -- see tokenizeSegment above.
+function holeToNode(value, label = "expr()") {
     if (typeof value === "number") return num(value);
     if (value && typeof value === "object" && typeof value.type === "string") return value;
     const shown = typeof value === "string" ? `"${value}"` : JSON.stringify(value);
     throw new Error(
-        `expr(): interpolated value must be an AST node or a plain number, got ${shown} -- ` +
+        `${label}: interpolated value must be an AST node or a plain number, got ${shown} -- ` +
         `a bare variable name doesn't need interpolation, just write it directly in the template text`,
     );
 }
 
 class Parser {
-    constructor(tokens, source) {
+    // `label` -- see tokenizeSegment above; also threaded through to
+    // holeToNode so a bad interpolation inside `` fn`...` `` reports
+    // "fn():" too, not just lex/parse errors.
+    constructor(tokens, source, label = "expr()") {
         this.tokens = tokens;
         this.source = source;
         this.i = 0;
+        this.label = label;
     }
 
     peek() {
@@ -140,7 +153,7 @@ class Parser {
     error(message) {
         const t = this.peek();
         const tokDesc = t.type === "EOF" ? "end of input" : `"${t.value}"`;
-        throw new Error(`expr(): ${message} -- found ${tokDesc} at position ${t.pos} in \`${this.source}\``);
+        throw new Error(`${this.label}: ${message} -- found ${tokDesc} at position ${t.pos} in \`${this.source}\``);
     }
 
     parseExpression() {
@@ -229,7 +242,7 @@ class Parser {
         }
         if (t.type === "HOLE") {
             this.next();
-            return holeToNode(t.value);
+            return holeToNode(t.value, this.label);
         }
         if (t.type === "IDENT") {
             this.next();
@@ -291,4 +304,10 @@ function expr(strings, ...values) {
     return node;
 }
 
-module.exports = { expr };
+// Parser/tokenizeSegment/holeToNode are exported alongside expr itself so
+// fn.js (full function-body syntax: let/return on top of this same
+// expression grammar) can reuse this tokenizer and parsing engine
+// directly instead of forking it -- "fn's contain expr's" literally, not
+// just as a description. Nothing here is part of expr()'s own public
+// contract; treat these as internal to the expr/fn syntax family.
+module.exports = { expr, Parser, tokenizeSegment, holeToNode };

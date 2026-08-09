@@ -43,6 +43,7 @@ const {
     mathDemoAst,
     emitters,
 } = require("../index.js");
+const { evaluate } = require("../evaluate.js");
 
 function catmullRomReference(P0, P1, P2, P3, t) {
     const t2 = t * t;
@@ -280,6 +281,24 @@ function loadJsFn(ast) {
 
 function capitalize(s) {
     return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+// --- Interpreter (evaluate.js) --------------------------------------------
+//
+// evaluate.js's native tree-walking interpreter, run directly in-process
+// -- no emit/compile/subprocess step, unlike every other target below.
+// Wired in as one more conformance target (not a replacement for
+// loadJsFn's hand-written reference implementations above) so a bug in
+// the interpreter itself can't slip through unnoticed, the same
+// guarantee every compiled target already gets. One function covers
+// both the scalar and suite shapes -- evaluate() already returns a bare
+// number or a {name: value} object on its own, matching whichever this
+// sample needs, so there's no output-parsing step to write here at all;
+// registerSuiteConformance calls run(ast, inputs, outputNames) with a
+// 3rd argument this doesn't need, same as runTS's unused outputNames
+// parameter above.
+function runEval(ast, inputs) {
+    return inputs.map((args) => evaluate(ast, args));
 }
 
 // --- C -----------------------------------------------------------------
@@ -1099,6 +1118,7 @@ function runSuiteCobol(ast, inputs, outputNames) {
 function registerSuiteConformance(sampleName, { ast, inputs }) {
     const outputNames = suiteOutputNames(ast);
     const targets = [
+        ["Interpreter", true, runEval],
         ["C", TOOLS.gcc, runSuiteC],
         ["Go", TOOLS.go, runSuiteGo],
         ["Rust", TOOLS.rustc, runSuiteRust],
@@ -1153,6 +1173,7 @@ function registerConformance(sampleName, { ast, reference, inputs, skipTargets =
     }
 
     const targets = [
+        ["Interpreter", true, runEval],
         ["C", TOOLS.gcc, runC],
         ["Go", TOOLS.go, runGo],
         ["Rust", TOOLS.rustc, runRust],
@@ -1306,4 +1327,74 @@ test("spline-frame: SpEfMkFrame's R is unit length, including at the degenerate 
         const len = Math.sqrt(rx * rx + ry * ry + rz * rz);
         assert.ok(Math.abs(len - 1) < 1e-9, `R not unit length for tangent (${tx},${ty},${tz}): len=${len}`);
     }
+});
+
+// --- expr-syntax emitter round-trip ---------------------------------------
+//
+// The strongest available proof that fn.js's parser and
+// emitters/exprsyntax.js's printer are exact inverses of each other:
+// print every sample AST used in this file back out as fn/expr source
+// text, reparse it, and confirm it BEHAVES identically to the original
+// -- evaluated (via evaluate.js) across each sample's own already-
+// registered representative inputs, not compared as raw tree shapes.
+//
+// Structural (deepStrictEqual) comparison was tried first and produces
+// false failures: ast.js's own neg(x) is CANONICALLY defined as
+// sub(num(0), x) (see ast.js), but a negative number literal like
+// num(-5) prints as the bare text "-5" -- which the tokenizer (by
+// design; NUMBER never lexes a leading sign, see expr.js) reparses as
+// unary minus over a positive literal, i.e. exactly neg(num(5)), a
+// *different* tree shape computing the *identical* value. Several
+// samples here (catmullRom's polynomial coefficients, mathDemo's/
+// splineFrame's fallback constants) hit this. Evaluating both sides
+// instead of diffing JSON is both the fix and, per this file's own
+// opening comment ("proving the emitted targets agree numerically, not
+// just that they compile"), the more honest form of proof anyway.
+//
+// This lives here rather than its own test file because
+// normalizeXAst/exprSyntaxDemoAst above are deliberately local-only
+// fixtures (not exported from index.js like the others), and this is
+// the one place every sample AST this project has is already in scope
+// at once, alongside the same input rows already used above.
+//
+// `fn` is imported under an alias -- this file already uses a bare `fn`
+// as a local variable name for "the loaded JS function under test" in
+// several places above; aliasing avoids any ambiguity about which one a
+// reader's looking at.
+const { fn: exprFn } = require("../fn.js");
+
+function assertExprSyntaxRoundTrips(ast, inputs) {
+    const printed = emitters.expr.emitFunction(ast);
+    const reparsedDef = { name: ast.name, params: ast.params, body: exprFn([printed]) };
+    for (const args of inputs) {
+        const original = evaluate(ast, args);
+        const roundTripped = evaluate(reparsedDef, args);
+        if (original && typeof original === "object") {
+            for (const key of Object.keys(original)) {
+                assertClose(
+                    roundTripped[key],
+                    original[key],
+                    `${ast.name} round-trip field "${key}" at args=${JSON.stringify(args)} -- printed:\n${printed}`,
+                );
+            }
+        } else {
+            assertClose(roundTripped, original, `${ast.name} round-trip at args=${JSON.stringify(args)} -- printed:\n${printed}`);
+        }
+    }
+}
+
+for (const [sampleName, sample] of Object.entries(SAMPLES)) {
+    test(`${sampleName}: round-trips through the expr-syntax emitter and back through fn()`, () => {
+        assertExprSyntaxRoundTrips(sample.ast, sample.inputs);
+    });
+}
+
+for (const ast of splineFrameAsts) {
+    test(`splineFrame.${ast.name}: round-trips through the expr-syntax emitter and back through fn()`, () => {
+        assertExprSyntaxRoundTrips(ast, SPLINE_FRAME_INPUTS[ast.params.join(",")]);
+    });
+}
+
+test("mathDemo: round-trips through the expr-syntax emitter and back through fn()", () => {
+    assertExprSyntaxRoundTrips(mathDemoAst, MATH_DEMO_INPUTS);
 });

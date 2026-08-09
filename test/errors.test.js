@@ -10,15 +10,28 @@ const assert = require("node:assert");
 const { num, v, add, call, cmp, letIn, outputs, emitters } = require("../index.js");
 const Emitter = require("../emitters/base.js");
 
-test("requesting an unmapped Math function throws, for every emitter", () => {
+test("requesting an unmapped Math function throws, for every real compile/run emitter", () => {
+    // "expr" (emitters/exprsyntax.js) is deliberately excluded -- it's a
+    // pretty-printer over the AST, not a real target with a fixed math
+    // library, and passes every call name through uniformly by design
+    // (see that file's header comment). That's the same "don't validate
+    // names here, defer to whatever actually needs to resolve them"
+    // choice expr.js's own parser already makes at parse time -- covered
+    // separately below.
     const fn = { name: "f", params: ["x"], body: call("definitely_not_a_real_math_fn", v("x")) };
     for (const [lang, emitter] of Object.entries(emitters)) {
+        if (lang === "expr") continue;
         assert.throws(
             () => emitter.emitFunction(fn),
             /no mapping for Math function/,
             `expected ${lang} to throw for an unmapped function`,
         );
     }
+});
+
+test("the expr emitter prints an unmapped call name through unchanged, instead of throwing", () => {
+    const fn = { name: "f", params: ["x"], body: call("definitely_not_a_real_math_fn", v("x")) };
+    assert.strictEqual(emitters.expr.emitFunction(fn), "return definitely_not_a_real_math_fn(x);\n");
 });
 
 test("two let bindings sharing a name throw, even nested inside each other's value", () => {
