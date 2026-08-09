@@ -76,7 +76,8 @@ trusting:
   `expr`/`fn` are a small hand-rolled tokenizer and recursive-descent
   parser that turn ordinary infix text (`` expr`a * b + 1` ``) into
   *exactly* the same tree the builders would — checked by structural unit
-  tests and a full round-trip conformance pass, not just asserted. It's
+  tests and a full print-reparse-evaluate round trip across every sample
+  this project has (see "Testing" below), not just asserted. It's
   genuinely optional: nothing in the AST/emitter layer above calls into
   it or imports it. Don't want a parser in your dependency graph, for a
   security review or otherwise? Don't call `expr`/`fn` — build the tree
@@ -435,13 +436,27 @@ pre-declared locals the way Go's named returns are.
 npm test
 ```
 
-Runs `node --test`. For each sample, that's two kinds of check:
+Runs `node --test`. For each sample, that's three kinds of check:
 
 - Emitted JS vs. an independently hand-written reference implementation
   (catches a wrong formula in the AST itself).
 - Every other emitted target vs. that same JS, compiled (and, for
   TypeScript, also type-checked under `--strict`) and run, with the sample
   inputs as arguments (catches an emitter bug).
+- The `expr`-syntax printer (`emitters/exprsyntax.js`) vs. `fn`'s own
+  parser: every sample AST in this suite is printed back out as `fn`/
+  `expr` source text, reparsed, and evaluated (via `evaluate()`) to
+  confirm the round trip behaves identically to the original. This is a
+  stronger claim than either piece being separately unit-tested — the
+  printer and the parser are two independent pieces of code that have to
+  agree with each other across every real formula this project has, not
+  just cases either one's own author thought to hand-write a test for.
+  It's also not hypothetical: this exact check caught a real bug during
+  development (a ternary printed without enough parens, so
+  `crossX / (rLen > eps ? rLen : 1)` reparsed with the wrong grouping)
+  that every other check here — including full cross-language conformance
+  — had no way to catch, since it's specific to the printer/parser pair
+  and nothing else in the pipeline touches that code path.
 
 The compiled/interpreted-language checks need their toolchain on `PATH`
 and skip (not fail) when it's missing, so `npm test` degrades gracefully
