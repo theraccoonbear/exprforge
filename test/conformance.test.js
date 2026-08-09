@@ -35,6 +35,7 @@ const {
     cmp,
     select,
     collectLets,
+    expr,
     catmullRomAst,
     fibonacciAst,
     splineFrameAsts,
@@ -98,6 +99,28 @@ function normalizeXReference(x, y, z) {
     return len > 1e-9 ? x / len : 0;
 }
 
+// Built via expr() (see expr.js) instead of hand-nested calls -- proves
+// the infix syntax sugar produces trees that are fully emitter-compatible
+// across every target, not just structurally plausible locally (that
+// weaker guarantee is what test/expr.test.js already checks). Exercises
+// "^" (lowers to pow), a function call, and the ternary/select() lowering
+// together in one compact expression -- exactly the "readable at a
+// glance" case that motivated expr() over add(mul(...)) nesting in the
+// first place.
+//
+// "fallback", not "c": a bare "c" breaks GnuCOBOL's CALL ... USING clause
+// specifically -- confirmed against a real compiler and now guarded at
+// emission time too (see COBOL_USING_RESERVED in emitters/cobol.js).
+const exprSyntaxDemoAst = {
+    name: "exprSyntaxDemo",
+    params: ["a", "b", "fallback"],
+    body: expr`a > 0 ? sqrt(a^2 + b^2) : fallback`,
+};
+
+function exprSyntaxDemoReference(a, b, fallback) {
+    return a > 0 ? Math.sqrt(a * a + b * b) : fallback;
+}
+
 const SAMPLES = {
     catmullRom: {
         ast: catmullRomAst,
@@ -126,6 +149,16 @@ const SAMPLES = {
         // Deliberately excludes QB64 -- see the comment on normalizeXAst
         // above for why it's expected (not a bug) to diverge there.
         skipTargets: ["QB64"],
+    },
+    exprSyntaxDemo: {
+        ast: exprSyntaxDemoAst,
+        reference: exprSyntaxDemoReference,
+        inputs: [
+            [3, 4, -1], // a>0 branch: sqrt(9+16) = 5
+            [-1, 4, 7], // a<=0 branch: falls back to c
+            [0, 5, 2], // a==0 -- also falls back (a>0 is strictly false)
+            [0.5, 0.5, 0.5],
+        ],
     },
     // Calls all 22 supported Math functions in one expression -- coverage,
     // not a formula with real meaning, so no independent reference (there

@@ -61,18 +61,25 @@ npm install exprforge
 ## Usage
 
 ```js
-const { num, v, bin, mul, add, sub, emitAll } = require("exprforge");
+const { expr, emitAll } = require("exprforge");
 
 const fn = {
     name: "lerp",
     params: ["a", "b", "t"],
-    body: add(v("a"), mul(sub(v("b"), v("a")), v("t"))),
+    body: expr`(b - a) * t + a`,
 };
 
 const outputs = emitAll(fn);
 console.log(outputs.rust.source);
 console.log(outputs.c.source);
 ```
+
+`` expr`(b - a) * t + a` `` and `add(v("a"), mul(sub(v("b"), v("a")), v("t")))`
+build the *exact same tree* — `expr` (see below) is optional infix syntax
+sugar over the same builders, not a different API. Every example below
+still uses the builders directly, since that's what `expr` compiles down
+to and what you'll reach for once a formula needs `${...}`-spliced
+sub-expressions.
 
 ## Samples
 
@@ -235,6 +242,44 @@ expression model without introducing control flow:
 See [`docs/planned-additions.md`](./docs/planned-additions.md) for the
 full design rationale, including why the naive "guard division with
 select" pattern is wrong.
+
+## Infix expression syntax (`` expr` ` ``)
+
+`add(mul(v("a"), v("b")), num(1))` is exactly what gets built, but it's
+not what a human reads at a glance. `expr` is a tagged template literal
+that parses ordinary infix math syntax into that same tree — same nodes,
+different spelling, no new capability:
+
+```js
+const { v, expr } = require("exprforge");
+
+expr`a * b + 1`
+// identical tree to add(mul(v("a"), v("b")), num(1))
+
+expr`(-b + sqrt(b^2 - 4*a*c)) / (2*a)`
+// the quadratic formula, readable as the quadratic formula
+```
+
+| Syntax | Lowers to |
+|---|---|
+| `+ - * /` | `add`/`sub`/`mul`/`div` — standard precedence, left-associative |
+| `^` | `call("pow", base, exponent)` — **not** a `bin` node (there is no `"^"` operator in the AST; every emitter's `calls` table keys `pow` by name, even targets whose own syntax has a native `^`/`**`). Right-associative and binds *tighter* than unary minus, standard math convention: `-2^2` is `-4`, `2^3^2` is `512`. |
+| `-x` | `neg(x)` |
+| `name(args...)` | `call("name", ...args)` — not checked against the 22 known functions at parse time, same deferred-to-emission-time error every hand-built `call()` already gets |
+| bare `name` | `v("name")` |
+| `cond ? then : else` | `select(cmp(left, op, right), then, else)` — the **only** place a comparison (`> < >= <= == !=`) is valid, matching `cmp()`'s own documented constraint that it's never a general boolean expression. A bare `a > b` with no `?` is a parse-time error, not a deferred one. Chains naturally: `a>0 ? 1 : b>0 ? 2 : 3`. |
+| `${...}` | Splices in an existing AST node as-is, or a plain JS number (auto-wrapped via `num()`). Anything else throws immediately. Plain strings aren't interpolatable — a bare identifier in the template text already means "variable", with no `${}` needed. |
+
+Deliberately **not** in the grammar: `let`/`outputs` blocks (it's a pure
+expression grammar, same "expression AST, not a program AST" boundary as
+the rest of exprforge — wrap the result in `letIn`/`letChain`/`outputs`
+instead) and `&&`/`||` (the AST has no boolean-combinator node to lower
+them to).
+
+```js
+// Named subexpressions still go around expr(), not inside it:
+letIn("mag", expr`sqrt(x^2 + y^2)`, expr`x / mag`)
+```
 
 ## Multiple named outputs
 

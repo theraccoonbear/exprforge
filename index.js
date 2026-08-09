@@ -1,6 +1,7 @@
 // exprforge/index.js
 const { num, v, bin, call, add, mul, sub, div, neg, letIn, letChain, cmp, select, outputs, collectLets } = require("./ast.js");
 const { forComponents } = require("./util.js");
+const { expr } = require("./expr.js");
 const emitters = require("./emitters/registry.js");
 const { catmullRomAst } = require("./samples/catmull-rom.js");
 const { fibonacciAst } = require("./samples/fibonacci.js");
@@ -25,6 +26,8 @@ module.exports = {
     num, v, bin, call, add, mul, sub, div, neg, letIn, letChain, cmp, select, outputs, collectLets,
     // Authoring convenience — not an AST primitive, see util.js.
     forComponents,
+    // Infix syntax sugar over the builders above — same Nodes, see expr.js.
+    expr,
     // Built-in example formulas — see samples/ for the source.
     catmullRomAst,
     fibonacciAst,

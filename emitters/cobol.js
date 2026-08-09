@@ -62,6 +62,35 @@ function checkReservedNames(names) {
     }
 }
 
+// Separate from COBOL_RESERVED above (general keywords/intrinsics, safe
+// to forbid everywhere including internal let-bindings) and checked only
+// against names that end up in a CALL/PROCEDURE DIVISION USING clause
+// (fn.name, params, output fields) -- NOT let-bindings. A bare "c"
+// (case-insensitive) breaks specifically in a USING identifier list --
+// confirmed against a real compiler ("syntax error, unexpected C"),
+// reproducible in isolation, and not shared by neighboring single letters
+// (b/d/e/... all compile fine in the identical position; likely GnuCOBOL
+// misparsing it as an attempted abbreviation of BY CONTENT). Deliberately
+// NOT added to COBOL_RESERVED: a plain WORKING-STORAGE item named "c"
+// referenced only in COMPUTE statements compiles fine (confirmed too),
+// and samples/spline-frame.js already has a working "c" let-binding (for
+// cos(rad)) that would break for no real reason if this were checked
+// there as well.
+const COBOL_USING_RESERVED = new Set(["c"]);
+
+function checkUsingClauseNames(names) {
+    for (const name of names) {
+        if (COBOL_USING_RESERVED.has(name.toLowerCase())) {
+            throw new Error(
+                `emitter for .cob: "${name}" can't be a function/parameter/output name -- it breaks ` +
+                `GnuCOBOL's CALL ... USING clause specifically (confirmed against a real compiler), ` +
+                `even though it's fine as an internal let-binding name (see COBOL_USING_RESERVED in ` +
+                `emitters/cobol.js) -- rename it`,
+            );
+        }
+    }
+}
+
 function fn1(name) {
     return ([x]) => `FUNCTION ${name}(${x})`;
 }
@@ -358,6 +387,7 @@ const emitter = new CobolEmitter({
     // the program name as a plain string literal, immune to that.
     formatFunction: (fn, body, letLines, letDecls, bodyLines) => {
         checkReservedNames([fn.name, ...fn.params]);
+        checkUsingClauseNames([fn.name, ...fn.params]);
         const linkageParams = [...fn.params, "ef-result"];
         const paramDecls = linkageParams.map((p) => `       01 ${p} USAGE COMP-2.`).join("\n");
         const wsDecls = letDecls.map((n) => `       01 ${n} USAGE COMP-2.`).join("\n");
@@ -382,6 +412,7 @@ const emitter = new CobolEmitter({
     formatSuite: (fn, outputStrs, letLines, letDecls, outputLines) => {
         const outputNames = Object.keys(outputStrs);
         checkReservedNames([fn.name, ...fn.params, ...outputNames]);
+        checkUsingClauseNames([fn.name, ...fn.params, ...outputNames]);
         const linkageParams = [...fn.params, ...outputNames];
         const paramDecls = linkageParams.map((p) => `       01 ${p} USAGE COMP-2.`).join("\n");
         const wsDecls = letDecls.map((n) => `       01 ${n} USAGE COMP-2.`).join("\n");
