@@ -27,6 +27,18 @@ const path = require("node:path");
 
 const PROJECT_ROOT = path.join(__dirname, "..");
 
+// `npm pack --json`'s own output SHAPE isn't stable across npm major
+// versions -- confirmed the hard way (a real, though harmless, CI
+// failure): npm 10.x returns an array (`[{...}]`), npm 12.x returns a
+// plain object keyed by package name (`{"exprforge": {...}}`), both
+// with the same inner fields otherwise. Normalizing here once, rather
+// than destructuring `[0]` directly at each call site, so this doesn't
+// need re-diagnosing the next time some CI job's npm version moves.
+function parseNpmPackJson(output) {
+    const parsed = JSON.parse(output);
+    return Array.isArray(parsed) ? parsed[0] : Object.values(parsed)[0];
+}
+
 test("the packed tarball installs and require()s cleanly, with the real exports actually callable", () => {
     const packDir = fs.mkdtempSync(path.join(os.tmpdir(), "ef-pack-"));
     const consumerDir = fs.mkdtempSync(path.join(os.tmpdir(), "ef-consumer-"));
@@ -39,7 +51,7 @@ test("the packed tarball installs and require()s cleanly, with the real exports 
             ["pack", "--pack-destination", packDir, "--json"],
             { cwd: PROJECT_ROOT },
         ).toString();
-        const [{ filename }] = JSON.parse(packOutput);
+        const { filename } = parseNpmPackJson(packOutput);
         const tarball = path.join(packDir, filename);
 
         // A minimal, unrelated consumer project -- installing a local
@@ -92,7 +104,7 @@ test("the packed tarball installs and require()s cleanly, with the real exports 
 // it" -- point straight at the fix.
 test("every local module index.js requires is included in package.json's \"files\"", () => {
     const packOutput = execFileSync("npm", ["pack", "--dry-run", "--json"], { cwd: PROJECT_ROOT }).toString();
-    const [{ files }] = JSON.parse(packOutput);
+    const { files } = parseNpmPackJson(packOutput);
     const packedPaths = new Set(files.map((f) => f.path));
 
     const seen = new Set();
