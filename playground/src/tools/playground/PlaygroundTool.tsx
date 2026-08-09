@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import CodeMirror from "@uiw/react-codemirror";
 import { oneDark } from "@codemirror/theme-one-dark";
 import { exprForgeLanguage } from "./exprForgeMode";
@@ -7,9 +7,12 @@ import { LanguageCard } from "./LanguageCard";
 import { InterpreterCard } from "./InterpreterCard";
 import { LANGUAGE_META } from "./languageMeta";
 import { EXAMPLES } from "./examples";
+import { readStorageJSON, readStorageString, writeStorageJSON, writeStorageString } from "../../lib/storage";
 
 const SOURCE_PARAM = "src";
 const MOBILE_BREAKPOINT_PX = 640;
+const SOURCE_STORAGE_KEY = "source";
+const ENABLED_STORAGE_KEY = "enabledLanguages";
 
 function readSourceFromUrl(): string | null {
     // URLSearchParams.get() already decodes -- do NOT also call
@@ -21,12 +24,26 @@ function readSourceFromUrl(): string | null {
     return new URLSearchParams(window.location.search).get(SOURCE_PARAM);
 }
 
+// Priority, highest first: an explicit shared link (?src=...) always
+// wins -- following a link someone sent you should show THAT formula,
+// not silently substitute whatever you last had open. Otherwise, your
+// own last session's source from localStorage. Otherwise, the built-in
+// default for a genuinely first-ever visit.
+function initialSource(): string {
+    return readSourceFromUrl() ?? readStorageString(SOURCE_STORAGE_KEY) ?? EXAMPLES[0].source;
+}
+
 function defaultToggledLanguages(): Set<string> {
     const isMobile = window.innerWidth < MOBILE_BREAKPOINT_PX;
     const ids = Object.entries(LANGUAGE_META)
         .filter(([, meta]) => (isMobile ? meta.defaultOnMobile : meta.defaultOn))
         .map(([id]) => id);
     return new Set(ids);
+}
+
+function initialEnabledLanguages(): Set<string> {
+    const saved = readStorageJSON<string[]>(ENABLED_STORAGE_KEY);
+    return saved ? new Set(saved) : defaultToggledLanguages();
 }
 
 // A real fn/expr mode (exprForgeMode.ts), not a borrowed approximation
@@ -38,12 +55,27 @@ function defaultToggledLanguages(): Set<string> {
 const editorExtensions = [exprForgeLanguage];
 
 export function PlaygroundTool() {
-    const [source, setSource] = useState(() => readSourceFromUrl() ?? EXAMPLES[0].source);
-    const [enabled, setEnabled] = useState(defaultToggledLanguages);
+    const [source, setSource] = useState(initialSource);
+    const [enabled, setEnabled] = useState(initialEnabledLanguages);
     const [linkCopied, setLinkCopied] = useState(false);
 
     const { error, def, outputs } = useExprForge(source);
     const languageIds = useMemo(() => Object.keys(LANGUAGE_META), []);
+
+    // Persisted so a refresh restores exactly what you had, not the
+    // defaults -- your in-progress formula and which languages you'd
+    // toggled, independent of each other. A loaded share-link's source
+    // becomes the new persisted value too (see initialSource()'s
+    // priority ordering) -- opening someone else's formula and coming
+    // back later picks up where that visit left off, same as any other
+    // edit would.
+    useEffect(() => {
+        writeStorageString(SOURCE_STORAGE_KEY, source);
+    }, [source]);
+
+    useEffect(() => {
+        writeStorageJSON(ENABLED_STORAGE_KEY, [...enabled]);
+    }, [enabled]);
 
     function toggle(id: string) {
         setEnabled((prev) => {
