@@ -1,6 +1,6 @@
 {
   "name": "exprforge",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Author a math expression once as an AST (or readable infix text via expr/fn), emit identical-behavior implementations in JS, TypeScript, Python, C#, Lua, QB64, C, Java, Go, Rust, Perl, PHP, Julia, Fortran, Zig, Scheme, and COBOL, plus a native evaluator and its own readable syntax printer.",
   "main": "index.js",
   "type": "commonjs",
