@@ -355,6 +355,35 @@ deferred-to-`collectLets` behavior every hand-built `letIn`/`letChain`
 already has. A `fn` body with no `let` statements at all is just
 `return expr;`, equivalent to a bare `expr` call.
 
+### Optional signature line
+
+Writing `name`/`params` separately, next to the body, is fine for a
+one-off — but `fn` can carry them too, with a leading `name(params):`
+line:
+
+```js
+const { fn, emitAll, evaluate } = require("exprforge");
+
+const normalize2 = fn`
+    normalize2(x, y):
+    let mag = sqrt(x^2 + y^2);
+    return { nx: x / mag, ny: y / mag };
+`;
+// normalize2 is now the full {name, params, body} shape directly --
+// no wrapping object needed.
+
+evaluate(normalize2, [3, 4]);        // { nx: 0.6, ny: 0.8 }
+emitAll(normalize2).rust.source;     // ready to use immediately
+```
+
+This changes `fn`'s return type based on what you wrote, deliberately:
+no signature → a bare `Node`, exactly as above and fully backward
+compatible; a signature present → the full `{name, params, body}`
+object. `let`/`return` still can't be used as a function name — a
+signature is told apart from a statement by the same rule that tells
+`let`/`return` apart from any other identifier, so naming a function
+`let` just parses as (and fails as) a `let` statement instead.
+
 ## Printing an AST back out, and a native evaluator
 
 Two things that fall out of `fn` existing: `emitters.expr` is a real,

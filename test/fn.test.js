@@ -129,3 +129,94 @@ test("fn output round-trips through collectLets, same guarantee expr.test.js pro
     );
     assert.strictEqual(body.type, "select");
 });
+
+// --- optional "name(params):" signature line -----------------------------
+
+test("no signature: fn still returns a bare Node, exactly as before this feature existed", () => {
+    const result = fn`let m = a + b; return m * 2;`;
+    assert.strictEqual(result.type, "let");
+    assert.deepStrictEqual(result, letIn("m", add(v("a"), v("b")), mul(v("m"), num(2))));
+});
+
+test("a signature with params produces {name, params, body} directly", () => {
+    const result = fn`
+        normalize(x, y):
+        let mag = sqrt(x^2 + y^2);
+        return x / mag;
+    `;
+    assert.strictEqual(result.name, "normalize");
+    assert.deepStrictEqual(result.params, ["x", "y"]);
+    assert.deepStrictEqual(
+        result.body,
+        letIn("mag", call("sqrt", add(call("pow", v("x"), num(2)), call("pow", v("y"), num(2)))), div(v("x"), v("mag"))),
+    );
+});
+
+test("a signature with zero params: empty parens still parse", () => {
+    const result = fn`
+        always1():
+        return 1;
+    `;
+    assert.strictEqual(result.name, "always1");
+    assert.deepStrictEqual(result.params, []);
+    assert.deepStrictEqual(result.body, num(1));
+});
+
+test("a signature with no let statements at all", () => {
+    const result = fn`
+        area(w, h):
+        return w * h;
+    `;
+    assert.strictEqual(result.name, "area");
+    assert.deepStrictEqual(result.params, ["w", "h"]);
+    assert.deepStrictEqual(result.body, mul(v("w"), v("h")));
+});
+
+test("a signature wrapping a multi-output return", () => {
+    const result = fn`
+        normalize2(x, y):
+        let mag = sqrt(x^2 + y^2);
+        return { nx: x / mag, ny: y / mag };
+    `;
+    assert.strictEqual(result.name, "normalize2");
+    assert.deepStrictEqual(result.params, ["x", "y"]);
+    assert.deepStrictEqual(
+        result.body,
+        letIn(
+            "mag",
+            call("sqrt", add(call("pow", v("x"), num(2)), call("pow", v("y"), num(2)))),
+            outputs({ nx: div(v("x"), v("mag")), ny: div(v("y"), v("mag")) }),
+        ),
+    );
+});
+
+test("the produced {name, params, body} plugs directly into emitAll() and evaluate() with no wrapping", () => {
+    const { emitAll, evaluate } = require("../index.js");
+    const def = fn`
+        hyp(a, b):
+        return sqrt(a^2 + b^2);
+    `;
+    assert.strictEqual(evaluate(def, [3, 4]), 5);
+    const out = emitAll(def);
+    assert.match(out.python.source, /def hyp\(a, b\)/);
+    assert.match(out.rust.source, /fn hyp\(a: f64, b: f64\)/);
+});
+
+test("a param list missing a comma throws", () => {
+    assert.throws(() => fn`bad(x y): return x;`, /expected "\)"/);
+});
+
+test("a trailing comma in the param list throws", () => {
+    assert.throws(() => fn`bad(x,): return x;`, /expected an identifier as a parameter name/);
+});
+
+test("a signature missing its terminating \":\" throws", () => {
+    assert.throws(() => fn`bad(x, y) return x;`, /expected ":"/);
+});
+
+test("naming a function \"let\" or \"return\" is not treated as a signature -- those always start a statement instead", () => {
+    // Documented, deliberate limitation (see fn.js's looksLikeSignature
+    // comment): the 2-token lookahead can't tell "a signature named let"
+    // apart from "a let statement" without ambiguity, so it doesn't try.
+    assert.throws(() => fn`let(x): return x;`, /expected an identifier after "let"/);
+});

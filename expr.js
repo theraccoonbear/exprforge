@@ -136,6 +136,17 @@ class Parser {
         return this.tokens[this.i];
     }
 
+    // One token beyond peek() -- always safe, since `tokens` always ends
+    // with an EOF token appended once by expr()/fn() before the parser
+    // ever runs, so there's always something to look at even right at
+    // the end of input. Added for fn.js's signature-line lookahead
+    // ("IDENT followed by '(' -- is this a signature, or the start of a
+    // statement?"), which expr()'s own single-token-lookahead grammar
+    // never needed.
+    peekNext() {
+        return this.tokens[this.i + 1];
+    }
+
     next() {
         return this.tokens[this.i++];
     }
