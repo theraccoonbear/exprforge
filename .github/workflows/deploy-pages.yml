@@ -1,0 +1,55 @@
+name: Deploy Playground
+
+# The playground (playground/) is a separate subproject -- own
+# package.json, own dependencies, "exprforge": "file:.." linking the
+# real library so the live demo always reflects whatever's actually in
+# this repo (see playground/README or the root README's "Layered by
+# design" section). Build runs on every push/PR as a real CI gate;
+# deploy only runs on a push to main, via the modern GitHub-Actions-
+# native Pages mechanism (actions/deploy-pages), not a legacy gh-pages
+# branch.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch: {}
+
+# Only one deployment in flight at a time -- a second push to main
+# before the first deploy finishes shouldn't race it.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: playground/package-lock.json
+      - run: npm ci
+        working-directory: playground
+      - run: npm run build
+        working-directory: playground
+      - if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: playground/dist
+
+  deploy:
+    needs: build
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

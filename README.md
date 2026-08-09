@@ -100,6 +100,12 @@ if you want it, invisible if you don't.
 npm install exprforge
 ```
 
+**[Try it live](https://theraccoonbear.github.io/exprforge/)** — an
+in-browser playground: write a `` fn`...` `` formula, see it emitted
+across every target language at once, toggle which ones you want
+visible. Runs the real, current library (see `playground/`), not a
+frozen demo build.
+
 ## Usage
 
 ```js
