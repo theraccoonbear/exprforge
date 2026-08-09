@@ -17,6 +17,7 @@ const {
     num, v, add, sub, mul, div, neg, call, cmp, select, letIn, collectLets,
 } = require("../ast.js");
 const { expr } = require("../expr.js");
+const { fn } = require("../fn.js");
 
 test("basic precedence: multiplication before addition", () => {
     assert.deepStrictEqual(expr`a + b * c`, add(v("a"), mul(v("b"), v("c"))));
@@ -132,4 +133,72 @@ test("expr output round-trips through collectLets exactly like a hand-built tree
         call("sqrt", add(call("pow", v("x"), num(2)), call("pow", v("y"), num(2)))),
     );
     assert.strictEqual(body.type, "select");
+});
+
+// --- "#" comments ----------------------------------------------------
+
+test("a trailing '#' comment to end of segment, with real code on the next line", () => {
+    assert.deepStrictEqual(
+        expr`
+            a + b # this is a comment
+        `,
+        add(v("a"), v("b")),
+    );
+});
+
+test("a comment-only line before the real expression", () => {
+    assert.deepStrictEqual(
+        expr`
+            # just a comment
+            a * b
+        `,
+        mul(v("a"), v("b")),
+    );
+});
+
+test("a comment on its own line between two tokens of the same expression", () => {
+    assert.deepStrictEqual(
+        expr`
+            a +
+            # comment on its own line
+            b
+        `,
+        add(v("a"), v("b")),
+    );
+});
+
+test("a comment swallows an interpolation with no newline in between -- value silently dropped, never validated", () => {
+    // undefined would normally throw ("interpolated value must be an AST
+    // node or a plain number") -- inside an open comment it never even
+    // reaches holeToNode, so no throw at all.
+    assert.deepStrictEqual(
+        expr`
+            a + b # comment ${undefined} still comment
+        `,
+        add(v("a"), v("b")),
+    );
+});
+
+test("a comment-only template still throws -- comments produce no tokens, so there's nothing to parse", () => {
+    assert.throws(() => expr`# just a comment, no expression`, /expected a number, identifier, function call, or parenthesized expression/);
+});
+
+test("fn`...` comments work the same way, including after a signature line", () => {
+    const def = fn`
+        normalize(x, y): # signature
+        let mag = sqrt(x^2 + y^2); # shared length
+        return mag > 0 ? x / mag : 0; # ternary guard
+    `;
+    assert.strictEqual(def.name, "normalize");
+    assert.deepStrictEqual(def.params, ["x", "y"]);
+});
+
+test("independent expr() calls don't leak comment state into each other", () => {
+    // Each call gets its own fresh { inComment: false } state object --
+    // a prior call left mid-comment (which can't actually happen since
+    // expr() always fully consumes its own strings array, but this
+    // guards the "one state per top-level call" invariant directly)
+    // must never affect an unrelated call.
+    expr`a + b # comment`;
+    assert.deepStrictEqual(expr`c * d`, mul(v("c"), v("d")));
 });

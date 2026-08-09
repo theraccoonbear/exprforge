@@ -50,13 +50,47 @@ const COMPARE_OPS = [">", "<", ">=", "<=", "==", "!="];
 // `label` is just which tag function's name shows up in error messages
 // -- fn.js passes "fn()" here so a lex error inside `` fn`...` `` isn't
 // misattributed to expr().
-function tokenizeSegment(str, offset, tokens, label = "expr()") {
+//
+// `state.inComment` carries "# comment" status ACROSS segments -- these
+// are tagged template literals, so a source like
+// `` expr`a + b # comment ${x} more` `` tokenizes segment "a + b #
+// comment " and segment " more" separately, with a HOLE for `x` spliced
+// between them by expr()/fn() below. A comment open at the end of one
+// segment has to stay open into the next, or "more" would wrongly
+// become real tokens again. One `state` object is created once per
+// top-level expr()/fn() call and threaded through every call here --
+// never reset per segment.
+function tokenizeSegment(str, offset, tokens, state = { inComment: false }, label = "expr()") {
     let i = 0;
+    if (state.inComment) {
+        const nl = str.indexOf("\n");
+        if (nl === -1) {
+            // The whole segment is still inside the comment -- nothing
+            // to tokenize, and still in-comment for whatever's next.
+            return;
+        }
+        i = nl + 1;
+        state.inComment = false;
+    }
     while (i < str.length) {
         const ch = str[i];
         const start = i;
         if (/\s/.test(ch)) {
             i++;
+            continue;
+        }
+        // "#" comments run to the next newline (or off the end of this
+        // segment, in which case state.inComment stays set for the next
+        // one -- see above). Not part of the OP set below: this
+        // produces no token at all, the same category as whitespace,
+        // not an operator.
+        if (ch === "#") {
+            const nl = str.indexOf("\n", i);
+            if (nl === -1) {
+                state.inComment = true;
+                return;
+            }
+            i = nl + 1;
             continue;
         }
         // NUMBER: 123, 123.45, .5, 1e-9, 1.5E+10
@@ -296,13 +330,22 @@ class Parser {
 // already-evaluated JS value through untouched.
 function expr(strings, ...values) {
     const tokens = [];
+    const state = { inComment: false };
     let source = "";
     for (let i = 0; i < strings.length; i++) {
-        tokenizeSegment(strings[i], source.length, tokens);
+        tokenizeSegment(strings[i], source.length, tokens, state);
         source += strings[i];
         if (i < values.length) {
-            tokens.push({ type: "HOLE", value: values[i], pos: source.length });
             source += "${...}";
+            // A value interpolated inside an open "#" comment is
+            // silently dropped -- never reaches holeToNode, so it's
+            // never validated, even if it would otherwise be an
+            // invalid interpolation (a string, undefined, ...). This is
+            // deliberate: the whole point of a comment is that its
+            // contents don't matter.
+            if (!state.inComment) {
+                tokens.push({ type: "HOLE", value: values[i], pos: source.length });
+            }
         }
     }
     tokens.push({ type: "EOF", value: null, pos: source.length });
