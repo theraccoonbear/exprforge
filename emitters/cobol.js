@@ -109,6 +109,101 @@ function checkUsingClauseNames(names) {
     }
 }
 
+// See https://github.com/theraccoonbear/exprforge/issues/18 for the full
+// design rationale. Only PARAMETERS get this treatment, deliberately --
+// every one of this project's 18 targets calls functions positionally,
+// so a parameter's declared name is purely an internal binding, never
+// visible to a caller in ANY target, making a per-target rename here
+// completely invisible from the outside. fn.name and outputs() field
+// names are NOT included: both remain part of the actual calling
+// contract (CALL "name" USING ... for the function name; a suite's
+// field names are genuinely consumer-visible in every other target's
+// return shape -- a JS caller reads `result.c`), so those still throw
+// via checkUsingClauseNames above rather than silently diverging from
+// what the AST author wrote.
+//
+// The "EFLF_" prefix (ExprForge Language Fix) itself was verified
+// against a real compile+link+run before choosing it as-is, not
+// assumed safe just because it's a plausible-looking identifier: this
+// file already has a DIFFERENT confirmed finding that a COBOL
+// `FUNCTION` call breaks on an underscored name (see CMP_HELPERS above
+// -- why ef-cmp-* is hyphenated, never ef_cmp_*), which could easily
+// have meant the same restriction applies here too. It doesn't --
+// confirmed directly that `EFLF_c` compiles AND runs correctly used
+// exactly as a parameter name in a real `PROCEDURE DIVISION USING`
+// clause. That earlier finding was specifically about calling a
+// FUNCTION-ID *by name* (`FUNCTION word(...)`), not about declaring or
+// referencing a plain variable/parameter identifier, which is the only
+// thing this does.
+const RENAME_PREFIX = "EFLF_";
+
+// Rewrites every `v(name)` reference inside `node` to `v(renames.get(name))`
+// wherever `name` is a key in `renames`, recursively, leaving everything
+// else (including a nested let's OWN binding name -- only var REFERENCES
+// are ever renamed, never a let's declared name) untouched. Mirrors
+// collectLets's own node-type walk in ast.js exactly, since this needs to
+// see the identical tree shape before collectLets ever flattens it.
+function renameVarRefs(node, renames) {
+    const { v, bin, call, cmp, select, letIn, outputs } = require("../ast.js");
+    if (node.type === "var") {
+        return renames.has(node.name) ? v(renames.get(node.name)) : node;
+    }
+    if (node.type === "num") return node;
+    if (node.type === "bin") return bin(node.op, renameVarRefs(node.left, renames), renameVarRefs(node.right, renames));
+    if (node.type === "call") return call(node.name, ...node.args.map((a) => renameVarRefs(a, renames)));
+    if (node.type === "cmp") return cmp(renameVarRefs(node.left, renames), node.op, renameVarRefs(node.right, renames));
+    if (node.type === "select") {
+        return select(renameVarRefs(node.cond, renames), renameVarRefs(node.then, renames), renameVarRefs(node.else, renames));
+    }
+    if (node.type === "let") return letIn(node.name, renameVarRefs(node.value, renames), renameVarRefs(node.body, renames));
+    if (node.type === "outputs") {
+        const fields = {};
+        for (const [name, fieldNode] of Object.entries(node.fields)) {
+            fields[name] = renameVarRefs(fieldNode, renames);
+        }
+        return outputs(fields);
+    }
+    throw new Error(`emitter for .cob: renameConflictingParams: unknown node type "${node.type}"`);
+}
+
+// Returns a NEW {name, params, body} -- fn itself is never mutated -- with
+// any parameter colliding with `conflictSet` renamed to
+// `${RENAME_PREFIX}${originalName}` everywhere it's declared and
+// referenced. A no-op (returns fn unchanged) when nothing collides, so
+// this is always safe to call unconditionally at the top of
+// emitFunction.
+function renameConflictingParams(fn, conflictSet) {
+    const renames = new Map();
+    for (const p of fn.params) {
+        if (conflictSet.has(p.toLowerCase())) {
+            renames.set(p, `${RENAME_PREFIX}${p}`);
+        }
+    }
+    if (renames.size === 0) return fn;
+
+    const newParams = fn.params.map((p) => renames.get(p) ?? p);
+    // Defensive, not expected to ever actually fire given how narrow
+    // COBOL_USING_RESERVED is today -- but if a renamed param ever DID
+    // collide with another existing param (e.g. both "c" and "EFLF_c"
+    // used as real param names in the same function), that would
+    // silently produce a duplicate 01-level declaration and a real
+    // compiler error far from this code -- fail loudly here instead,
+    // at the actual point the ambiguity is introduced.
+    const seen = new Set();
+    for (const p of newParams) {
+        const lower = p.toLowerCase();
+        if (seen.has(lower)) {
+            throw new Error(
+                `emitter for .cob: renaming parameter to avoid a COBOL collision produced a duplicate ` +
+                `name ("${p}") -- rename your original "${p}"-colliding parameter directly instead`,
+            );
+        }
+        seen.add(lower);
+    }
+
+    return { name: fn.name, params: newParams, body: renameVarRefs(fn.body, renames) };
+}
+
 function fn1(name) {
     return ([x]) => `FUNCTION ${name}(${x})`;
 }
@@ -226,6 +321,11 @@ class TempPool {
 class CobolEmitter extends Emitter {
     emitFunction(fn) {
         const { collectLets } = require("../ast.js");
+        // Must run before collectLets, and before anything else in this
+        // function -- collectLets flattens the tree's let structure away,
+        // and every check/emission step below assumes fn.params is
+        // already COBOL-safe. See renameConflictingParams above.
+        fn = renameConflictingParams(fn, COBOL_USING_RESERVED);
         const { bindings, body } = collectLets(fn.body);
         const counter = { next: 0 };
 
