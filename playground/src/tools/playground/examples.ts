@@ -32,7 +32,7 @@ fib(n):
     },
     {
         id: "quadratic",
-        label: "Quadratic formula (both roots)",
+        label: "Quadratic formula (multi-output: both roots)",
         source: `quadraticRoots(a, b, cc):
   let disc = sqrt(b^2 - 4 * a * cc);
   return { root1: (-b + disc) / (2 * a), root2: (-b - disc) / (2 * a) };
@@ -93,6 +93,21 @@ catmullRom(p0, p1, p2, p3, t):
         label: "Sigmoid (logistic function)",
         source: `sigmoid(x):
   return 1 / (1 + exp(-x));
+`,
+    },
+    {
+        id: "normalize3",
+        label: "Normalize 3D vector (multi-output: x, y, z)",
+        source: `# Same shape as math/index.js's real normalize3() helper -- falls
+# back to (0, 0, 0) rather than dividing by zero for the degenerate
+# input vector.
+normalize3(x, y, z):
+  let mag = sqrt(x^2 + y^2 + z^2);
+  return {
+    nx: mag > 0 ? x / mag : 0,
+    ny: mag > 0 ? y / mag : 0,
+    nz: mag > 0 ? z / mag : 0
+  };
 `,
     },
 ];

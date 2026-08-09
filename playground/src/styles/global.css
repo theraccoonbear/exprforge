@@ -214,6 +214,7 @@ pre,
     font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
     font-size: 0.9rem;
     font-weight: 600;
+    color: var(--text);
 }
 
 .interpreter-panel-result--error {
@@ -221,6 +222,23 @@ pre,
     font-weight: 400;
     font-size: 0.8rem;
     white-space: pre-wrap;
+}
+
+/* A multi-output result: one row per field, not single-line JSON. */
+.interpreter-panel-result--fields {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    font-weight: 400;
+}
+
+.interpreter-panel-field {
+    white-space: nowrap;
+}
+
+.interpreter-panel-field-name {
+    color: var(--text-dim);
+    font-weight: 400;
 }
 
 .playground-toggles {

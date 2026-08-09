@@ -46,15 +46,42 @@ export function InterpreterCard({ def }: InterpreterCardProps) {
             <span className="interpreter-panel-arrow" aria-hidden="true">
                 →
             </span>
-            <div className={result.error ? "interpreter-panel-result interpreter-panel-result--error" : "interpreter-panel-result"}>
-                {result.error ?? formatResult(result.value)}
-            </div>
+            <ResultDisplay error={result.error} value={result.value} />
         </div>
     );
 }
 
-function formatResult(value: number | Record<string, number> | null): string {
-    if (value === null) return "";
-    if (typeof value === "number") return String(value);
-    return JSON.stringify(value);
+function ResultDisplay({ error, value }: { error: string | null; value: number | Record<string, number> | null }) {
+    if (error) {
+        return <div className="interpreter-panel-result interpreter-panel-result--error">{error}</div>;
+    }
+    if (value === null) {
+        return <div className="interpreter-panel-result" />;
+    }
+    if (typeof value === "number") {
+        return <div className="interpreter-panel-result">{formatNumber(value)}</div>;
+    }
+    // A multi-output result -- one labeled field per row (matching the
+    // param-input aesthetic above it), not a single line of proportional-
+    // font JSON crammed in next to the arrow.
+    return (
+        <div className="interpreter-panel-result interpreter-panel-result--fields">
+            {Object.entries(value).map(([name, fieldValue]) => (
+                <span key={name} className="interpreter-panel-field">
+                    <span className="interpreter-panel-field-name">{name}:</span> {formatNumber(fieldValue)}
+                </span>
+            ))}
+        </div>
+    );
+}
+
+// Long floats (e.g. an irrational result) are truncated to a readable
+// number of significant digits -- the raw double's ~17-digit round-trip
+// precision is correctness-relevant for evaluate() itself, but not
+// something worth spelling out in full in a UI meant to be read at a
+// glance.
+function formatNumber(n: number): string {
+    if (!Number.isFinite(n)) return String(n);
+    if (Number.isInteger(n)) return String(n);
+    return n.toPrecision(6).replace(/\.?0+$/, "");
 }
