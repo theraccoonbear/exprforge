@@ -122,14 +122,70 @@ pre,
     margin: 0 auto;
 }
 
+.playground-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+}
+
+.playground-examples {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.85rem;
+    color: var(--text-dim);
+}
+
+.playground-examples select {
+    background: var(--bg-panel);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 6px;
+    padding: 0.35rem 0.5rem;
+    font-size: 0.85rem;
+}
+
+.playground-copy-link {
+    background: var(--bg-panel);
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    border-radius: 999px;
+    padding: 0.35rem 0.9rem;
+    font-size: 0.82rem;
+    cursor: pointer;
+}
+
+.playground-copy-link:hover {
+    color: var(--text);
+    border-color: var(--accent-strong);
+}
+
 .playground-editor-pane {
     border: 1px solid var(--border);
     border-radius: var(--radius);
     overflow: hidden;
 }
 
+/* The actual drag-resizable element -- CSS `resize` needs a concrete
+   starting height plus `overflow` other than visible to draw its handle
+   at all, so that lives here rather than on .playground-editor-pane
+   itself (which also hosts the non-resizable error banner below it).
+   Cardano's-formula-sized examples are the whole reason this exists --
+   a fixed ~220px box meant a lot of scrolling to see a ~30-line
+   formula at once. */
+.playground-editor-resize {
+    height: 320px;
+    min-height: 120px;
+    max-height: 80vh;
+    resize: vertical;
+    overflow: auto;
+}
+
 .playground-editor-pane .cm-editor {
     font-size: 0.95rem;
+    height: 100%;
 }
 
 .playground-error {
@@ -139,6 +195,66 @@ pre,
     padding: 0.6rem 0.9rem;
     font-size: 0.85rem;
     white-space: pre-wrap;
+}
+
+/* ---- interpreter panel (part of the editing area, not an output) --- */
+
+.interpreter-panel {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    background: var(--bg-panel);
+    border: 1px solid var(--accent-strong);
+    border-radius: var(--radius);
+    padding: 0.6rem 0.9rem;
+}
+
+.interpreter-panel-label {
+    font-weight: 600;
+    font-size: 0.82rem;
+    color: var(--accent);
+}
+
+.interpreter-panel-inputs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.6rem;
+}
+
+.interpreter-panel-arrow {
+    color: var(--text-dim);
+}
+
+.interpreter-panel-result {
+    font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--text);
+}
+
+.interpreter-panel-result--error {
+    color: var(--error-text);
+    font-weight: 400;
+    font-size: 0.8rem;
+    white-space: pre-wrap;
+}
+
+/* A multi-output result: one row per field, not single-line JSON. */
+.interpreter-panel-result--fields {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    font-weight: 400;
+}
+
+.interpreter-panel-field {
+    white-space: nowrap;
+}
+
+.interpreter-panel-field-name {
+    color: var(--text-dim);
+    font-weight: 400;
 }
 
 .playground-toggles {
@@ -238,15 +354,19 @@ pre,
     white-space: pre-wrap;
 }
 
-.lang-card--interpreter {
-    border-color: var(--accent-strong);
+/* Read-only CodeMirror instances embedded in a card -- no focus
+   outline (nothing to type here) and no border of its own, since the
+   card itself already draws one. */
+.lang-card .cm-editor {
+    background: transparent;
 }
 
-.interpreter-inputs {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.6rem;
-    padding: 0.6rem 0.75rem 0;
+.lang-card .cm-editor.cm-focused {
+    outline: none;
+}
+
+.lang-card--error {
+    border-color: var(--error-border);
 }
 
 .interpreter-input {

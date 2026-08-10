@@ -28,6 +28,11 @@ No required dependencies. You can build the AST directly with plain JS
 functions, or author it as readable infix text via `expr`/`fn` (see
 below) — either way, the same tree is walked once per target.
 
+**[▶ Try it live](https://theraccoonbear.github.io/exprforge/)** — write
+a `` fn`...` `` formula in the browser and watch it emitted across every
+target language at once, no install required. Runs the real, current
+library (see `playground/`), not a frozen demo build.
+
 ## Why
 
 Codegen tools like SymPy already turn math expressions into code for
@@ -99,12 +104,6 @@ if you want it, invisible if you don't.
 ```
 npm install exprforge
 ```
-
-**[Try it live](https://theraccoonbear.github.io/exprforge/)** — an
-in-browser playground: write a `` fn`...` `` formula, see it emitted
-across every target language at once, toggle which ones you want
-visible. Runs the real, current library (see `playground/`), not a
-frozen demo build.
 
 ## Usage
 
@@ -234,6 +233,17 @@ words — Perl/PHP mostly sidestep this (every variable is `$`-sigiled, so
 it can't collide with a bareword keyword), but the sigil-free languages
 above genuinely can't be fully guarded against in advance.
 
+**COBOL is a partial exception**: a *parameter* colliding with one of its
+narrow, syntax-specific quirks (e.g. a bare `c`, which breaks GnuCOBOL's
+`CALL ... USING` clause specifically) gets silently renamed internally
+(`EFLF_c`) rather than thrown at you — safe because every target here
+calls positionally, so a parameter's declared name is never visible to a
+caller in any of them. The function's own name and any `outputs()` field
+names are **not** covered by this — both remain part of the actual
+calling contract (a suite's field names are genuinely consumer-visible in
+every other target's return shape), so those still throw, same as before.
+See `renameConflictingParams` in `emitters/cobol.js`.
+
 ## Named subexpressions and conditional values
 
 Beyond `num`/`v`/`bin`/`call`, two more node types stay inside the
@@ -317,6 +327,7 @@ expr`(-b + sqrt(b^2 - 4*a*c)) / (2*a)`
 | bare `name` | `v("name")` |
 | `cond ? then : else` | `select(cmp(left, op, right), then, else)` — the **only** place a comparison (`> < >= <= == !=`) is valid, matching `cmp()`'s own documented constraint that it's never a general boolean expression. A bare `a > b` with no `?` is a parse-time error, not a deferred one. Chains naturally: `a>0 ? 1 : b>0 ? 2 : 3`. |
 | `${...}` | Splices in an existing AST node as-is, or a plain JS number (auto-wrapped via `num()`). Anything else throws immediately. Plain strings aren't interpolatable — a bare identifier in the template text already means "variable", with no `${}` needed. |
+| `# ...` | An end-of-line comment — runs to the next newline, produces no tokens. Works across `${...}` interpolation boundaries too: a value interpolated inside an open comment is silently dropped, never validated (not even for what would otherwise be an invalid interpolation). |
 
 Deliberately **not** in the grammar: `let`/`outputs` blocks (it's a pure
 expression grammar, same "expression AST, not a program AST" boundary as
@@ -372,8 +383,8 @@ const { fn, emitAll, evaluate } = require("exprforge");
 
 const normalize2 = fn`
     normalize2(x, y):
-    let mag = sqrt(x^2 + y^2);
-    return { nx: x / mag, ny: y / mag };
+      let mag = sqrt(x^2 + y^2);
+      return { nx: x / mag, ny: y / mag };
 `;
 // normalize2 is now the full {name, params, body} shape directly --
 // no wrapping object needed.
@@ -406,7 +417,7 @@ handles, backed by the real `Math.*` functions.
 const { emitAll, evaluate } = require("exprforge");
 
 emitAll(normalize2).expr.source;
-// "let mag = sqrt(((x^2) + (y^2)));\nreturn { nx: (x / mag), ny: (y / mag) };\n"
+// "normalize2(x, y):\n  let mag = sqrt(((x^2) + (y^2)));\n  return { nx: (x / mag), ny: (y / mag) };\n"
 
 evaluate(normalize2, [3, 4]);
 // { nx: 0.6, ny: 0.8 }

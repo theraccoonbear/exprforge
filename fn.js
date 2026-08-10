@@ -147,13 +147,19 @@ function parseProgram(parser) {
 // parser.parseExpression()).
 function fn(strings, ...values) {
     const tokens = [];
+    const state = { inComment: false };
     let source = "";
     for (let i = 0; i < strings.length; i++) {
-        tokenizeSegment(strings[i], source.length, tokens, "fn()");
+        tokenizeSegment(strings[i], source.length, tokens, state, "fn()");
         source += strings[i];
         if (i < values.length) {
-            tokens.push({ type: "HOLE", value: values[i], pos: source.length });
             source += "${...}";
+            // See expr.js's tokenizeSegment/expr() for why this is
+            // silently dropped rather than pushed -- same rule, same
+            // reasoning, shared state object.
+            if (!state.inComment) {
+                tokens.push({ type: "HOLE", value: values[i], pos: source.length });
+            }
         }
     }
     tokens.push({ type: "EOF", value: null, pos: source.length });

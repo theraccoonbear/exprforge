@@ -109,9 +109,18 @@ function normalizeXReference(x, y, z) {
 // glance" case that motivated expr() over add(mul(...)) nesting in the
 // first place.
 //
-// "fallback", not "c": a bare "c" breaks GnuCOBOL's CALL ... USING clause
-// specifically -- confirmed against a real compiler and now guarded at
-// emission time too (see COBOL_USING_RESERVED in emitters/cobol.js).
+// "c", not "fallback" -- deliberately reverted back to the real,
+// motivating identifier once the actual underlying bug was fixed for
+// real, same discipline this file already applies to spillPow's "**"
+// fix below: a bare "c" param used to break GnuCOBOL's CALL ... USING
+// clause specifically, and this fixture used to work around it by using
+// "fallback" instead. Now that emitters/cobol.js renames a colliding
+// PARAMETER internally (EFLF_c) rather than throwing -- see
+// renameConflictingParams there, and
+// https://github.com/theraccoonbear/exprforge/issues/18 for the design
+// rationale -- "c" is proven to actually work here, in the real
+// conformance suite, across all 18 targets, not just in an isolated
+// throwaway script.
 //
 // sqrt(a^2 + b^2) here specifically -- not simplified to avoid it -- is
 // deliberate: a "**" expression nested inside another function call's
@@ -121,12 +130,12 @@ function normalizeXReference(x, y, z) {
 // not routed around it.
 const exprSyntaxDemoAst = {
     name: "exprSyntaxDemo",
-    params: ["a", "b", "fallback"],
-    body: expr`a > 0 ? sqrt(a^2 + b^2) : fallback`,
+    params: ["a", "b", "c"],
+    body: expr`a > 0 ? sqrt(a^2 + b^2) : c`,
 };
 
-function exprSyntaxDemoReference(a, b, fallback) {
-    return a > 0 ? Math.sqrt(a * a + b * b) : fallback;
+function exprSyntaxDemoReference(a, b, c) {
+    return a > 0 ? Math.sqrt(a * a + b * b) : c;
 }
 
 const SAMPLES = {
@@ -1042,20 +1051,37 @@ function runSuiteZig(ast, inputs, outputNames) {
 // GnuCOBOL's ARGUMENT-NUMBER/ARGUMENT-VALUE mechanism, converted with
 // FUNCTION NUMVAL -- there's no argv-array equivalent.
 
+// This harness's own local variables are declared directly from
+// ast.params/outputNames -- but COBOL's CALL...USING is purely
+// positional (the CALLEE's linkage-section parameter name is
+// independent of whatever the CALLER's own local variable holding that
+// argument happens to be named), so prefixing every harness-local name
+// this way is completely safe and changes nothing about what's actually
+// being tested. Needed for real, not just defensively: found the hard
+// way when test/conformance.test.js's own exprSyntaxDemo fixture
+// started using "c" as a real param name again (see its own comment) to
+// prove emitters/cobol.js's renameConflictingParams fix works end-to-end
+// -- this harness had an entirely independent instance of the exact
+// same bare-"c"-in-a-USING-clause restriction, on the CALLER's side,
+// unrelated to whatever the callee's own parameters are named.
+function harnessVar(name) {
+    return `harness-${name}`;
+}
+
 function runCobol(ast, inputs) {
     const source = emitters.cobol.emitFunction(ast);
     const dir = tmpDir("ef-cob-");
     fs.writeFileSync(path.join(dir, "fn.cob"), source);
-    const varDecl = [...ast.params, "ef-result"].map((p) => `       01 ${p} USAGE COMP-2.`).join("\n");
+    const varDecl = [...ast.params, "ef-result"].map((p) => `       01 ${harnessVar(p)} USAGE COMP-2.`).join("\n");
     const reads = ast.params
         .map(
             (p, i) =>
                 `           DISPLAY ${i + 1} UPON ARGUMENT-NUMBER\n` +
                 `           ACCEPT WS-ARG FROM ARGUMENT-VALUE\n` +
-                `           COMPUTE ${p} = FUNCTION NUMVAL(WS-ARG)`,
+                `           COMPUTE ${harnessVar(p)} = FUNCTION NUMVAL(WS-ARG)`,
         )
         .join("\n");
-    const callArgs = [...ast.params, "ef-result"].join(" ");
+    const callArgs = [...ast.params, "ef-result"].map(harnessVar).join(" ");
     const harness =
         `       >>SOURCE FORMAT FREE\n` +
         `       IDENTIFICATION DIVISION.\n` +
@@ -1067,7 +1093,7 @@ function runCobol(ast, inputs) {
         `       PROCEDURE DIVISION.\n` +
         reads + "\n" +
         `           CALL "${ast.name}" USING ${callArgs}\n` +
-        `           DISPLAY ef-result\n` +
+        `           DISPLAY ${harnessVar("ef-result")}\n` +
         `           STOP RUN.\n`;
     const srcPath = path.join(dir, "main.cob");
     fs.writeFileSync(srcPath, harness);
@@ -1082,17 +1108,17 @@ function runSuiteCobol(ast, inputs, outputNames) {
     const source = emitters.cobol.emitFunction(ast);
     const dir = tmpDir("ef-cob-");
     fs.writeFileSync(path.join(dir, "fn.cob"), source);
-    const varDecl = [...ast.params, ...outputNames].map((p) => `       01 ${p} USAGE COMP-2.`).join("\n");
+    const varDecl = [...ast.params, ...outputNames].map((p) => `       01 ${harnessVar(p)} USAGE COMP-2.`).join("\n");
     const reads = ast.params
         .map(
             (p, i) =>
                 `           DISPLAY ${i + 1} UPON ARGUMENT-NUMBER\n` +
                 `           ACCEPT WS-ARG FROM ARGUMENT-VALUE\n` +
-                `           COMPUTE ${p} = FUNCTION NUMVAL(WS-ARG)`,
+                `           COMPUTE ${harnessVar(p)} = FUNCTION NUMVAL(WS-ARG)`,
         )
         .join("\n");
-    const callArgs = [...ast.params, ...outputNames].join(" ");
-    const prints = outputNames.map((n) => `           DISPLAY ${n}`).join("\n");
+    const callArgs = [...ast.params, ...outputNames].map(harnessVar).join(" ");
+    const prints = outputNames.map((n) => `           DISPLAY ${harnessVar(n)}`).join("\n");
     const harness =
         `       >>SOURCE FORMAT FREE\n` +
         `       IDENTIFICATION DIVISION.\n` +
@@ -1365,7 +1391,16 @@ const { fn: exprFn } = require("../fn.js");
 
 function assertExprSyntaxRoundTrips(ast, inputs) {
     const printed = emitters.expr.emitFunction(ast);
-    const reparsedDef = { name: ast.name, params: ast.params, body: exprFn([printed]) };
+    // The printed text always carries its own "name(params):" signature
+    // line (emitters/exprsyntax.js) -- reparsing it via fn() recovers a
+    // full {name, params, body} directly, with no need to borrow
+    // ast.name/ast.params from the original the way an earlier version
+    // of this test did. Asserting on the reparsed values themselves
+    // (not just reusing the source ones) is what actually proves the
+    // signature line round-trips, not just the body.
+    const reparsedDef = exprFn([printed]);
+    assert.strictEqual(reparsedDef.name, ast.name, `${ast.name}: signature name didn't round-trip -- printed:\n${printed}`);
+    assert.deepStrictEqual(reparsedDef.params, ast.params, `${ast.name}: signature params didn't round-trip -- printed:\n${printed}`);
     for (const args of inputs) {
         const original = evaluate(ast, args);
         const roundTripped = evaluate(reparsedDef, args);

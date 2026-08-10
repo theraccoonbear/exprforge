@@ -34,6 +34,24 @@
 // machinery as select() itself, not a separate mechanism.
 const Emitter = require("./base.js");
 
+// Free-format COBOL (this file always emits >>SOURCE FORMAT FREE, see
+// formatFunction/formatSuite below) doesn't need or use the traditional
+// fixed-format column layout -- cols 1-6 sequence numbers, col 7
+// indicator area, content starting at col 8/"Area A" -- that's purely a
+// punch-card-era holdover, not something GnuCOBOL's free-format parser
+// requires. Confirmed by actually compiling with it removed (not just
+// reasoned about): the original 7/11/15-space margins compiled fine,
+// and so does this smaller scheme, run through the exact same
+// test/conformance.test.js COBOL checks. Kept a small, familiar
+// 4-space-per-nesting-level convention purely for readability's sake:
+// HDR (division/section/paragraph headers, 01-level declarations,
+// REPOSITORY entries) at column 1, STMT (top-level PROCEDURE DIVISION
+// statements) one level in, NESTED (statements inside an IF/ELSE, or a
+// wrapped line's continuation) one level deeper still.
+const HDR = "";
+const STMT = "    ";
+const NESTED = "        ";
+
 // COBOL reserved words plus every intrinsic-function name this emitter's
 // calls table depends on -- same role as QB64_RESERVED in emitters/qb64.js.
 // COBOL is case-insensitive, so names are checked lowercased. Not
@@ -91,6 +109,101 @@ function checkUsingClauseNames(names) {
     }
 }
 
+// See https://github.com/theraccoonbear/exprforge/issues/18 for the full
+// design rationale. Only PARAMETERS get this treatment, deliberately --
+// every one of this project's 18 targets calls functions positionally,
+// so a parameter's declared name is purely an internal binding, never
+// visible to a caller in ANY target, making a per-target rename here
+// completely invisible from the outside. fn.name and outputs() field
+// names are NOT included: both remain part of the actual calling
+// contract (CALL "name" USING ... for the function name; a suite's
+// field names are genuinely consumer-visible in every other target's
+// return shape -- a JS caller reads `result.c`), so those still throw
+// via checkUsingClauseNames above rather than silently diverging from
+// what the AST author wrote.
+//
+// The "EFLF_" prefix (ExprForge Language Fix) itself was verified
+// against a real compile+link+run before choosing it as-is, not
+// assumed safe just because it's a plausible-looking identifier: this
+// file already has a DIFFERENT confirmed finding that a COBOL
+// `FUNCTION` call breaks on an underscored name (see CMP_HELPERS above
+// -- why ef-cmp-* is hyphenated, never ef_cmp_*), which could easily
+// have meant the same restriction applies here too. It doesn't --
+// confirmed directly that `EFLF_c` compiles AND runs correctly used
+// exactly as a parameter name in a real `PROCEDURE DIVISION USING`
+// clause. That earlier finding was specifically about calling a
+// FUNCTION-ID *by name* (`FUNCTION word(...)`), not about declaring or
+// referencing a plain variable/parameter identifier, which is the only
+// thing this does.
+const RENAME_PREFIX = "EFLF_";
+
+// Rewrites every `v(name)` reference inside `node` to `v(renames.get(name))`
+// wherever `name` is a key in `renames`, recursively, leaving everything
+// else (including a nested let's OWN binding name -- only var REFERENCES
+// are ever renamed, never a let's declared name) untouched. Mirrors
+// collectLets's own node-type walk in ast.js exactly, since this needs to
+// see the identical tree shape before collectLets ever flattens it.
+function renameVarRefs(node, renames) {
+    const { v, bin, call, cmp, select, letIn, outputs } = require("../ast.js");
+    if (node.type === "var") {
+        return renames.has(node.name) ? v(renames.get(node.name)) : node;
+    }
+    if (node.type === "num") return node;
+    if (node.type === "bin") return bin(node.op, renameVarRefs(node.left, renames), renameVarRefs(node.right, renames));
+    if (node.type === "call") return call(node.name, ...node.args.map((a) => renameVarRefs(a, renames)));
+    if (node.type === "cmp") return cmp(renameVarRefs(node.left, renames), node.op, renameVarRefs(node.right, renames));
+    if (node.type === "select") {
+        return select(renameVarRefs(node.cond, renames), renameVarRefs(node.then, renames), renameVarRefs(node.else, renames));
+    }
+    if (node.type === "let") return letIn(node.name, renameVarRefs(node.value, renames), renameVarRefs(node.body, renames));
+    if (node.type === "outputs") {
+        const fields = {};
+        for (const [name, fieldNode] of Object.entries(node.fields)) {
+            fields[name] = renameVarRefs(fieldNode, renames);
+        }
+        return outputs(fields);
+    }
+    throw new Error(`emitter for .cob: renameConflictingParams: unknown node type "${node.type}"`);
+}
+
+// Returns a NEW {name, params, body} -- fn itself is never mutated -- with
+// any parameter colliding with `conflictSet` renamed to
+// `${RENAME_PREFIX}${originalName}` everywhere it's declared and
+// referenced. A no-op (returns fn unchanged) when nothing collides, so
+// this is always safe to call unconditionally at the top of
+// emitFunction.
+function renameConflictingParams(fn, conflictSet) {
+    const renames = new Map();
+    for (const p of fn.params) {
+        if (conflictSet.has(p.toLowerCase())) {
+            renames.set(p, `${RENAME_PREFIX}${p}`);
+        }
+    }
+    if (renames.size === 0) return fn;
+
+    const newParams = fn.params.map((p) => renames.get(p) ?? p);
+    // Defensive, not expected to ever actually fire given how narrow
+    // COBOL_USING_RESERVED is today -- but if a renamed param ever DID
+    // collide with another existing param (e.g. both "c" and "EFLF_c"
+    // used as real param names in the same function), that would
+    // silently produce a duplicate 01-level declaration and a real
+    // compiler error far from this code -- fail loudly here instead,
+    // at the actual point the ambiguity is introduced.
+    const seen = new Set();
+    for (const p of newParams) {
+        const lower = p.toLowerCase();
+        if (seen.has(lower)) {
+            throw new Error(
+                `emitter for .cob: renaming parameter to avoid a COBOL collision produced a duplicate ` +
+                `name ("${p}") -- rename your original "${p}"-colliding parameter directly instead`,
+            );
+        }
+        seen.add(lower);
+    }
+
+    return { name: fn.name, params: newParams, body: renameVarRefs(fn.body, renames) };
+}
+
 function fn1(name) {
     return ([x]) => `FUNCTION ${name}(${x})`;
 }
@@ -121,31 +234,31 @@ const CMP_HELPERS = {
 // statement per line -- confirmed against a real compiler that a missing
 // trailing period here breaks the DATA DIVISION that follows).
 const CMP_REPOSITORY =
-    `       REPOSITORY.\n` +
+    `${HDR}REPOSITORY.\n` +
     Object.values(CMP_HELPERS)
-        .map(({ suffix }, i, arr) => `           FUNCTION ef-cmp-${suffix}${i === arr.length - 1 ? "." : ""}`)
+        .map(({ suffix }, i, arr) => `${STMT}FUNCTION ef-cmp-${suffix}${i === arr.length - 1 ? "." : ""}`)
         .join("\n") +
     "\n";
 
 const CMP_HELPER_SOURCE = Object.values(CMP_HELPERS)
     .map(
-        ({ suffix, test }) => `       IDENTIFICATION DIVISION.
-       FUNCTION-ID. ef-cmp-${suffix}.
-       DATA DIVISION.
-       LINKAGE SECTION.
-       01 L USAGE COMP-2.
-       01 R USAGE COMP-2.
-       01 THEN-VAL USAGE COMP-2.
-       01 ELSE-VAL USAGE COMP-2.
-       01 RESULT USAGE COMP-2.
-       PROCEDURE DIVISION USING L R THEN-VAL ELSE-VAL RETURNING RESULT.
-           IF ${test}
-               MOVE THEN-VAL TO RESULT
-           ELSE
-               MOVE ELSE-VAL TO RESULT
-           END-IF
-           GOBACK.
-       END FUNCTION ef-cmp-${suffix}.
+        ({ suffix, test }) => `${HDR}IDENTIFICATION DIVISION.
+${HDR}FUNCTION-ID. ef-cmp-${suffix}.
+${HDR}DATA DIVISION.
+${HDR}LINKAGE SECTION.
+${HDR}01 L USAGE COMP-2.
+${HDR}01 R USAGE COMP-2.
+${HDR}01 THEN-VAL USAGE COMP-2.
+${HDR}01 ELSE-VAL USAGE COMP-2.
+${HDR}01 RESULT USAGE COMP-2.
+${HDR}PROCEDURE DIVISION USING L R THEN-VAL ELSE-VAL RETURNING RESULT.
+${STMT}IF ${test}
+${NESTED}MOVE THEN-VAL TO RESULT
+${STMT}ELSE
+${NESTED}MOVE ELSE-VAL TO RESULT
+${STMT}END-IF
+${STMT}GOBACK.
+${HDR}END FUNCTION ef-cmp-${suffix}.
 `,
     )
     .join("\n");
@@ -165,7 +278,7 @@ function wrapLine(line, maxWidth = 100) {
     for (const word of words) {
         if (current && current.length + 1 + word.length > maxWidth) {
             wrapped.push(current);
-            current = `               ${word}`;
+            current = `${NESTED}${word}`;
         } else {
             current = current ? `${current} ${word}` : word;
         }
@@ -200,7 +313,7 @@ class TempPool {
     spill(valueStr) {
         const name = `ef-tmp-${this.counter.next++}`;
         this.decls.push(name);
-        this.lines.push(wrapLine(`           COMPUTE ${name} = ${valueStr}`));
+        this.lines.push(wrapLine(`${STMT}COMPUTE ${name} = ${valueStr}`));
         return name;
     }
 }
@@ -208,6 +321,11 @@ class TempPool {
 class CobolEmitter extends Emitter {
     emitFunction(fn) {
         const { collectLets } = require("../ast.js");
+        // Must run before collectLets, and before anything else in this
+        // function -- collectLets flattens the tree's let structure away,
+        // and every check/emission step below assumes fn.params is
+        // already COBOL-safe. See renameConflictingParams above.
+        fn = renameConflictingParams(fn, COBOL_USING_RESERVED);
         const { bindings, body } = collectLets(fn.body);
         const counter = { next: 0 };
 
@@ -219,7 +337,7 @@ class CobolEmitter extends Emitter {
             const valueStr = this.emitExpr(node);
             letLines.push(...this._pool.lines);
             letDecls.push(...this._pool.decls, name);
-            letLines.push(wrapLine(`           COMPUTE ${name} = ${valueStr}`));
+            letLines.push(wrapLine(`${STMT}COMPUTE ${name} = ${valueStr}`));
         }
 
         if (body.type === "outputs") {
@@ -426,52 +544,52 @@ const emitter = new CobolEmitter({
         checkReservedNames([fn.name, ...fn.params]);
         checkUsingClauseNames([fn.name, ...fn.params]);
         const linkageParams = [...fn.params, "ef-result"];
-        const paramDecls = linkageParams.map((p) => `       01 ${p} USAGE COMP-2.`).join("\n");
-        const wsDecls = letDecls.map((n) => `       01 ${n} USAGE COMP-2.`).join("\n");
-        return `       >>SOURCE FORMAT FREE\n` +
-               `      *> AUTO-GENERATED by ExprForge -- do not hand-edit.\n` +
+        const paramDecls = linkageParams.map((p) => `${HDR}01 ${p} USAGE COMP-2.`).join("\n");
+        const wsDecls = letDecls.map((n) => `${HDR}01 ${n} USAGE COMP-2.`).join("\n");
+        return `${HDR}>>SOURCE FORMAT FREE\n` +
+               `${HDR}*> AUTO-GENERATED by ExprForge -- do not hand-edit.\n` +
                CMP_HELPER_SOURCE + "\n" +
-               `       IDENTIFICATION DIVISION.\n` +
-               `       PROGRAM-ID. ${fn.name}.\n` +
-               `       ENVIRONMENT DIVISION.\n` +
-               `       CONFIGURATION SECTION.\n` +
+               `${HDR}IDENTIFICATION DIVISION.\n` +
+               `${HDR}PROGRAM-ID. ${fn.name}.\n` +
+               `${HDR}ENVIRONMENT DIVISION.\n` +
+               `${HDR}CONFIGURATION SECTION.\n` +
                CMP_REPOSITORY +
-               `       DATA DIVISION.\n` +
-               (wsDecls ? `       WORKING-STORAGE SECTION.\n${wsDecls}\n` : "") +
-               `       LINKAGE SECTION.\n` +
+               `${HDR}DATA DIVISION.\n` +
+               (wsDecls ? `${HDR}WORKING-STORAGE SECTION.\n${wsDecls}\n` : "") +
+               `${HDR}LINKAGE SECTION.\n` +
                paramDecls + "\n" +
-               `       PROCEDURE DIVISION USING ${linkageParams.join(" ")}.\n` +
+               `${HDR}PROCEDURE DIVISION USING ${linkageParams.join(" ")}.\n` +
                [...letLines, ...bodyLines].join("\n") + (letLines.length || bodyLines.length ? "\n" : "") +
-               wrapLine(`           COMPUTE ef-result = ${body}`) + "\n" +
-               `           GOBACK.\n` +
-               `       END PROGRAM ${fn.name}.\n`;
+               wrapLine(`${STMT}COMPUTE ef-result = ${body}`) + "\n" +
+               `${STMT}GOBACK.\n` +
+               `${HDR}END PROGRAM ${fn.name}.\n`;
     },
     formatSuite: (fn, outputStrs, letLines, letDecls, outputLines) => {
         const outputNames = Object.keys(outputStrs);
         checkReservedNames([fn.name, ...fn.params, ...outputNames]);
         checkUsingClauseNames([fn.name, ...fn.params, ...outputNames]);
         const linkageParams = [...fn.params, ...outputNames];
-        const paramDecls = linkageParams.map((p) => `       01 ${p} USAGE COMP-2.`).join("\n");
-        const wsDecls = letDecls.map((n) => `       01 ${n} USAGE COMP-2.`).join("\n");
-        const assigns = outputNames.map((n) => wrapLine(`           COMPUTE ${n} = ${outputStrs[n]}`)).join("\n");
-        return `       >>SOURCE FORMAT FREE\n` +
-               `      *> AUTO-GENERATED by ExprForge -- do not hand-edit.\n` +
+        const paramDecls = linkageParams.map((p) => `${HDR}01 ${p} USAGE COMP-2.`).join("\n");
+        const wsDecls = letDecls.map((n) => `${HDR}01 ${n} USAGE COMP-2.`).join("\n");
+        const assigns = outputNames.map((n) => wrapLine(`${STMT}COMPUTE ${n} = ${outputStrs[n]}`)).join("\n");
+        return `${HDR}>>SOURCE FORMAT FREE\n` +
+               `${HDR}*> AUTO-GENERATED by ExprForge -- do not hand-edit.\n` +
                CMP_HELPER_SOURCE + "\n" +
-               `       IDENTIFICATION DIVISION.\n` +
-               `       PROGRAM-ID. ${fn.name}.\n` +
-               `       ENVIRONMENT DIVISION.\n` +
-               `       CONFIGURATION SECTION.\n` +
+               `${HDR}IDENTIFICATION DIVISION.\n` +
+               `${HDR}PROGRAM-ID. ${fn.name}.\n` +
+               `${HDR}ENVIRONMENT DIVISION.\n` +
+               `${HDR}CONFIGURATION SECTION.\n` +
                CMP_REPOSITORY +
-               `       DATA DIVISION.\n` +
-               (wsDecls ? `       WORKING-STORAGE SECTION.\n${wsDecls}\n` : "") +
-               `       LINKAGE SECTION.\n` +
+               `${HDR}DATA DIVISION.\n` +
+               (wsDecls ? `${HDR}WORKING-STORAGE SECTION.\n${wsDecls}\n` : "") +
+               `${HDR}LINKAGE SECTION.\n` +
                paramDecls + "\n" +
-               `       PROCEDURE DIVISION USING ${linkageParams.join(" ")}.\n` +
+               `${HDR}PROCEDURE DIVISION USING ${linkageParams.join(" ")}.\n` +
                (letLines.length ? letLines.join("\n") + "\n" : "") +
                (outputLines.length ? outputLines.join("\n") + "\n" : "") +
                assigns + "\n" +
-               `           GOBACK.\n` +
-               `       END PROGRAM ${fn.name}.\n`;
+               `${STMT}GOBACK.\n` +
+               `${HDR}END PROGRAM ${fn.name}.\n`;
     },
 });
 

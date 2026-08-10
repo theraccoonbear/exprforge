@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { ExprForge } from "../../lib/exprforge";
 import type { EmitResult, FnDef } from "../../lib/exprforgeTypes";
 
-const { fn, emitAll } = ExprForge;
+const { fn, emitters } = ExprForge;
 
 function isFnDef(x: unknown): x is FnDef {
     return (
@@ -16,15 +16,19 @@ function isFnDef(x: unknown): x is FnDef {
 export const MISSING_SIGNATURE_MESSAGE =
     'Add a "name(params):" signature line to make this runnable -- e.g. "myFormula(a, b):" as the first line.';
 
+export type CardResult = ({ ok: true } & EmitResult) | { ok: false; error: string };
+
 export interface ExprForgeResult {
     error: string | null;
     def: FnDef | null;
-    outputs: Record<string, EmitResult> | null;
+    outputs: Record<string, CardResult> | null;
 }
 
 // The one place the playground actually talks to the real, bundled
-// exprforge library -- fn() to parse, emitAll() to get every target's
-// source at once. Both calls are the literal library functions, not a
+// exprforge library -- fn() to parse, then each emitter's own
+// emitFunction() individually (not emitAll(), which has no per-emitter
+// error isolation -- see exprforge.d.ts's comment on this) to get every
+// target's source at once. All real library calls, not a
 // reimplementation, so whatever this shows is genuinely what
 // require("exprforge") produces, not an approximation of it.
 export function useExprForge(source: string): ExprForgeResult {
@@ -47,11 +51,15 @@ export function useExprForge(source: string): ExprForgeResult {
             return { error: MISSING_SIGNATURE_MESSAGE, def: null, outputs: null };
         }
 
-        try {
-            const outputs = emitAll(parsed);
-            return { error: null, def: parsed, outputs };
-        } catch (e) {
-            return { error: e instanceof Error ? e.message : String(e), def: parsed, outputs: null };
+        const outputs: Record<string, CardResult> = {};
+        for (const [lang, emitter] of Object.entries(emitters)) {
+            try {
+                outputs[lang] = { ok: true, ext: emitter.ext, source: emitter.emitFunction(parsed) };
+            } catch (e) {
+                outputs[lang] = { ok: false, error: e instanceof Error ? e.message : String(e) };
+            }
         }
+
+        return { error: null, def: parsed, outputs };
     }, [source]);
 }

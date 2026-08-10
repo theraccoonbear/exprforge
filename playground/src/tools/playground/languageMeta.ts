@@ -33,8 +33,3 @@ export const LANGUAGE_META: Record<string, LanguageMeta> = {
     // others since it's not a third-party language.
     expr: { label: "ExprForge syntax (printer)", defaultOn: false, defaultOnMobile: false },
 };
-
-// Synthetic id for the native evaluate() panel -- not a registry key at
-// all (it has no emitted source, just a computed value), handled
-// separately from LANGUAGE_META/emitAll() in PlaygroundTool.
-export const INTERPRETER_ID = "interpreter";
