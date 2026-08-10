@@ -3,10 +3,17 @@
 // tokenizing than the legacy ports); @codemirror/legacy-modes'
 // StreamParser ports for the rest, since it turns out to cover an
 // unusually wide set (cobol, fortran, julia, lua, perl, scheme, go, ...)
-// straight out of the box. No package exists at all for Zig or QB64/
-// BASIC (confirmed by checking, not assumed) -- those two fall back to
-// plain, unhighlighted text honestly rather than approximating with a
-// wrong language's rules.
+// straight out of the box. No package exists at all for QB64/BASIC
+// (confirmed by checking, not assumed) -- approximated instead via
+// legacy-modes' "vb" mode, see below. Zig previously had no coverage
+// either under the OFFICIAL @codemirror/lang-zig namespace (which
+// doesn't exist), but a real, separately-published third-party package
+// does exist -- codemirror-lang-zig by jared-hughes, a genuine
+// Lezer-grammar LanguageSupport (same shape as the official lang-*
+// packages above, not a StreamParser port), MIT-licensed, ~11.5k
+// monthly downloads at the time this was added despite its one release
+// being from 2023 -- checked directly (npm view, actual .d.ts exports)
+// before trusting it, not assumed safe just because the name matched.
 import { javascript } from "@codemirror/lang-javascript";
 import { python } from "@codemirror/lang-python";
 import { rust } from "@codemirror/lang-rust";
@@ -14,6 +21,7 @@ import { go } from "@codemirror/lang-go";
 import { cpp } from "@codemirror/lang-cpp";
 import { java } from "@codemirror/lang-java";
 import { php } from "@codemirror/lang-php";
+import { zig } from "codemirror-lang-zig";
 import { StreamLanguage } from "@codemirror/language";
 import { csharp as legacyCSharp } from "@codemirror/legacy-modes/mode/clike";
 import { lua as legacyLua } from "@codemirror/legacy-modes/mode/lua";
@@ -66,12 +74,7 @@ const HIGHLIGHT: Record<string, Extension> = {
     // one the main editor uses, not a borrowed approximation.
     expr: exprForgeLanguage,
     qb64: QB64,
-    // No CodeMirror language exists for Zig at all -- confirmed by
-    // checking the actual package registry, not assumed, and unlike
-    // QB64 there's no close-enough BASIC-family relative to borrow
-    // here. Falls through to `undefined`, which LanguageCard renders as
-    // plain text.
-    // zig: undefined,
+    zig: zig(),
 };
 
 export function highlightExtensionFor(languageId: string): Extension[] {
