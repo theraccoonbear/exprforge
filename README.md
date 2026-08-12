@@ -108,7 +108,7 @@ npm install exprforge
 ## Usage
 
 ```js
-const { expr, emitAll } = require("exprforge");
+const { expr, emit, emitMany } = require("exprforge");
 
 const fn = {
     name: "lerp",
@@ -116,9 +116,14 @@ const fn = {
     body: expr`(b - a) * t + a`,
 };
 
-const outputs = emitAll(fn);
+console.log(emit(fn, "rust").source);
+console.log(emit(fn, "c").source);
+
+// Need several targets at once? emitMany() runs each in isolation --
+// one target's failure shows up as { source: null, error } for that
+// target alone, not a thrown exception that blanks every other result.
+const outputs = emitMany(fn, ["rust", "c", "python"]); // omit langs for every registered target
 console.log(outputs.rust.source);
-console.log(outputs.c.source);
 ```
 
 `` expr`(b - a) * t + a` `` and `add(v("a"), mul(sub(v("b"), v("a")), v("t")))`
@@ -202,6 +207,113 @@ math): a "near-vertical" world-up check, baked-in-PI degree/radian
 conversion, Rodrigues rotation, and a full Gram-Schmidt frame — see
 `samples/spline-frame.js` for those, and
 `docs/v0.2.0-math-utilities.md` for the full design rationale.
+
+`require("exprforge/math")` also registers every one of these (except
+`clamp`) as macros, so they're usable directly inside `fn`/`expr`
+template **text**, not just from JS-authoring — see the next section.
+
+## Macros and externs (`loadMacro` / `loadExtern`)
+
+The 22 Math functions above are fixed and built in — call them
+**primitives**. `loadMacro`/`loadExtern` register additional names usable
+the same way, inside `fn`/`expr` template text (and in `.expr` files, see
+`loadExpr` below), with very different guarantees:
+
+```js
+const { loadMacro, fn, evaluate } = require("exprforge");
+require("exprforge/math"); // registers dot3/len3/cross3/normalize3/safeDiv as macros
+
+const rodrigues = fn`
+    rodrigues(t0x, t0y, t0z, t1x, t1y, t1z):
+    let b = cross3(t0x, t0y, t0z, t1x, t1y, t1z);
+    let bLen = sqrt(b.x^2 + b.y^2 + b.z^2);
+    return bLen;
+`;
+```
+
+- **`loadMacro(name, def)`** — `def` is a plain JS function
+  `(...argNodes) => Node` or `(...argNodes) => { field: Node, ... }`,
+  built entirely from existing `ast.js` primitives/other macros
+  (`exprforge/math`'s own `dot3`/`len3`/`cross3`/`normalize3`/`safeDiv`
+  are registered exactly this way — see `math/index.js`).
+  **Inline-expanded** into the caller's AST at build time, never emitted
+  as a real call in any target: the emitted output is self-contained
+  arithmetic, identical in spirit to writing the expansion out by hand.
+  Safe by construction — if `def` returns real `ast.js` Nodes, the result
+  is exactly as trustworthy as anything else this library emits. `def`
+  can also be an AST function definition directly (e.g. straight out of
+  `fn\`...\``: `loadMacro("foo", fn\`foo(x): return x * 2;\`)`), sugar
+  for the same thing.
+
+  A macro returning multiple named values (like `cross3`'s `{x, y, z}`)
+  must be bound with `let` before its fields are readable — `let b =
+  cross3(...); b.x` — using it bare inside a larger expression throws a
+  clear error rather than guessing which field you meant.
+
+  **The classic macro trade-off still applies**: expansion is pure
+  substitution, so if a macro's body references one of its own
+  parameters more than once, the caller's argument expression gets
+  duplicated in the output everywhere that parameter appears — not
+  shared, not auto-let-bound (`safeDiv`'s own doc comment above already
+  flags exactly this for its twice-referenced `denominatorExpr`; it's
+  general to every macro now, not one helper). Pass an already-let-bound
+  `v(name)` as the argument instead of a raw expensive expression if that
+  duplication matters to you.
+
+- **`loadExtern(name, def)`** — `def` is a plain per-target mapping
+  object instead of a function, e.g. `{ evaluate: (x) => ..., js: ([x])
+  => \`myLib.f(${x})\`, zig: ([x]) => \`mylib.f(${x})\` }`. A **real
+  native call**, same mechanism as the 22 built-in primitives — just
+  supplied by you instead of shipped here. Only the targets you provide a
+  key for resolve; every other target still throws "no mapping" for that
+  name, same as an unmapped primitive. **ExprForge can't verify the named
+  symbol actually exists in a given target, or that it behaves
+  identically across every target you register a mapping for — that's
+  entirely on you**, the same way linking an unfamiliar library is in any
+  other compiled language. Reach for this only when the math genuinely
+  can't be expressed by composing existing macros/primitives; prefer a
+  macro whenever it can.
+
+Names are a single shared namespace with the 22 built-in primitives and
+with each other — `loadMacro`/`loadExtern` throw on a collision rather
+than silently shadowing anything.
+
+### What this doesn't buy you: no recursion, no loops, no mutable state
+
+Now that one definition can reference another by name, it's a natural
+guess that a definition could call **itself**, or that two definitions
+could call each other back and forth. Neither works, on purpose:
+
+- **A macro can't call itself, directly or through a cycle.** Every
+  reference is resolved and **inline-expanded once, at registration/load
+  time** — not looked up again on each use the way a real function call
+  would be. A definition only becomes referenceable *after* it's fully
+  registered, so it can never resolve a call to its own name (or to
+  anything that, transitively, eventually calls back to it) — that call
+  simply survives expansion as an ordinary, unmapped `call` node, and
+  fails with the same "no mapping for Math function" error an unrelated
+  typo would, even after that name eventually DOES get registered
+  elsewhere. There's no special recursion detection because the ordering
+  alone already rules it out — it's not a guard that could theoretically
+  be bypassed, there's genuinely no mechanism a self- or
+  mutually-referencing definition could use.
+- **No loops.** A macro's body is built from the exact same primitives
+  every other ExprForge expression is — `select`/`cmp` for a conditional
+  *value*, nothing that iterates.
+- **No mutable state.** AST nodes are values, not locations — there's
+  nothing to assign to.
+- **Emitted output isn't a call, it's a copy.** Every use of a macro
+  expands its full arithmetic in place again — unlike a real function,
+  there's no shared implementation at the call site, so a macro used many
+  times in one formula makes the emitted source (correspondingly) larger
+  each time, not smaller. This is a size/readability trade-off to know
+  about, not a correctness concern.
+
+This isn't a launch-day limitation waiting on a future release — it's the
+same "expression AST, not a program AST" boundary the rest of this
+project holds everywhere else (see "What this deliberately doesn't do"
+near the bottom), applied to this feature specifically because it's the
+one place someone's most likely to assume otherwise.
 
 ## Adding a language
 
@@ -366,6 +478,7 @@ const normalize2 = { name: "normalize2", params: ["x", "y"], body };
 | `let name = expr;` | one `[name, valueNode]` pair, in order — a later `let` can reference an earlier one's name |
 | `return expr;` | the chain's final expression |
 | `return { name: expr, ... };` | `outputs({ name: node, ... })` as the chain's final expression |
+| `return { name, ... };` | shorthand for `return { name: name, ... };` — same convention JS object literals use for a property whose value is a same-named variable. Freely mixes with the explicit form: `return { rx, ry: ry * 2, rz };` |
 
 Duplicate `let` names aren't rejected by the parser itself — same
 deferred-to-`collectLets` behavior every hand-built `letIn`/`letChain`
@@ -379,7 +492,7 @@ one-off — but `fn` can carry them too, with a leading `name(params):`
 line:
 
 ```js
-const { fn, emitAll, evaluate } = require("exprforge");
+const { fn, emit, evaluate } = require("exprforge");
 
 const normalize2 = fn`
     normalize2(x, y):
@@ -390,7 +503,7 @@ const normalize2 = fn`
 // no wrapping object needed.
 
 evaluate(normalize2, [3, 4]);        // { nx: 0.6, ny: 0.8 }
-emitAll(normalize2).rust.source;     // ready to use immediately
+emit(normalize2, "rust").source;     // ready to use immediately
 ```
 
 This changes `fn`'s return type based on what you wrote, deliberately:
@@ -414,14 +527,56 @@ codegen or compile step — the same node types every emitter already
 handles, backed by the real `Math.*` functions.
 
 ```js
-const { emitAll, evaluate } = require("exprforge");
+const { emit, evaluate } = require("exprforge");
 
-emitAll(normalize2).expr.source;
+emit(normalize2, "expr").source;
 // "normalize2(x, y):\n  let mag = sqrt(((x^2) + (y^2)));\n  return { nx: (x / mag), ny: (y / mag) };\n"
 
 evaluate(normalize2, [3, 4]);
 // { nx: 0.6, ny: 0.8 }
 ```
+
+### Loading a `.expr` file (`loadExpr`)
+
+`loadExpr(path)` goes the other direction from `emit(fn, "expr")` above:
+reads a `.expr` file (that same round-trip text format) and parses it as
+zero or more `name(params): let ...; return ...;` definitions, each
+usable directly with `evaluate()`/`emit()`/`emitMany()`:
+
+```js
+const { loadExpr, evaluate } = require("exprforge");
+
+const defs = loadExpr("./formulas/vectors.expr");
+evaluate(defs.hyp, [3, 4]); // 5
+```
+
+A function defined earlier in the file is available to a function defined
+**later** in the same file — as an inline macro, the exact same
+"expanded, not called" model `loadMacro` itself uses above (see that
+section for why):
+
+```
+# formulas/vectors.expr
+cross3(ax, ay, az, bx, by, bz):
+  let rx = ay * bz - az * by;
+  let ry = az * bx - ax * bz;
+  let rz = ax * by - ay * bx;
+  return { rx, ry, rz };
+
+crossLength(ax, ay, az, bx, by, bz):
+  let c = cross3(ax, ay, az, bx, by, bz);
+  return sqrt(c.rx^2 + c.ry^2 + c.rz^2);
+```
+
+`defs.crossLength`'s body has no leftover reference to `cross3` at all —
+it's fully inlined by the time `loadExpr` returns, in every emitted
+target. This also means recursion isn't just discouraged, it's
+structurally impossible: a definition only becomes referenceable by
+what's defined *after* it in the file, never by itself or anything
+earlier. Every definition needs a `name(params):` signature line (nothing
+later in the file, or the caller, could refer to one that didn't), and a
+`.expr` file can reference globally loaded macros too, not just earlier
+definitions in the same file — the two sources merge.
 
 ## Multiple named outputs
 
@@ -470,8 +625,14 @@ pre-declared locals the way Go's named returns are.
 
 ## What this deliberately doesn't do
 
-- No control flow (loops, branches, calling other generated functions) —
-  this is an expression AST, not a program AST.
+- No control flow (loops, branches, a generated function calling
+  another generated function at runtime) — this is an expression AST,
+  not a program AST. `loadMacro`/`loadExpr` (above) let one definition
+  reference another, but only by **inline expansion** at build time,
+  resolved in declaration order — never a real call, never recursion
+  (which would need a stack this library doesn't have), never a call
+  graph. See "Macros and externs" above for why that distinction is
+  load-bearing, not just an implementation detail.
 - No RNG — can't be made to produce identical output across languages,
   so it isn't offered as if it could.
 - No arbitrary precision / complex numbers — float64 only, for now.
