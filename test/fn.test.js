@@ -78,6 +78,30 @@ test("a single-field multi-output return still parses (not confused with a plain
     assert.deepStrictEqual(fn`return { only: x + 1 };`, outputs({ only: add(v("x"), num(1)) }));
 });
 
+// --- shorthand "return { rx, ry, rz };" -----------------------------------
+
+test("a field with no \":\" is shorthand for \"name: name\"", () => {
+    assert.deepStrictEqual(fn`return { rx, ry, rz };`, outputs({ rx: v("rx"), ry: v("ry"), rz: v("rz") }));
+});
+
+test("shorthand and explicit fields freely mix, in either order", () => {
+    assert.deepStrictEqual(
+        fn`return { rx, ry: ry * 2, rz };`,
+        outputs({ rx: v("rx"), ry: mul(v("ry"), num(2)), rz: v("rz") }),
+    );
+});
+
+test("a single shorthand field still parses (not confused with a plain expression)", () => {
+    assert.deepStrictEqual(fn`return { only };`, outputs({ only: v("only") }));
+});
+
+test("shorthand fields work with let-bound names too", () => {
+    assert.deepStrictEqual(
+        fn`let rx = a + b; return { rx };`,
+        letIn("rx", add(v("a"), v("b")), outputs({ rx: v("rx") })),
+    );
+});
+
 test("interpolation still works inside let/return, same mechanism as expr", () => {
     const dot = add(mul(v("ax"), v("bx")), mul(v("ay"), v("by")));
     assert.deepStrictEqual(
