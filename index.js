@@ -5,6 +5,7 @@ const { expr } = require("./expr.js");
 const { fn } = require("./fn.js");
 const { evaluate } = require("./evaluate.js");
 const { loadMacro, loadExtern, expandMacros } = require("./macros.js");
+const { loadExpr } = require("./load-expr.js");
 const emitters = require("./emitters/registry.js");
 const { catmullRomAst } = require("./samples/catmull-rom.js");
 const { fibonacciAst } = require("./samples/fibonacci.js");
@@ -101,6 +102,10 @@ module.exports = {
     // expanded tree itself (e.g. to inspect or re-emit it without
     // re-running expansion). Ordinary callers never need this.
     expandMacros,
+    // Parses a .expr file (the exprsyntax emitter's own round-trip
+    // format) into its function definitions, letting later functions in
+    // the file reference earlier ones as inline macros. See load-expr.js.
+    loadExpr,
     // Built-in example formulas — see samples/ for the source.
     catmullRomAst,
     fibonacciAst,
