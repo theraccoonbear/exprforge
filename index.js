@@ -1,5 +1,5 @@
 // exprforge/index.js
-const { num, v, bin, call, add, mul, sub, div, neg, letIn, letChain, cmp, select, outputs, collectLets } = require("./ast.js");
+const { num, v, bin, call, add, mul, sub, div, neg, letIn, letChain, cmp, select, outputs, collectLets, checkUnboundVars } = require("./ast.js");
 const { forComponents } = require("./util.js");
 const { expr } = require("./expr.js");
 const { fn } = require("./fn.js");
@@ -25,7 +25,7 @@ function emitAll(fnDef) {
 
 module.exports = {
     // AST builders — use these to define your own formulas.
-    num, v, bin, call, add, mul, sub, div, neg, letIn, letChain, cmp, select, outputs, collectLets,
+    num, v, bin, call, add, mul, sub, div, neg, letIn, letChain, cmp, select, outputs, collectLets, checkUnboundVars,
     // Authoring convenience — not an AST primitive, see util.js.
     forComponents,
     // Infix syntax sugar over the builders above — same Nodes, see expr.js.

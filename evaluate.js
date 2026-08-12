@@ -13,7 +13,7 @@
 // keys (the simplest existing source of truth for "what the ~22
 // intrinsics are called") straight to the real Math.* function -- this
 // target has no codegen step to route an intermediate string through.
-const { collectLets } = require("./ast.js");
+const { collectLets, checkUnboundVars } = require("./ast.js");
 
 const CMP_OPS = {
     ">": (a, b) => a > b,
@@ -83,6 +83,16 @@ function evalNode(node, env) {
 // test/conformance.test.js's own parseSuiteOutput() already expects
 // back from every other target.
 function evaluate(fn, args) {
+    // Checked once, up front, exhaustively -- NOT relying on evalNode's
+    // own runtime "unbound variable" throw below to happen to hit it,
+    // which it might never do for a given call: a bad reference inside
+    // a select() branch these particular args don't take would silently
+    // never surface that way. See checkUnboundVars's own comment in
+    // ast.js. evalNode's runtime check stays in place too, as a cheap
+    // internal backstop -- it should be unreachable now that this runs
+    // first, same "check early, keep the deeper check anyway" precedent
+    // emitters/cobol.js already follows for its own reserved-name checks.
+    checkUnboundVars(fn);
     if (args.length !== fn.params.length) {
         throw new Error(`evaluate(): ${fn.name} expects ${fn.params.length} argument(s), got ${args.length}`);
     }

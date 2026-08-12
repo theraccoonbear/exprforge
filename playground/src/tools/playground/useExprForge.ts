@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { ExprForge } from "../../lib/exprforge";
 import type { EmitResult, FnDef } from "../../lib/exprforgeTypes";
 
-const { fn, emitters } = ExprForge;
+const { fn, emitters, checkUnboundVars } = ExprForge;
 
 function isFnDef(x: unknown): x is FnDef {
     return (
@@ -49,6 +49,19 @@ export function useExprForge(source: string): ExprForgeResult {
 
         if (!isFnDef(parsed)) {
             return { error: MISSING_SIGNATURE_MESSAGE, def: null, outputs: null };
+        }
+
+        // Checked once, up front -- same tier as a parse error -- rather
+        // than left to surface per-emitter below. Every one of the 18
+        // targets would throw the IDENTICAL "unbound variable" message
+        // (checkUnboundVars runs inside every emitter's own
+        // emitFunction() too, see ast.js), which would otherwise render
+        // as 18 duplicate error cards instead of one clear message next
+        // to the editor.
+        try {
+            checkUnboundVars(parsed);
+        } catch (e) {
+            return { error: e instanceof Error ? e.message : String(e), def: null, outputs: null };
         }
 
         const outputs: Record<string, CardResult> = {};

@@ -82,8 +82,13 @@ test("wrong argument count throws", () => {
 });
 
 test("an unbound variable reference throws", () => {
+    // Now caught by checkUnboundVars (ast.js), called at the top of
+    // evaluate() itself -- statically, before any node is ever walked --
+    // rather than by evalNode's own runtime "unbound variable" throw
+    // (still present as a defensive backstop, but no longer what a
+    // caller actually sees first; see evaluate.js's own comment).
     const fn = { name: "f", params: ["a"], body: add(v("a"), v("typo")) };
-    assert.throws(() => evaluate(fn, [1]), /unbound variable "typo"/);
+    assert.throws(() => evaluate(fn, [1]), /"typo" is referenced in "f" but never declared/);
 });
 
 test("an unmapped call name throws, matching every real codegen emitter's own behavior", () => {

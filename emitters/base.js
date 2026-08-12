@@ -26,7 +26,7 @@
 //                    suite gets emitted through this emitter; omitted
 //                    otherwise.
 
-const { collectLets } = require("../ast.js");
+const { collectLets, checkUnboundVars } = require("../ast.js");
 
 class Emitter {
     constructor(config) {
@@ -90,6 +90,11 @@ class Emitter {
     }
 
     emitFunction(fn) {
+        // Checked once, before any per-target work starts -- see
+        // checkUnboundVars's own comment in ast.js for why this matters
+        // (a typo'd/forgotten identifier used to silently succeed here,
+        // for every target, with no error at all).
+        checkUnboundVars(fn);
         const { bindings, body } = collectLets(fn.body);
         const letBindings = bindings.map(({ name, node }) => ({
             name,

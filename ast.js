@@ -160,4 +160,79 @@ function collectLets(node) {
     return { bindings, body };
 }
 
-module.exports = { num, v, bin, call, add, mul, sub, div, neg, letIn, letChain, cmp, select, outputs, collectLets };
+// Every v(name) reference anywhere in `node`, regardless of whether
+// anything actually declares it -- a pure structural walk, no binding
+// awareness at all. `refs` accumulates across recursive calls so this
+// can be called repeatedly against several subtrees (e.g. once per
+// let-binding's own value, plus once for the final body) and still
+// build one combined set. Mirrors collectLets's own node-type walk
+// above exactly, since it needs to see the identical tree shape.
+function collectVarRefs(node, refs = new Set()) {
+    if (node.type === "var") {
+        refs.add(node.name);
+    } else if (node.type === "bin") {
+        collectVarRefs(node.left, refs);
+        collectVarRefs(node.right, refs);
+    } else if (node.type === "call") {
+        for (const a of node.args) collectVarRefs(a, refs);
+    } else if (node.type === "cmp") {
+        collectVarRefs(node.left, refs);
+        collectVarRefs(node.right, refs);
+    } else if (node.type === "select") {
+        collectVarRefs(node.cond, refs);
+        collectVarRefs(node.then, refs);
+        collectVarRefs(node.else, refs);
+    } else if (node.type === "let") {
+        collectVarRefs(node.value, refs);
+        collectVarRefs(node.body, refs);
+    } else if (node.type === "outputs") {
+        for (const fieldNode of Object.values(node.fields)) collectVarRefs(fieldNode, refs);
+    }
+    // num: nothing to add.
+    return refs;
+}
+
+// Confirms every var() reference anywhere in fn.body -- inside a
+// let-binding's own value, or in the final body/outputs -- corresponds
+// to something actually declared: a parameter, or a let binding
+// somewhere else in the same function. "Somewhere else", not
+// "somewhere earlier": collectLets's own doc comment already
+// establishes there's no real lexical scoping here -- every let-binding
+// is one flat, function-wide name -- so "declared anywhere in this
+// function" is the right, and only meaningful, check, not an
+// order-sensitive one.
+//
+// Catches a typo'd or forgotten identifier at the earliest possible
+// point, for every target and for evaluate() uniformly, rather than
+// relying on evaluate() happening to hit it at runtime (which it might
+// never do -- e.g. a reference inside a select() branch that a
+// particular call's arguments never take would never surface that way)
+// or on whichever target language's own compiler/runtime eventually
+// notices, with wildly inconsistent timing and clarity (a real compile
+// error in Java, a silent-until-called ReferenceError in JS). Confirmed
+// the gap first, not assumed: before this existed, emitAll() silently
+// succeeded across all 18 targets for a body referencing a completely
+// undeclared name.
+function checkUnboundVars(fn) {
+    const { bindings, body } = collectLets(fn.body);
+    const declared = new Set([...fn.params, ...bindings.map((b) => b.name)]);
+
+    const referenced = new Set();
+    for (const { node } of bindings) collectVarRefs(node, referenced);
+    collectVarRefs(body, referenced);
+
+    for (const name of referenced) {
+        if (!declared.has(name)) {
+            throw new Error(
+                `checkUnboundVars: "${name}" is referenced in "${fn.name}" but never declared -- ` +
+                `not a parameter (${fn.params.length ? fn.params.join(", ") : "none"}) and no ` +
+                `"let ${name} = ..." binding exists anywhere in this function`,
+            );
+        }
+    }
+}
+
+module.exports = {
+    num, v, bin, call, add, mul, sub, div, neg, letIn, letChain, cmp, select, outputs, collectLets,
+    checkUnboundVars,
+};

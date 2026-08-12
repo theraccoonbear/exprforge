@@ -50,6 +50,13 @@ declare module "exprforge" {
     export function fn(strings: readonly string[], ...values: unknown[]): Node | FnDef;
     export function evaluate(def: FnDef, args: number[]): number | Record<string, number>;
     export function emitAll(def: FnDef): Record<string, EmitResult>;
+    // Confirms every variable reference in def.body is actually declared
+    // (a parameter, or a let binding somewhere in the function) --
+    // throws with a clear message otherwise. Called once, up front, by
+    // useExprForge.ts, so an unbound identifier surfaces as ONE top-level
+    // error (same tier as a parse error) rather than the identical
+    // message repeated across all 18 per-language cards.
+    export function checkUnboundVars(def: FnDef): void;
     // Real Emitter instances, not just {ext} -- the playground calls
     // emitFunction() per-language itself (see useExprForge.ts) rather
     // than emitAll(), so one target's failure (an unsupported call name,

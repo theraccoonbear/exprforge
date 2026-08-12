@@ -6,7 +6,7 @@
 
 const test = require("node:test");
 const assert = require("node:assert");
-const { num, v, add, mul, sub, letIn, letChain, outputs, collectLets } = require("../ast.js");
+const { num, v, add, mul, sub, div, call, cmp, select, letIn, letChain, outputs, collectLets, checkUnboundVars } = require("../ast.js");
 
 test("outputs() builds a plain {type, fields} node", () => {
     const node = outputs({ a: num(1), b: v("x") });
@@ -99,4 +99,65 @@ test("letChain output round-trips through collectLets exactly like hand-nested l
         ["s", "d"],
     );
     assert.strictEqual(body.type, "outputs");
+});
+
+// --- checkUnboundVars ------------------------------------------------
+//
+// Nothing previously checked that a v(name) reference in a tree
+// actually corresponds to a parameter or a let binding -- confirmed the
+// gap first, not assumed: before this existed, emitAll() silently
+// succeeded across all 18 targets for a body referencing a completely
+// undeclared name, and evaluate() would only ever notice if it happened
+// to walk that exact node for the args it was given.
+
+test("a well-formed function (every reference is a param or a let) doesn't throw", () => {
+    const fn = { name: "f", params: ["a", "b"], body: letIn("s", add(v("a"), v("b")), mul(v("s"), num(2))) };
+    assert.doesNotThrow(() => checkUnboundVars(fn));
+});
+
+test("a reference to a name that's neither a param nor a let binding throws", () => {
+    const fn = { name: "broken", params: ["a"], body: add(v("a"), v("b")) };
+    assert.throws(
+        () => checkUnboundVars(fn),
+        /"b" is referenced in "broken" but never declared -- not a parameter \(a\) and no "let b = \.\.\." binding exists/,
+    );
+});
+
+test("an unbound reference inside a let's OWN value throws, not just inside the final body", () => {
+    const fn = { name: "f", params: ["a"], body: letIn("s", add(v("a"), v("typo")), v("s")) };
+    assert.throws(() => checkUnboundVars(fn), /"typo" is referenced/);
+});
+
+test("an unbound reference inside a select()'s branch throws even if that branch is never actually taken at runtime -- this is a STATIC check, not a runtime-reachability one", () => {
+    // The whole point: evaluate()'s own runtime "unbound variable" throw
+    // only ever fires if execution actually walks that node -- a select()
+    // branch some particular call's arguments don't take would never
+    // surface that way. checkUnboundVars sees every branch unconditionally.
+    const fn = { name: "f", params: ["a"], body: select(cmp(v("a"), ">", num(0)), v("a"), v("neverDeclared")) };
+    assert.throws(() => checkUnboundVars(fn), /"neverDeclared" is referenced/);
+});
+
+test("an unbound reference inside a call()'s argument throws", () => {
+    const fn = { name: "f", params: ["a"], body: call("sqrt", add(v("a"), v("typo"))) };
+    assert.throws(() => checkUnboundVars(fn), /"typo" is referenced/);
+});
+
+test("an unbound reference inside an outputs() field throws", () => {
+    const fn = { name: "f", params: ["a"], body: outputs({ x: v("a"), y: v("typo") }) };
+    assert.throws(() => checkUnboundVars(fn), /"typo" is referenced/);
+});
+
+test("a later let-binding referencing an earlier one's name is fine -- there's no order-sensitivity to the check", () => {
+    const fn = { name: "f", params: [], body: letChain([["a", num(1)], ["b", add(v("a"), num(1))]], v("b")) };
+    assert.doesNotThrow(() => checkUnboundVars(fn));
+});
+
+test("an EARLIER let-binding referencing a LATER one's name is also fine -- checkUnboundVars is deliberately not order-sensitive (collectLets's own let-binding shape has no real lexical scoping either, see its doc comment)", () => {
+    const fn = { name: "f", params: [], body: letChain([["a", add(v("b"), num(1))], ["b", num(1)]], v("a")) };
+    assert.doesNotThrow(() => checkUnboundVars(fn));
+});
+
+test("div's operands are checked too, same as every other bin op", () => {
+    const fn = { name: "f", params: ["a"], body: div(v("a"), v("typo")) };
+    assert.throws(() => checkUnboundVars(fn), /"typo" is referenced/);
 });

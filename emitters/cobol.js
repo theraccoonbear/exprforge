@@ -320,7 +320,18 @@ class TempPool {
 
 class CobolEmitter extends Emitter {
     emitFunction(fn) {
-        const { collectLets } = require("../ast.js");
+        const { collectLets, checkUnboundVars } = require("../ast.js");
+        // This class overrides emitFunction entirely (never calls
+        // super.emitFunction), so it needs its own copy of the same
+        // check base.js's Emitter.emitFunction runs -- see
+        // checkUnboundVars's own comment in ast.js. Checked against the
+        // ORIGINAL fn, before renameConflictingParams runs, so an error
+        // message reports whatever name the caller actually wrote, not
+        // an internally-renamed one (doesn't change which names are
+        // considered declared either way -- the rename is identity-
+        // preserving over the set of bound names, just changes their
+        // string).
+        checkUnboundVars(fn);
         // Must run before collectLets, and before anything else in this
         // function -- collectLets flattens the tree's let structure away,
         // and every check/emission step below assumes fn.params is

@@ -10,5 +10,6 @@ export interface ExprForgeModuleShape {
     fn(strings: readonly string[], ...values: unknown[]): unknown;
     evaluate(def: FnDef, args: number[]): number | Record<string, number>;
     emitAll(def: FnDef): Record<string, EmitResult>;
+    checkUnboundVars(def: FnDef): void;
     emitters: Record<string, Emitter>;
 }
