@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { ExprForge } from "../../lib/exprforge";
 import type { EmitResult, FnDef } from "../../lib/exprforgeTypes";
 
-const { fn, emitters, checkUnboundVars } = ExprForge;
+const { fn, emitMany, checkUnboundVars } = ExprForge;
 
 function isFnDef(x: unknown): x is FnDef {
     return (
@@ -25,10 +25,9 @@ export interface ExprForgeResult {
 }
 
 // The one place the playground actually talks to the real, bundled
-// exprforge library -- fn() to parse, then each emitter's own
-// emitFunction() individually (not emitAll(), which has no per-emitter
-// error isolation -- see exprforge.d.ts's comment on this) to get every
-// target's source at once. All real library calls, not a
+// exprforge library -- fn() to parse, then emitMany() to get every
+// target's source at once, each isolated from the others' failures (see
+// exprforge.d.ts's own comment on this). All real library calls, not a
 // reimplementation, so whatever this shows is genuinely what
 // require("exprforge") produces, not an approximation of it.
 export function useExprForge(source: string): ExprForgeResult {
@@ -65,12 +64,11 @@ export function useExprForge(source: string): ExprForgeResult {
         }
 
         const outputs: Record<string, CardResult> = {};
-        for (const [lang, emitter] of Object.entries(emitters)) {
-            try {
-                outputs[lang] = { ok: true, ext: emitter.ext, source: emitter.emitFunction(parsed) };
-            } catch (e) {
-                outputs[lang] = { ok: false, error: e instanceof Error ? e.message : String(e) };
-            }
+        for (const [lang, result] of Object.entries(emitMany(parsed))) {
+            outputs[lang] =
+                result.error === null
+                    ? { ok: true, ext: result.ext as string, source: result.source as string }
+                    : { ok: false, error: result.error };
         }
 
         return { error: null, def: parsed, outputs };

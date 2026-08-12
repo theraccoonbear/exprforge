@@ -12,15 +12,65 @@ const { kitchenSinkAst } = require("./samples/kitchen-sink.js");
 const { mathDemoAst } = require("./samples/math-demo.js");
 
 /**
- * Run every registered emitter against one AST function definition.
- * Returns { [lang]: { ext, source } }.
+ * Run ONE emitter against one AST function definition. Returns
+ * { ext, source }. Throws if `lang` isn't a registered emitter name, or if
+ * that emitter itself throws for this fn (an unmapped Math function, a
+ * reserved-name collision, ...) -- the caller picked exactly this one
+ * target, so there's no "other languages" for a per-language error to be
+ * isolated from; let it propagate. Prefer this over emitAll (deprecated,
+ * below) when you only need one or a few targets -- it doesn't pay for
+ * every registered emitter to get one.
  */
-function emitAll(fnDef) {
+function emit(fnDef, lang) {
+    const emitter = emitters[lang];
+    if (!emitter) {
+        throw new Error(
+            `emit(): no emitter registered for language "${lang}" -- known languages: ${Object.keys(emitters).sort().join(", ")}`,
+        );
+    }
+    return { ext: emitter.ext, source: emitter.emitFunction(fnDef) };
+}
+
+/**
+ * Run several emitters against one AST function definition, each in
+ * isolation from the others: one language's emitter throwing shows up as
+ * { source: null, error } for THAT language only, alongside every other
+ * requested language's real { source, error: null } result -- a single
+ * bad target (e.g. a parameter name COBOL's reserved-word check rejects)
+ * no longer takes the whole batch down with it. `langs` defaults to every
+ * registered language; pass an explicit array to avoid running (and
+ * paying for) emitters you don't need.
+ */
+function emitMany(fnDef, langs = Object.keys(emitters)) {
     const result = {};
-    for (const [lang, emitter] of Object.entries(emitters)) {
-        result[lang] = { ext: emitter.ext, source: emitter.emitFunction(fnDef) };
+    for (const lang of langs) {
+        const emitter = emitters[lang];
+        if (!emitter) {
+            result[lang] = { ext: null, source: null, error: `no emitter registered for language "${lang}"` };
+            continue;
+        }
+        try {
+            result[lang] = { ext: emitter.ext, source: emitter.emitFunction(fnDef), error: null };
+        } catch (e) {
+            result[lang] = { ext: emitter.ext, source: null, error: e instanceof Error ? e.message : String(e) };
+        }
     }
     return result;
+}
+
+/**
+ * @deprecated Runs every registered emitter unconditionally, whether you
+ * need all of them or not -- prefer emit(fnDef, lang) for one target, or
+ * emitMany(fnDef, langs) for an explicit subset (or emitMany(fnDef) with
+ * no `langs` for the same "every language" behavior this has always had).
+ * Kept working, not scheduled for removal -- existing callers reading
+ * result[lang].ext/.source see no change; the only behavior change is the
+ * bug fix this shares with emitMany: a single emitter throwing used to
+ * abort the whole batch (nothing for ANY language came back), and now
+ * surfaces as { source: null, error } for that language alone.
+ */
+function emitAll(fnDef) {
+    return emitMany(fnDef);
 }
 
 module.exports = {
@@ -56,6 +106,11 @@ module.exports = {
     },
     // Per-language emitter instances, keyed by name (js, qb64, c, java, go, rust).
     emitters,
-    // Convenience: run every emitter at once.
+    // One target, explicit -- see this function's own doc comment above.
+    emit,
+    // Several targets at once, each isolated from the others' failures.
+    emitMany,
+    // Deprecated: every target at once, no way to ask for fewer. Prefer
+    // emit()/emitMany() above -- kept working, not removed.
     emitAll,
 };
