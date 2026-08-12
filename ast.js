@@ -11,6 +11,18 @@
 //   { type: "cmp",    op: ">" | "<" | ">=" | "<=" | "==" | "!=", left: Node, right: Node }
 //   { type: "select", cond: CmpNode, then: Node, else: Node }
 //   { type: "outputs", fields: { [name: string]: Node } }
+//   { type: "field",   target: Node, field: string }
+//
+// "field" is postfix "." access (e.g. b.rx) — parser sugar produced only
+// by expr.js/fn.js's grammar, and eliminated by macros.js's
+// expandMacros() before a tree ever reaches checkUnboundVars,
+// evaluate(), or any emitter. It only makes semantic sense when `target`
+// resolves to a name bound to a multi-output *macro* call (see
+// macros.js) — that's checked there, not here, same "defer semantic
+// validation to the consumer" precedent call() already follows for
+// function names. A "field" node reaching evaluate()/an emitter directly
+// means expandMacros() was skipped or didn't run to completion; both
+// throw their own "unknown node type" error in that case.
 //
 // Every "bin" node is emitted with explicit parens in every target, so
 // operation order (and therefore floating-point rounding behavior) is
@@ -108,6 +120,13 @@ function select(cond, thenNode, elseNode) {
 // emitters/<lang>.js.
 function outputs(fields) {
     return { type: "outputs", fields };
+}
+
+// Postfix "." field access into a multi-output intrinsic's result — see
+// the "field" node-shape comment at the top of this file for what this
+// actually means and who consumes it.
+function field(target, name) {
+    return { type: "field", target, field: name };
 }
 
 // Lifts every `let` node out of the tree into a flat, ordered list of
@@ -233,6 +252,6 @@ function checkUnboundVars(fn) {
 }
 
 module.exports = {
-    num, v, bin, call, add, mul, sub, div, neg, letIn, letChain, cmp, select, outputs, collectLets,
+    num, v, bin, call, add, mul, sub, div, neg, letIn, letChain, cmp, select, outputs, field, collectLets,
     checkUnboundVars,
 };

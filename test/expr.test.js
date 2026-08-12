@@ -14,7 +14,7 @@
 const test = require("node:test");
 const assert = require("node:assert");
 const {
-    num, v, add, sub, mul, div, neg, call, cmp, select, letIn, collectLets,
+    num, v, add, sub, mul, div, neg, call, cmp, select, letIn, collectLets, field,
 } = require("../ast.js");
 const { expr } = require("../expr.js");
 const { fn } = require("../fn.js");
@@ -191,6 +191,39 @@ test("fn`...` comments work the same way, including after a signature line", () 
     `;
     assert.strictEqual(def.name, "normalize");
     assert.deepStrictEqual(def.params, ["x", "y"]);
+});
+
+// --- postfix "." field access --------------------------------------------
+//
+// Grammar-level tests only -- expr()/fn() never resolve what a "field"
+// node actually means (that's macros.js's expandMacros() job, see
+// test/macros.test.js); this just confirms the parser produces the
+// right shape and binds it at the right precedence.
+
+test("b.rx parses to a field() node wrapping v(\"b\")", () => {
+    assert.deepStrictEqual(expr`b.rx`, field(v("b"), "rx"));
+});
+
+test("field access chains: a.b.c", () => {
+    assert.deepStrictEqual(expr`a.b.c`, field(field(v("a"), "b"), "c"));
+});
+
+test("field access binds tighter than every operator, including ^", () => {
+    assert.deepStrictEqual(expr`b.rx + 1`, add(field(v("b"), "rx"), num(1)));
+    assert.deepStrictEqual(expr`b.rx ^ 2`, call("pow", field(v("b"), "rx"), num(2)));
+    assert.deepStrictEqual(expr`-b.rx`, neg(field(v("b"), "rx")));
+});
+
+test("field access works on a call's result too", () => {
+    assert.deepStrictEqual(expr`cross3(ax, ay, az, bx, by, bz).rx`, field(call("cross3", v("ax"), v("ay"), v("az"), v("bx"), v("by"), v("bz")), "rx"));
+});
+
+test("a \".\" with no following identifier throws", () => {
+    assert.throws(() => expr`b.`, /expected a field name after "."/);
+});
+
+test("\".\" still tokenizes decimal number literals unambiguously (.5, 1.5)", () => {
+    assert.deepStrictEqual(expr`.5 + 1.5`, add(num(0.5), num(1.5)));
 });
 
 test("independent expr() calls don't leak comment state into each other", () => {
