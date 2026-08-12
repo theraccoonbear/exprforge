@@ -284,19 +284,23 @@ Now that one definition can reference another by name, it's a natural
 guess that a definition could call **itself**, or that two definitions
 could call each other back and forth. Neither works, on purpose:
 
-- **A macro can't call itself, directly or through a cycle.** Every
-  reference is resolved and **inline-expanded once, at registration/load
-  time** — not looked up again on each use the way a real function call
-  would be. A definition only becomes referenceable *after* it's fully
-  registered, so it can never resolve a call to its own name (or to
-  anything that, transitively, eventually calls back to it) — that call
-  simply survives expansion as an ordinary, unmapped `call` node, and
-  fails with the same "no mapping for Math function" error an unrelated
-  typo would, even after that name eventually DOES get registered
-  elsewhere. There's no special recursion detection because the ordering
-  alone already rules it out — it's not a guard that could theoretically
-  be bypassed, there's genuinely no mechanism a self- or
-  mutually-referencing definition could use.
+- **A macro can't call itself, directly or through a cycle.** This is
+  enforced two different ways depending on how the macro was defined, and
+  it's worth knowing which one applies: a macro defined as an AST
+  function (straight `fn\`...\`` text, or every function in a `.expr`
+  file) is resolved and **inline-expanded once, at registration/load
+  time**, against whatever's registered so far — a definition only
+  becomes referenceable *after* it's fully registered, so a self/forward
+  reference simply survives as an ordinary, unmapped `call` node, failing
+  later with the same "no mapping for Math function" error an unrelated
+  typo would (even once that name eventually DOES get registered
+  elsewhere) — no recursion detection needed, the ordering alone rules it
+  out. A macro defined as a **plain JS function** (`loadMacro(name,
+  someFn)`) runs fresh on every use instead, so it legitimately CAN
+  reference other real macros each time — which means a genuine
+  self/cyclic reference there needs an explicit runtime check instead of
+  relying on ordering, and gets one: `"<name>" can't call itself,
+  directly or through a cycle`, not a crash.
 - **No loops.** A macro's body is built from the exact same primitives
   every other ExprForge expression is — `select`/`cmp` for a conditional
   *value*, nothing that iterates.

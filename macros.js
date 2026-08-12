@@ -323,6 +323,32 @@ function tryResolveMacroCall(callNode, ctx) {
     const entry = lookupMacro(callNode.name, ctx);
     if (!entry) return undefined;
 
+    // An AST-fn-def-shaped macro's own self/forward references are
+    // already ruled out structurally, by registration ordering (see
+    // toMacro's own comment) -- but a plain-JS-function macro's RESULT
+    // gets re-walked below (a fresh call every time, so it CAN
+    // legitimately reference some other, unrelated macro), and if that
+    // result calls right back into THIS SAME name -- directly, or
+    // through a cycle of several plain-function macros -- that walk
+    // would recurse without ever making progress. `ctx.expanding` tracks
+    // "names currently being resolved on the path from here to the
+    // result I'm walking" -- set only around that one re-walk below, so
+    // using the SAME macro twice in separate, independent positions
+    // (e.g. sqrt(x) + foo(a) + foo(b)) is unaffected; only a name
+    // reappearing inside its OWN just-computed result trips this.
+    // Deliberately unconditional, even for a result that would
+    // eventually reach a real base case if it were allowed to keep
+    // going (JS itself could express that) -- this library's own "no
+    // recursion" guarantee (see the README) doesn't carve out an
+    // exception for the convergent case, so neither does this.
+    const expanding = ctx.expanding || new Set();
+    if (expanding.has(callNode.name)) {
+        throw new Error(
+            `expandMacros: "${callNode.name}" can't call itself, directly or through a cycle -- macros are ` +
+            `inline-expanded, not real function calls, so a self/cyclic reference would have to expand forever`,
+        );
+    }
+
     const expandedArgs = callNode.args.map((a) => expandExpr(a, ctx));
     if (entry.arity !== null && expandedArgs.length !== entry.arity) {
         throw new Error(`expandMacros: "${callNode.name}" expects ${entry.arity} argument(s), got ${expandedArgs.length}`);
@@ -341,7 +367,8 @@ function tryResolveMacroCall(callNode, ctx) {
         throw new Error(`expandMacros: "${callNode.name}" must return an AST Node or a plain object of named Nodes, got ${typeof result}`);
     }
 
-    if (isNode(result)) return expandExpr(result, ctx);
+    const expandingCtx = { ...ctx, expanding: new Set(expanding).add(callNode.name) };
+    if (isNode(result)) return expandExpr(result, expandingCtx);
     // A plain-JS-function macro (dot3/cross3/normalize3/... in
     // math/index.js, or a caller's own) returns a BARE {field: Node}
     // object -- normalized here to makeMultiOutput's shape with an
@@ -355,9 +382,9 @@ function tryResolveMacroCall(callNode, ctx) {
             if (!isNode(fieldNode)) {
                 throw new Error(`expandMacros: "${callNode.name}"'s "${field}" field must be an AST Node, got ${typeof fieldNode}`);
             }
-            expandedFields[field] = expandExpr(fieldNode, ctx);
+            expandedFields[field] = expandExpr(fieldNode, expandingCtx);
         }
-        const expandedPrefix = multi.letPrefix.map(({ name, node }) => ({ name, node: expandExpr(node, ctx) }));
+        const expandedPrefix = multi.letPrefix.map(({ name, node }) => ({ name, node: expandExpr(node, expandingCtx) }));
         return makeMultiOutput(expandedFields, expandedPrefix);
     }
     throw new Error(`expandMacros: "${callNode.name}" must return an AST Node or a plain object of named Nodes, got ${typeof result}`);

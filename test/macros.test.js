@@ -112,6 +112,47 @@ test("a plain-JS macro that DOESN'T self-manage hygiene collides across repeated
     assert.throws(() => evaluate(def, [3, 4]), /duplicate let binding name "tmp"/);
 });
 
+test("a plain-JS macro used twice, independently, in one function is fine -- NOT mistaken for a self-cycle", () => {
+    // Regression guard for the cycle detector below: sqrt(x) + foo(a) +
+    // foo(b) (two unrelated invocations of the same macro) must not trip
+    // the "can't call itself" guard just because the same name appears
+    // twice.
+    const name = uniqueName("independentUses");
+    loadMacro(name, (x) => mul(x, num(2)));
+    const def = { name: "f", params: ["a", "b"], body: add(call(name, v("a")), call(name, v("b"))) };
+    assert.strictEqual(evaluate(def, [3, 4]), 14);
+});
+
+test("a plain-JS macro can be nested inside itself -- X(X(a)) is two independent calls, not a cycle", () => {
+    const name = uniqueName("nestedUse");
+    loadMacro(name, (x) => mul(x, num(2)));
+    const def = { name: "f", params: ["a"], body: call(name, call(name, v("a"))) };
+    assert.strictEqual(evaluate(def, [3]), 12);
+});
+
+test("a plain-JS macro whose OWN result calls itself back throws a clear error, not a stack overflow", () => {
+    // Unlike an AST-fn-def macro (whose self-reference is ruled out
+    // structurally by registration ordering, see toMacro), a plain-JS
+    // macro's result is legitimately re-walked on every use (it has to
+    // be -- a fresh call can reference some other real macro) -- so a
+    // function that always calls its own registered name needs its own
+    // explicit cycle guard. This was a real bug once: it stack-overflowed
+    // instead of failing cleanly.
+    const name = uniqueName("selfCyclePlain");
+    loadMacro(name, (x) => call(name, x));
+    const def = { name: "f", params: ["a"], body: call(name, v("a")) };
+    assert.throws(() => evaluate(def, [1]), new RegExp(`"${name}" can't call itself, directly or through a cycle`));
+});
+
+test("two plain-JS macros calling each other back and forth (mutual cycle) throw the same clear error", () => {
+    const nameA = uniqueName("mutualPlainA");
+    const nameB = uniqueName("mutualPlainB");
+    loadMacro(nameA, (x) => call(nameB, x));
+    loadMacro(nameB, (x) => call(nameA, x));
+    const def = { name: "f", params: ["a"], body: call(nameA, v("a")) };
+    assert.throws(() => evaluate(def, [1]), /can't call itself, directly or through a cycle/);
+});
+
 // --- macro: plain JS function, multi-output + field access --------------
 
 test("a multi-output macro must be bound via let, then accessed by field", () => {
