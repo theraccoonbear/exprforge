@@ -1,9 +1,10 @@
 // exprforge/index.js
-const { num, v, bin, call, add, mul, sub, div, neg, letIn, letChain, cmp, select, outputs, collectLets, checkUnboundVars } = require("./ast.js");
+const { num, v, bin, call, add, mul, sub, div, neg, letIn, letChain, cmp, select, outputs, field, collectLets, checkUnboundVars } = require("./ast.js");
 const { forComponents } = require("./util.js");
 const { expr } = require("./expr.js");
 const { fn } = require("./fn.js");
 const { evaluate } = require("./evaluate.js");
+const { loadMacro, loadExtern, expandMacros } = require("./macros.js");
 const emitters = require("./emitters/registry.js");
 const { catmullRomAst } = require("./samples/catmull-rom.js");
 const { fibonacciAst } = require("./samples/fibonacci.js");
@@ -75,7 +76,7 @@ function emitAll(fnDef) {
 
 module.exports = {
     // AST builders — use these to define your own formulas.
-    num, v, bin, call, add, mul, sub, div, neg, letIn, letChain, cmp, select, outputs, collectLets, checkUnboundVars,
+    num, v, bin, call, add, mul, sub, div, neg, letIn, letChain, cmp, select, outputs, field, collectLets, checkUnboundVars,
     // Authoring convenience — not an AST primitive, see util.js.
     forComponents,
     // Infix syntax sugar over the builders above — same Nodes, see expr.js.
@@ -87,6 +88,19 @@ module.exports = {
     // A native interpreter over the AST -- evaluate(fn, args) computes a
     // result directly in JS, no codegen/compile step. See evaluate.js.
     evaluate,
+    // Register a macro: a name usable inside fn`...`/expr`...` text
+    // beyond the built-in primitives, inline-expanded at build time,
+    // never emitted as a real call. See macros.js's own header comment.
+    loadMacro,
+    // Register an extern: same usable-by-name mechanism, but a real
+    // per-target native call instead -- caller-owned risk, ExprForge
+    // can't verify it. See macros.js's own header comment.
+    loadExtern,
+    // Runs the same macro/field-access expansion evaluate() and every
+    // emitter already run internally -- exposed for callers who want the
+    // expanded tree itself (e.g. to inspect or re-emit it without
+    // re-running expansion). Ordinary callers never need this.
+    expandMacros,
     // Built-in example formulas — see samples/ for the source.
     catmullRomAst,
     fibonacciAst,

@@ -16,6 +16,7 @@
     "expr.js",
     "fn.js",
     "evaluate.js",
+    "macros.js",
     "build.js",
     "emitters/",
     "samples/",

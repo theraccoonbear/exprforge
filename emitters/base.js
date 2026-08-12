@@ -27,6 +27,7 @@
 //                    otherwise.
 
 const { collectLets, checkUnboundVars } = require("../ast.js");
+const { expandMacros, resolveExternForEmitter } = require("../macros.js");
 
 class Emitter {
     constructor(config) {
@@ -64,7 +65,12 @@ class Emitter {
             }
             case "call": {
                 const args = node.args.map((a) => this.emitExpr(a));
-                const template = this.calls[node.name];
+                // `this.lang` is injected by emitters/registry.js (the
+                // registered key, e.g. "js"/"cobol") -- not set for an
+                // Emitter built standalone outside the registry, in which
+                // case an extern simply never resolves here, same as an
+                // unmapped name.
+                const template = this.calls[node.name] || (this.lang && resolveExternForEmitter(node.name, this.lang));
                 if (!template) {
                     throw new Error(`emitter for .${this.ext}: no mapping for Math function "${node.name}"`);
                 }
@@ -90,6 +96,13 @@ class Emitter {
     }
 
     emitFunction(fn) {
+        // Resolves every macro call and field() access into plain
+        // arithmetic first -- see macros.js's own header comment. Must
+        // run before checkUnboundVars: expansion is what introduces the
+        // flattened let-bindings a multi-output macro's fields become,
+        // and eliminates "field" nodes, which checkUnboundVars/
+        // collectLets don't know how to walk.
+        fn = expandMacros(fn);
         // Checked once, before any per-target work starts -- see
         // checkUnboundVars's own comment in ast.js for why this matters
         // (a typo'd/forgotten identifier used to silently succeed here,

@@ -9,11 +9,12 @@
 // there's exactly one node-shape contract (ast.js's own header comment)
 // for both this file and every emitters/<lang>.js to agree with.
 //
-// Every intrinsic name maps 1:1 onto emitters/js.js's own `calls` table
+// Every primitive name maps 1:1 onto emitters/js.js's own `calls` table
 // keys (the simplest existing source of truth for "what the ~22
-// intrinsics are called") straight to the real Math.* function -- this
+// primitives are called") straight to the real Math.* function -- this
 // target has no codegen step to route an intermediate string through.
 const { collectLets, checkUnboundVars } = require("./ast.js");
+const { expandMacros, resolveExternForEvaluate } = require("./macros.js");
 
 const CMP_OPS = {
     ">": (a, b) => a > b,
@@ -58,7 +59,7 @@ function evalNode(node, env) {
             return op(evalNode(node.left, env), evalNode(node.right, env));
         }
         case "call": {
-            const impl = CALLS[node.name];
+            const impl = CALLS[node.name] || resolveExternForEvaluate(node.name);
             if (!impl) throw new Error(`evaluate(): no mapping for Math function "${node.name}"`);
             return impl(...node.args.map((a) => evalNode(a, env)));
         }
@@ -83,6 +84,12 @@ function evalNode(node, env) {
 // test/conformance.test.js's own parseSuiteOutput() already expects
 // back from every other target.
 function evaluate(fn, args) {
+    // Resolves every macro call and field() access into plain arithmetic
+    // FIRST -- checkUnboundVars/collectLets/evalNode below know nothing
+    // about either (see macros.js's own header comment); an extern's
+    // call node is left alone here, and resolved above in evalNode's own
+    // "call" case instead.
+    fn = expandMacros(fn);
     // Checked once, up front, exhaustively -- NOT relying on evalNode's
     // own runtime "unbound variable" throw below to happen to hit it,
     // which it might never do for a given call: a bad reference inside

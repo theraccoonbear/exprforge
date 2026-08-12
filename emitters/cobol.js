@@ -321,16 +321,19 @@ class TempPool {
 class CobolEmitter extends Emitter {
     emitFunction(fn) {
         const { collectLets, checkUnboundVars } = require("../ast.js");
+        const { expandMacros } = require("../macros.js");
         // This class overrides emitFunction entirely (never calls
-        // super.emitFunction), so it needs its own copy of the same
-        // check base.js's Emitter.emitFunction runs -- see
-        // checkUnboundVars's own comment in ast.js. Checked against the
-        // ORIGINAL fn, before renameConflictingParams runs, so an error
-        // message reports whatever name the caller actually wrote, not
-        // an internally-renamed one (doesn't change which names are
-        // considered declared either way -- the rename is identity-
-        // preserving over the set of bound names, just changes their
-        // string).
+        // super.emitFunction), so it needs its own copy of the same two
+        // steps base.js's Emitter.emitFunction runs -- see
+        // expandMacros's and checkUnboundVars's own comments (in
+        // macros.js and ast.js respectively). Both run against the
+        // ORIGINAL fn, before renameConflictingParams runs below, so an
+        // error message reports whatever name the caller actually wrote,
+        // not an internally-renamed one (doesn't change which names are
+        // considered declared/resolved either way -- the rename is
+        // identity-preserving over the set of bound names, just changes
+        // their string).
+        fn = expandMacros(fn);
         checkUnboundVars(fn);
         // Must run before collectLets, and before anything else in this
         // function -- collectLets flattens the tree's let structure away,

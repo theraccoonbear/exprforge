@@ -11,6 +11,7 @@
 // itself (see package.json's "exports" map) — additive, not merged into the
 // core barrel.
 const { num, v, call, add, mul, sub, div, letIn, cmp, select } = require("../ast.js");
+const { loadMacro } = require("../macros.js");
 
 // Shared epsilon for all near-zero guards below. Exposed so callers can
 // reuse it in their own cmp() calls for consistency with safeDiv/normalize3,
@@ -109,5 +110,25 @@ function normalize3(x, y, z, fx = num(0), fy = num(1), fz = num(0)) {
 function clamp(val, lo, hi) {
     return select(cmp(val, "<", lo), lo, select(cmp(val, ">", hi), hi, val));
 }
+
+// Also registered as macros (see macros.js/issue #21 ask 3), usable
+// directly inside fn`...`/expr`...` template TEXT, not just from
+// JS-authoring -- e.g. `fn`rodrigues(...): let b = cross3(ax, ay, az,
+// bx, by, bz); let bLen = sqrt(b.rx^2 + b.ry^2 + b.rz^2); ...``. Every
+// one of these already has exactly the signature loadMacro() wants
+// ((...argNodes) => Node | {field: Node}) with no wrapping needed --
+// this IS the "safe, inline-expanded, built from existing primitives"
+// tier's worked example, not a separate mechanism layered on top of it.
+// `clamp` is deliberately excluded: it's a 3-argument (val, lo, hi) helper
+// whose own doc comment already flags `val` as re-evaluated three times
+// if it's not cheap -- fine for JS-authoring callers who control that,
+// but not offered as a macro name here since a fn`...` author has no
+// equivalent "pass an already-let-bound reference" convention to reach
+// for if they trip over the same cost.
+loadMacro("dot3", dot3);
+loadMacro("len3", len3);
+loadMacro("cross3", cross3);
+loadMacro("normalize3", normalize3);
+loadMacro("safeDiv", safeDiv);
 
 module.exports = { EPS, safeDiv, dot3, len3, cross3, normalize3, clamp };
