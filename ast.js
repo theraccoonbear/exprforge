@@ -27,20 +27,71 @@
 // Every "bin" node is emitted with explicit parens in every target, so
 // operation order (and therefore floating-point rounding behavior) is
 // identical everywhere.
+//
+// SECURITY: every builder below validates its own name/op/value
+// argument(s) -- see assertSafeIdentifier/assertSafeOp/assertFiniteNumber
+// just below. This is specifically about these builders being the "raw
+// AST" layer -- the one this project's own README recommends reaching
+// for when you want the least amount of magic between your formula and
+// the code it emits. Without validation, that would have been the LEAST
+// safe layer to build from untrusted input, not the most: fn`...`/
+// expr`...`'s own tokenizer already only ever produces safe identifier
+// characters, so these builders were the one place a malicious/malformed
+// name -- e.g. `v('x); process.exit(1); //')` -- could reach emitted
+// output completely unchecked, verbatim, in all 16 targets at once.
+// Confirmed, not assumed, before this existed.
+
+// Matches fn`...`/expr`...`'s own tokenizer IDENT rule exactly (see
+// expr.js's tokenizeSegment) -- anything that couldn't have come out of
+// the real parser isn't allowed in here either.
+const IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
+function assertSafeIdentifier(name, context) {
+    if (typeof name !== "string" || !IDENTIFIER.test(name)) {
+        throw new Error(
+            `${context}: ${JSON.stringify(name)} isn't a safe identifier -- must start with a letter or "_", ` +
+            `followed only by letters/digits/"_" (the same rule fn\`...\`/expr\`...\`'s own tokenizer already ` +
+            `enforces on anything parsed from text; this only matters when building a tree directly, bypassing ` +
+            `the parser)`,
+        );
+    }
+}
+
+const BIN_OPS = new Set(["+", "-", "*", "/"]);
+const CMP_OPS = new Set([">", "<", ">=", "<=", "==", "!="]);
+
+function assertSafeOp(op, allowed, context) {
+    if (!allowed.has(op)) {
+        throw new Error(`${context}: ${JSON.stringify(op)} isn't one of the allowed operators (${[...allowed].join(" ")})`);
+    }
+}
+
+function assertFiniteNumber(value, context) {
+    if (typeof value !== "number" || !Number.isFinite(value)) {
+        throw new Error(
+            `${context}: ${JSON.stringify(value)} isn't a finite number -- NaN/Infinity/non-numeric values ` +
+            `can't be emitted as a literal in every target`,
+        );
+    }
+}
 
 function num(value) {
+    assertFiniteNumber(value, "num()");
     return { type: "num", value };
 }
 
 function v(name) {
+    assertSafeIdentifier(name, "v()");
     return { type: "var", name };
 }
 
 function bin(op, left, right) {
+    assertSafeOp(op, BIN_OPS, "bin()");
     return { type: "bin", op, left, right };
 }
 
 function call(name, ...args) {
+    assertSafeIdentifier(name, "call()");
     return { type: "call", name, args };
 }
 
@@ -71,6 +122,7 @@ function neg(x) {
 // then divide three components by it). Lifted out by collectLets before
 // emission — see there for how `v(name)` ends up referring to it.
 function letIn(name, value, body) {
+    assertSafeIdentifier(name, "letIn()");
     return { type: "let", name, value, body };
 }
 
@@ -98,6 +150,7 @@ function letChain(bindings, body) {
 // Comparison predicate — only valid as the `cond` of a select(); not a
 // general boolean expression, and shouldn't appear anywhere else in a tree.
 function cmp(left, op, right) {
+    assertSafeOp(op, CMP_OPS, "cmp()");
     return { type: "cmp", op, left, right };
 }
 
@@ -119,6 +172,7 @@ function select(cond, thenNode, elseNode) {
 // return, an object literal, output parameters) — see formatSuite in each
 // emitters/<lang>.js.
 function outputs(fields) {
+    for (const name of Object.keys(fields)) assertSafeIdentifier(name, "outputs()");
     return { type: "outputs", fields };
 }
 
@@ -126,6 +180,7 @@ function outputs(fields) {
 // the "field" node-shape comment at the top of this file for what this
 // actually means and who consumes it.
 function field(target, name) {
+    assertSafeIdentifier(name, "field()");
     return { type: "field", target, field: name };
 }
 
@@ -258,7 +313,19 @@ function collectVarRefs(node, refs = new Set()) {
 // the gap first, not assumed: before this existed, emitAll() silently
 // succeeded across all 18 targets for a body referencing a completely
 // undeclared name.
+//
+// Also validates fn.name and every fn.params entry as safe identifiers
+// (see assertSafeIdentifier above) -- the SAME concern as every builder
+// above, just here instead of at a constructor call site, since
+// {name, params, body} is a plain object literal shape with no
+// constructor function of its own to hook into. This is the one place
+// every real consumption path (evaluate(), every emitter's
+// emitFunction(), cobol.js's own override) already runs unconditionally,
+// so it's the natural single checkpoint for this too.
 function checkUnboundVars(fn) {
+    assertSafeIdentifier(fn.name, "fn.name");
+    for (const p of fn.params) assertSafeIdentifier(p, "fn.params");
+
     const { bindings, body } = collectLets(fn.body);
     const declared = new Set([...fn.params, ...bindings.map((b) => b.name)]);
 

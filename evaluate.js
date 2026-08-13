@@ -14,7 +14,7 @@
 // primitives are called") straight to the real Math.* function -- this
 // target has no codegen step to route an intermediate string through.
 const { collectLets, checkUnboundVars } = require("./ast.js");
-const { expandMacros, resolveExternForEvaluate } = require("./macros.js");
+const { expandMacros, resolveExternForEvaluate, withContext } = require("./macros.js");
 
 const CMP_OPS = {
     ">": (a, b) => a > b,
@@ -44,7 +44,12 @@ const CALLS = {
 // valid pre-collectLets (a function's top-level let-chain/body shape),
 // never nested inside a bin/call/select, same constraint every emitter
 // already relies on (see ast.js's own comments on letIn/outputs).
-function evalNode(node, env) {
+// `registry` -- see macros.js's createRegistry()/index.js's
+// createSession() -- resolves an extern against the right session's own
+// registrations, defaulting to the process-wide one when not passed
+// (evaluate() below never passes `undefined` on purpose either way, see
+// there).
+function evalNode(node, env, registry) {
     switch (node.type) {
         case "num":
             return node.value;
@@ -56,18 +61,25 @@ function evalNode(node, env) {
         case "bin": {
             const op = BIN_OPS[node.op];
             if (!op) throw new Error(`evaluate(): unknown bin op "${node.op}"`);
-            return op(evalNode(node.left, env), evalNode(node.right, env));
+            return op(evalNode(node.left, env, registry), evalNode(node.right, env, registry));
         }
         case "call": {
-            const impl = CALLS[node.name] || resolveExternForEvaluate(node.name);
+            const impl = CALLS[node.name] || resolveExternForEvaluate(node.name, registry);
             if (!impl) throw new Error(`evaluate(): no mapping for Math function "${node.name}"`);
-            return impl(...node.args.map((a) => evalNode(a, env)));
+            const args = node.args.map((a) => evalNode(a, env, registry));
+            // Only an extern's own `evaluate` entry is caller-supplied
+            // code that could have a bug worth attributing -- a built-in
+            // primitive (impl === CALLS[node.name]) is exprforge's own
+            // Math.* wrapper, not worth wrapping.
+            return CALLS[node.name]
+                ? impl(...args)
+                : withContext(`evaluate(): while running extern "${node.name}"`, () => impl(...args));
         }
         case "select": {
             const cmpFn = CMP_OPS[node.cond.op];
             if (!cmpFn) throw new Error(`evaluate(): unknown cmp op "${node.cond.op}"`);
-            const cond = cmpFn(evalNode(node.cond.left, env), evalNode(node.cond.right, env));
-            return evalNode(cond ? node.then : node.else, env);
+            const cond = cmpFn(evalNode(node.cond.left, env, registry), evalNode(node.cond.right, env, registry));
+            return evalNode(cond ? node.then : node.else, env, registry);
         }
         default:
             throw new Error(
@@ -82,14 +94,18 @@ function evalNode(node, env) {
 // fn.params. Returns a number for a plain body, or a {name: value}
 // object for a multi-output (outputs()) body -- matching the shape
 // test/conformance.test.js's own parseSuiteOutput() already expects
-// back from every other target.
-function evaluate(fn, args) {
+// back from every other target. `registry` (see macros.js's
+// createRegistry()) defaults to the process-wide default when omitted --
+// pass a session's own (see index.js's createSession()) to resolve
+// macros/externs against that session instead; ordinary callers never
+// need to pass it.
+function evaluate(fn, args, registry = undefined) {
     // Resolves every macro call and field() access into plain arithmetic
     // FIRST -- checkUnboundVars/collectLets/evalNode below know nothing
     // about either (see macros.js's own header comment); an extern's
     // call node is left alone here, and resolved above in evalNode's own
     // "call" case instead.
-    fn = expandMacros(fn);
+    fn = expandMacros(fn, null, registry);
     // Checked once, up front, exhaustively -- NOT relying on evalNode's
     // own runtime "unbound variable" throw below to happen to hit it,
     // which it might never do for a given call: a bad reference inside
@@ -110,17 +126,17 @@ function evaluate(fn, args) {
 
     const { bindings, body } = collectLets(fn.body);
     for (const { name, node } of bindings) {
-        env[name] = evalNode(node, env);
+        env[name] = evalNode(node, env, registry);
     }
 
     if (body.type === "outputs") {
         const result = {};
         for (const [name, node] of Object.entries(body.fields)) {
-            result[name] = evalNode(node, env);
+            result[name] = evalNode(node, env, registry);
         }
         return result;
     }
-    return evalNode(body, env);
+    return evalNode(body, env, registry);
 }
 
 module.exports = { evaluate };

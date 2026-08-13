@@ -478,6 +478,51 @@ same "expression AST, not a program AST" boundary declared under
 "Intents" above, applied to this feature specifically because it's the
 one place someone's most likely to assume otherwise.
 
+### Sessions (`createSession`)
+
+Every `loadMacro`/`loadExtern`/`evaluate`/`emit`/`emitMany`/`loadExpr`/
+`loadExprSource` above registers into (or resolves against) one
+process-wide registry by default — fine for a single program registering
+its own fixed set of macros once, at startup. `createSession()` gives you
+an independent, additively-scoped registry instead, for whenever more
+than one is genuinely needed at once — e.g. a service evaluating math
+defined by several different users/tenants, where one user's
+`loadMacro("helper", ...)` must never resolve inside another user's
+expression just because they happened to pick the same name:
+
+```js
+const { createSession, num, v, mul, call } = require("exprforge");
+
+const session = createSession();
+session.loadMacro("double", (x) => mul(x, num(2)));
+
+const doubled = { name: "f", params: ["x"], body: call("double", v("x")) };
+session.evaluate(doubled, [21]); // 42
+
+// The global loadMacro/evaluate never see "double" at all -- it exists
+// only inside this one session's own registry.
+```
+
+- **Purely additive**: the process-wide default registry (what every bare
+  `loadMacro`/`loadExtern`/`evaluate`/`emit` call above already uses) is
+  completely unaffected by a session's existence, and vice versa —
+  nothing here changes what any existing call site does.
+- **Every session-bound method mirrors its global counterpart 1:1**:
+  `session.loadMacro`, `session.loadExtern`, `session.evaluate`,
+  `session.emit`, `session.emitMany`, `session.loadExpr`,
+  `session.loadExprSource`, `session.expandMacros` — same signatures,
+  scoped to that session's own registry instead of the default one.
+- **Two sessions never see each other's registrations**, even when both
+  register the same name — registering `"helper"` in session A never
+  collides with, or shadows, an unrelated `"helper"` in session B.
+- **Built-in primitives (`sqrt`, `pow`, ...) work identically everywhere**
+  — they're fixed and not registry-backed at all, so a session doesn't
+  need, and can't be given, its own copy of them.
+- **No removal API.** A session's registry is a plain object,
+  garbage-collected normally once you drop your reference to it — rebuild
+  a fresh `createSession()` instead of trying to unregister one
+  macro/extern out of an existing one.
+
 ## Adding a language
 
 Write `emitters/<lang>.js` exporting an `Emitter` instance (see any
@@ -823,6 +868,53 @@ the whole collision class regardless of naming; a leading comment documents
 the order instead (same reason Lua's return, also positional, gets one).
 C#'s tuple has no such risk — a tuple literal's element names aren't
 pre-declared locals the way Go's named returns are.
+
+## Security considerations
+
+"Trust only the layer you need" (see "Intents" above) is a claim, not just
+a description — the raw AST layer specifically has to be safe to build
+from untrusted input, since it's the one this README recommends reaching
+for when you want the least amount of magic between your formula and the
+code it emits. A few concrete guarantees that follow from that:
+
+- **The raw builders validate their own inputs.** `num`/`v`/`bin`/`call`/
+  `letIn`/`cmp`/`outputs`/`field` all reject anything that isn't a safe
+  value — an identifier must match the exact same rule `expr`/`fn`'s own
+  tokenizer already enforces on text it parses (start with a letter/`_`,
+  then letters/digits/`_` only), an operator must be one of the fixed
+  `+`/`-`/`*`/`/` (or, for `cmp`, `>`/`<`/`>=`/`<=`/`==`/`!=`) set, and a
+  number must actually be finite. Without this, the raw builder layer
+  would have been the *least* safe one to build from untrusted input, not
+  the most — `fn`/`expr`'s own tokenizer never produces anything but a
+  safe identifier to begin with, so this was the one place a malformed or
+  malicious name (e.g. `v("x); process.exit(1); //")`) could otherwise
+  reach emitted output completely unescaped, verbatim, in every one of 16
+  targets at once.
+- **`expr`/`fn` cap how deeply an expression can nest.** Parens,
+  function-call arguments, and ternary branches can nest up to 100 levels
+  deep (`MAX_EXPRESSION_DEPTH` in `expr.js`) before parsing fails with one
+  clear, controlled error — comfortably below where a pathologically
+  nested input (`"((((...))))"` or `"f(f(f(...)))"` thousands deep,
+  plausible if this ever parses genuinely untrusted, unbounded-size text)
+  would otherwise blow the real JS call stack with a raw "Maximum call
+  stack size exceeded". A wide-but-shallow expression (many terms, no
+  real nesting) is unaffected regardless of length — only genuine nesting
+  depth is bounded.
+- **`createSession()` isolates macro/extern registrations** between
+  independent users/tenants sharing one process — see "Sessions" above.
+- **A caller-supplied macro/extern throwing reports which one.** A macro
+  function, or an extern's own `evaluate`/per-target template, is code
+  *you* (or whoever registered it) supplied — if it has a bug, the error
+  it throws is wrapped with context naming the macro/extern/target
+  responsible, rather than propagating bare with no indication of where
+  it came from.
+
+What this doesn't cover, deliberately: `loadExtern`'s per-target templates
+are real native code you supply — ExprForge can't verify the named symbol
+actually exists in a given target, or that it behaves identically across
+every target you provide a mapping for (see "Macros and externs" above).
+That risk is inherent to what an extern *is*, not something a validation
+layer could close without also closing off the feature itself.
 
 ## Testing
 

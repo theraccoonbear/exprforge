@@ -319,7 +319,12 @@ class TempPool {
 }
 
 class CobolEmitter extends Emitter {
-    emitFunction(fn) {
+    // `registry` -- see base.js's own emitFunction comment and
+    // macros.js's createRegistry()/index.js's createSession() -- same
+    // `this._registry` instance-state convention as base.js, read by the
+    // inherited emitExpr's "call" case for extern resolution.
+    emitFunction(fn, registry = undefined) {
+        this._registry = registry;
         const { collectLets, checkUnboundVars } = require("../ast.js");
         const { expandMacros } = require("../macros.js");
         // This class overrides emitFunction entirely (never calls
@@ -333,7 +338,7 @@ class CobolEmitter extends Emitter {
         // considered declared/resolved either way -- the rename is
         // identity-preserving over the set of bound names, just changes
         // their string).
-        fn = expandMacros(fn);
+        fn = expandMacros(fn, null, registry);
         checkUnboundVars(fn);
         // Must run before collectLets, and before anything else in this
         // function -- collectLets flattens the tree's let structure away,

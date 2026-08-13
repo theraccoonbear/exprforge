@@ -55,8 +55,13 @@ function tokenizeFile(source, label) {
  *
  * Throws if any definition has no "name(params):" signature line, or if
  * two definitions share a name.
+ *
+ * `registry` (see macros.js's createRegistry()) defaults to the
+ * process-wide default when omitted -- pass a session's own (see
+ * index.js's createSession()) to resolve macros/externs defined in that
+ * session, alongside whatever's defined earlier in this same source.
  */
-function loadExprSource(source, label = "loadExprSource()") {
+function loadExprSource(source, label = "loadExprSource()", registry = undefined) {
     const parser = new Parser(tokenizeFile(source, label), source, label);
 
     const fileRegistry = new Map(); // name -> {arity, fn, alreadyExpanded} -- see toMacro in macros.js
@@ -74,17 +79,18 @@ function loadExprSource(source, label = "loadExprSource()") {
         }
 
         // Expanded against whatever's already in fileRegistry (earlier
-        // definitions in this same source) PLUS every globally loaded
-        // macro (expandMacros merges both -- see macros.js).
-        const expanded = expandMacros(raw, fileRegistry);
+        // definitions in this same source) PLUS every macro/extern
+        // registered in `registry` (expandMacros merges both -- see
+        // macros.js).
+        const expanded = expandMacros(raw, fileRegistry, registry);
         defs[raw.name] = expanded;
 
         // Available to whatever's defined AFTER this point in the source
         // -- never to itself (expanded above, against fileRegistry
         // BEFORE this line adds it) or to anything defined earlier.
         // `expanded` has nothing left to resolve (macro calls/field
-        // access are already gone), so no extraRegistry needs passing
-        // here.
+        // access are already gone), so no extraRegistry/registry needs
+        // passing here.
         fileRegistry.set(raw.name, toMacro(expanded));
     }
 
@@ -93,14 +99,14 @@ function loadExprSource(source, label = "loadExprSource()") {
 
 /**
  * Reads `path` from disk and parses it via loadExprSource() above -- see
- * that function's own doc comment for the actual grammar/semantics; this
- * is purely the file-reading convenience wrapper around it. Node-only
- * (fs.readFileSync); use loadExprSource(text) directly wherever the
- * source text comes from somewhere else (e.g. a browser text buffer, an
- * HTTP response) instead of a real file on disk.
+ * that function's own doc comment for the actual grammar/semantics
+ * (including `registry`); this is purely the file-reading convenience
+ * wrapper around it. Node-only (fs.readFileSync); use loadExprSource(text)
+ * directly wherever the source text comes from somewhere else (e.g. a
+ * browser text buffer, an HTTP response) instead of a real file on disk.
  */
-function loadExpr(path) {
-    return loadExprSource(fs.readFileSync(path, "utf8"), `loadExpr(${path})`);
+function loadExpr(path, registry = undefined) {
+    return loadExprSource(fs.readFileSync(path, "utf8"), `loadExpr(${path})`, registry);
 }
 
 module.exports = { loadExpr, loadExprSource };

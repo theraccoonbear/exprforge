@@ -160,6 +160,21 @@ function holeToNode(value, label = "expr()") {
     );
 }
 
+// How deep parseExpression() can recurse into itself -- nested
+// parens/function-call args/ternary branches, the only places genuine
+// nesting comes from (the additive/multiplicative/unary/power/postfix
+// precedence chain always runs once per primary regardless of how deep
+// the tree ends up, so it isn't what this is bounding). 100 is
+// deliberately generous, not tight: the deepest real formula in this
+// project (Cardano's cubic, samples/ via the playground's own example)
+// doesn't come close to double digits. It exists so a pathologically
+// nested input -- "((((((...))))))" or "f(f(f(f(...))))" thousands
+// deep, plausible if this ever parses genuinely untrusted, unbounded-
+// size text -- fails with one clear, controlled error instead of a raw
+// "Maximum call stack size exceeded" RangeError once the real JS stack
+// (which this sits comfortably below at 100) actually gives out.
+const MAX_EXPRESSION_DEPTH = 100;
+
 class Parser {
     // `label` -- see tokenizeSegment above; also threaded through to
     // holeToNode so a bad interpolation inside `` fn`...` `` reports
@@ -169,6 +184,7 @@ class Parser {
         this.source = source;
         this.i = 0;
         this.label = label;
+        this.depth = 0;
     }
 
     peek() {
@@ -206,8 +222,22 @@ class Parser {
         throw new Error(`${this.label}: ${message} -- found ${tokDesc} at position ${t.pos} in \`${this.source}\``);
     }
 
+    // Every recursive re-entry (a parenthesized group, a function-call
+    // argument, a ternary's then/else branch) goes through here, so
+    // tracking depth at this ONE point -- not at every precedence-level
+    // method, which would overcount a wide-but-shallow expression like
+    // "a + b + c + ..." as if it were deeply nested -- correctly bounds
+    // genuine nesting without rejecting a merely long one.
     parseExpression() {
-        return this.parseTernary();
+        this.depth++;
+        if (this.depth > MAX_EXPRESSION_DEPTH) {
+            this.error(`expression nested too deeply (max ${MAX_EXPRESSION_DEPTH} levels of parens/calls/ternaries)`);
+        }
+        try {
+            return this.parseTernary();
+        } finally {
+            this.depth--;
+        }
     }
 
     // Only place a comparison is ever accepted -- matches cmp()'s own

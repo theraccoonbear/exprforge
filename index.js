@@ -4,7 +4,7 @@ const { forComponents } = require("./util.js");
 const { expr } = require("./expr.js");
 const { fn } = require("./fn.js");
 const { evaluate } = require("./evaluate.js");
-const { loadMacro, loadExtern, expandMacros } = require("./macros.js");
+const { loadMacro, loadExtern, expandMacros, createRegistry } = require("./macros.js");
 const { loadExpr, loadExprSource } = require("./load-expr.js");
 const emitters = require("./emitters/registry.js");
 const { catmullRomAst } = require("./samples/catmull-rom.js");
@@ -23,15 +23,20 @@ const { macroDemoAst } = require("./samples/macro-demo.js");
  * isolated from; let it propagate. Prefer this over emitAll (deprecated,
  * below) when you only need one or a few targets -- it doesn't pay for
  * every registered emitter to get one.
+ *
+ * `registry` (see macros.js's createRegistry()) defaults to the
+ * process-wide default when omitted -- pass a session's own (see
+ * createSession() below) to resolve macros/externs registered in that
+ * session instead; ordinary callers never need to pass it directly.
  */
-function emit(fnDef, lang) {
+function emit(fnDef, lang, registry = undefined) {
     const emitter = emitters[lang];
     if (!emitter) {
         throw new Error(
             `emit(): no emitter registered for language "${lang}" -- known languages: ${Object.keys(emitters).sort().join(", ")}`,
         );
     }
-    return { ext: emitter.ext, source: emitter.emitFunction(fnDef) };
+    return { ext: emitter.ext, source: emitter.emitFunction(fnDef, registry) };
 }
 
 /**
@@ -43,8 +48,11 @@ function emit(fnDef, lang) {
  * no longer takes the whole batch down with it. `langs` defaults to every
  * registered language; pass an explicit array to avoid running (and
  * paying for) emitters you don't need.
+ *
+ * `registry` -- see emit()'s own doc comment above -- same meaning here,
+ * applied to every language in `langs`.
  */
-function emitMany(fnDef, langs = Object.keys(emitters)) {
+function emitMany(fnDef, langs = Object.keys(emitters), registry = undefined) {
     const result = {};
     for (const lang of langs) {
         const emitter = emitters[lang];
@@ -53,7 +61,7 @@ function emitMany(fnDef, langs = Object.keys(emitters)) {
             continue;
         }
         try {
-            result[lang] = { ext: emitter.ext, source: emitter.emitFunction(fnDef), error: null };
+            result[lang] = { ext: emitter.ext, source: emitter.emitFunction(fnDef, registry), error: null };
         } catch (e) {
             result[lang] = { ext: emitter.ext, source: null, error: e instanceof Error ? e.message : String(e) };
         }
@@ -74,6 +82,40 @@ function emitMany(fnDef, langs = Object.keys(emitters)) {
  */
 function emitAll(fnDef) {
     return emitMany(fnDef);
+}
+
+/**
+ * Creates an isolated "session": its own private macro/extern registry
+ * (see macros.js's createRegistry()), plus every macro/extern/evaluate/
+ * emit-shaped function bound to use it instead of the process-wide
+ * default registry loadMacro/loadExtern/evaluate/emit/emitMany use when
+ * called bare. Purely additive -- loadMacro/loadExtern/etc. above are
+ * completely unaffected by a session's existence, and a session's own
+ * registrations are invisible to them and to every OTHER session,
+ * garbage-collected normally once the session object itself is no
+ * longer referenced. No removal API: rebuild a fresh session (via a new
+ * createSession() call) instead of trying to unregister one macro/extern
+ * out of an existing one -- see the design discussion this came out of
+ * (github.com/theraccoonbear/exprforge/issues/21).
+ *
+ * Useful whenever a program legitimately needs more than one independent
+ * "namespace" of macros/externs at once -- e.g. a multi-tenant service
+ * evaluating math defined by different untrusted users, where one
+ * user's loadMacro("helper", ...) must never resolve inside another
+ * user's expression just because they picked the same name.
+ */
+function createSession() {
+    const registry = createRegistry();
+    return {
+        loadMacro: (name, def) => loadMacro(name, def, registry),
+        loadExtern: (name, def) => loadExtern(name, def, registry),
+        expandMacros: (fnOrNode, extraRegistry = null) => expandMacros(fnOrNode, extraRegistry, registry),
+        evaluate: (fn, args) => evaluate(fn, args, registry),
+        emit: (fnDef, lang) => emit(fnDef, lang, registry),
+        emitMany: (fnDef, langs = Object.keys(emitters)) => emitMany(fnDef, langs, registry),
+        loadExpr: (path) => loadExpr(path, registry),
+        loadExprSource: (source, label = "loadExprSource()") => loadExprSource(source, label, registry),
+    };
 }
 
 module.exports = {
@@ -144,4 +186,9 @@ module.exports = {
     // Deprecated: every target at once, no way to ask for fewer. Prefer
     // emit()/emitMany() above -- kept working, not removed.
     emitAll,
+    // Creates an isolated session: its own private macro/extern registry,
+    // plus loadMacro/loadExtern/evaluate/emit/emitMany/loadExpr/
+    // loadExprSource bound to use it. See this function's own doc
+    // comment above.
+    createSession,
 };

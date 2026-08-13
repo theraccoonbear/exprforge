@@ -46,8 +46,48 @@ const { PRIMITIVE_ARITY } = require("./primitives.js");
 
 const PRIMITIVE_NAMES = new Set(Object.keys(PRIMITIVE_ARITY));
 
-const macros = new Map(); // name -> { arity: number|null, fn, alreadyExpanded: boolean }
-const externs = new Map(); // name -> { evaluate?: (...args:number[])=>number, [lang]: (argStrs:string[])=>string }
+// A registry is just the pair of Maps loadMacro()/loadExtern() actually
+// mutate -- { macros, externs }, both name -> entry, same shapes as
+// before this existed. Every session-aware function below (loadMacro,
+// loadExtern, expandMacros, resolveExternForEvaluate,
+// resolveExternForEmitter, and (via index.js) evaluate/emit/emitMany/
+// loadExpr/loadExprSource) takes one as an optional trailing argument,
+// defaulting to `defaultRegistry` -- the same module-level Maps this
+// file has always used, so every EXISTING call site (every test, every
+// sample, math/index.js's own top-level registrations, the playground)
+// keeps working completely unchanged. createSession() (see index.js) is
+// what actually creates and threads a NON-default one through: a fresh,
+// independently-namespaced registry that never touches `defaultRegistry`
+// at all, garbage-collected normally once you drop the session, with no
+// removal API needed for that -- see the README's "Sessions" section.
+function createRegistry() {
+    return {
+        macros: new Map(), // name -> { arity: number|null, fn, alreadyExpanded: boolean }
+        externs: new Map(), // name -> { evaluate?: (...args:number[])=>number, [lang]: (argStrs:string[])=>string }
+    };
+}
+
+const defaultRegistry = createRegistry();
+
+// Re-runs `fn`, and if it throws, re-throws with `context` prefixed onto
+// the message -- a macro function, or an extern's own `evaluate`/
+// per-target template, throwing (a bug in the CALLER's own
+// implementation, not exprforge's) otherwise propagates with zero
+// indication of which registered macro/extern/target was actually
+// responsible, which gets genuinely painful to trace back once more than
+// one or two of these exist in a real codebase. The original Error is
+// preserved as `.cause`, not discarded -- nothing informative is lost,
+// just given a clearer heading. Shared here (not duplicated per call
+// site) since evaluate.js and emitters/base.js both already require this
+// file for resolveExternForEvaluate/resolveExternForEmitter.
+function withContext(context, fn) {
+    try {
+        return fn();
+    } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        throw new Error(`${context}: ${message}`, { cause: err });
+    }
+}
 
 // A Node always has a string `.type` (see ast.js's own node-shape
 // comment); a macro's multi-output result is a plain {fieldName: Node}
@@ -104,9 +144,14 @@ function isMultiOutputResult(x) {
  * Throws if `name` collides with a built-in primitive or an
  * already-registered macro/extern -- names are a single shared
  * namespace, so a silent shadow never happens.
+ *
+ * Registers into this module's own default, process-wide registry
+ * unless called as `session.loadMacro(...)` (see index.js's
+ * createSession()), in which case it registers into that session's own,
+ * independently-namespaced one instead -- see createRegistry() above.
  */
-function loadMacro(name, def) {
-    assertNameAvailable("loadMacro", name);
+function loadMacro(name, def, registry = defaultRegistry) {
+    assertNameAvailable("loadMacro", name, registry);
     if (typeof def === "function") {
         // def.length -- JS's own count of parameters before the first
         // one with a default value (or a rest parameter) -- is treated
@@ -118,11 +163,11 @@ function loadMacro(name, def) {
         // enforce beyond what JS itself already does with extra
         // arguments (silently ignored, same as calling any other JS
         // function with too many).
-        macros.set(name, { arity: { min: def.length, max: null }, fn: def, alreadyExpanded: false });
+        registry.macros.set(name, { arity: { min: def.length, max: null }, fn: def, alreadyExpanded: false });
         return;
     }
     if (isFnDefShape(def)) {
-        macros.set(name, toMacro(def));
+        registry.macros.set(name, toMacro(def, null, registry));
         return;
     }
     throw new Error(
@@ -154,8 +199,8 @@ function loadMacro(name, def) {
  * Throws if `name` collides with a built-in primitive or an
  * already-registered macro/extern.
  */
-function loadExtern(name, def) {
-    assertNameAvailable("loadExtern", name);
+function loadExtern(name, def, registry = defaultRegistry) {
+    assertNameAvailable("loadExtern", name, registry);
     if (!def || typeof def !== "object") {
         throw new Error(
             `loadExtern: "def" for "${name}" must be a plain per-target mapping object, e.g. ` +
@@ -165,28 +210,28 @@ function loadExtern(name, def) {
     if (def.arity !== undefined && (!Number.isInteger(def.arity) || def.arity < 0)) {
         throw new Error(`loadExtern: "arity" for "${name}", if given, must be a non-negative integer`);
     }
-    externs.set(name, def);
+    registry.externs.set(name, def);
 }
 
-function assertNameAvailable(fnName, name) {
+function assertNameAvailable(fnName, name, registry) {
     if (typeof name !== "string" || !name) {
         throw new Error(`${fnName}: name must be a non-empty string`);
     }
     if (PRIMITIVE_NAMES.has(name)) {
         throw new Error(`${fnName}: "${name}" is already one of the built-in primitives -- choose a different name`);
     }
-    if (macros.has(name) || externs.has(name)) {
+    if (registry.macros.has(name) || registry.externs.has(name)) {
         throw new Error(`${fnName}: "${name}" is already registered -- names must be unique across macros and externs`);
     }
 }
 
-function resolveExternForEvaluate(name) {
-    const entry = externs.get(name);
+function resolveExternForEvaluate(name, registry = defaultRegistry) {
+    const entry = registry.externs.get(name);
     return entry && typeof entry.evaluate === "function" ? entry.evaluate : undefined;
 }
 
-function resolveExternForEmitter(name, lang) {
-    const entry = externs.get(name);
+function resolveExternForEmitter(name, lang, registry = defaultRegistry) {
+    const entry = registry.externs.get(name);
     return entry && typeof entry[lang] === "function" ? entry[lang] : undefined;
 }
 
@@ -293,8 +338,8 @@ function substituteAndRename(node, subst, renames) {
  * legitimately reference other macros, so `alreadyExpanded: false` there
  * means expandMacros() still walks its result once.
  */
-function toMacro(fnDef, extraRegistry = null) {
-    const resolvedBody = expandBody(fnDef.body, { extraRegistry, aliases: new Map() });
+function toMacro(fnDef, extraRegistry = null, registry = defaultRegistry) {
+    const resolvedBody = expandBody(fnDef.body, { extraRegistry, aliases: new Map(), registry });
     return {
         // Exact, unlike a plain-JS macro's min-only arity below -- fn.js's
         // own grammar has no default-parameter syntax, so every AST
@@ -336,7 +381,7 @@ function toMacro(fnDef, extraRegistry = null) {
 // ---------------------------------------------------------------------
 
 function lookupMacro(name, ctx) {
-    return (ctx.extraRegistry && ctx.extraRegistry.get(name)) || macros.get(name);
+    return (ctx.extraRegistry && ctx.extraRegistry.get(name)) || ctx.registry.macros.get(name);
 }
 
 // Shared by macro calls (`arity` always set -- see loadMacro/toMacro
@@ -360,8 +405,8 @@ function checkArity(name, arity, argCount) {
 // emitter, which would report it (if at all) as a confusing runtime
 // crash inside whatever an extern's own per-target template does with a
 // missing/extra argString, not a clear arg-count error.
-function checkExternArity(name, argCount) {
-    const entry = externs.get(name);
+function checkExternArity(name, argCount, registry) {
+    const entry = registry.externs.get(name);
     if (!entry || entry.arity === undefined) return;
     checkArity(name, { min: entry.arity, max: entry.arity }, argCount);
 }
@@ -421,7 +466,7 @@ function tryResolveMacroCall(callNode, ctx) {
     const expandedArgs = callNode.args.map((a) => expandExpr(a, ctx));
     checkArity(callNode.name, entry.arity, expandedArgs.length);
 
-    const result = entry.fn(...expandedArgs);
+    const result = withContext(`expandMacros: while expanding macro "${callNode.name}"`, () => entry.fn(...expandedArgs));
 
     // An AST-fn-def-shaped macro (toMacro, above) is already fully
     // resolved once, at registration time -- its result must be used
@@ -543,7 +588,7 @@ function expandExpr(node, ctx) {
                 // whether or not it ends up being a macro.
                 const args = node.args.map((a) => expandExpr(a, ctx));
                 checkPrimitiveArity(node.name, args.length);
-                checkExternArity(node.name, args.length);
+                checkExternArity(node.name, args.length, ctx.registry);
                 return call(node.name, ...args);
             }
             if (isMultiOutputResult(resolved)) {
@@ -636,10 +681,14 @@ function expandBody(node, ctx) {
  * returns the same shape back. `extraRegistry` (a Map<name, {arity, fn,
  * alreadyExpanded}>) is load-expr.js's own hook for "functions defined
  * earlier in this same .expr file" -- see that file's header comment;
- * ordinary callers never need to pass it.
+ * ordinary callers never need to pass it. `registry` (a {macros, externs}
+ * pair, see createRegistry() above) defaults to this file's own module-
+ * level registry -- pass a session's own (see index.js's createSession())
+ * to resolve against that session's macros/externs instead of the
+ * process-wide default ones.
  */
-function expandMacros(fnOrNode, extraRegistry = null) {
-    const ctx = { extraRegistry, aliases: new Map() };
+function expandMacros(fnOrNode, extraRegistry = null, registry = defaultRegistry) {
+    const ctx = { extraRegistry, aliases: new Map(), registry };
     if (isFnDefShape(fnOrNode)) {
         return { name: fnOrNode.name, params: fnOrNode.params, body: expandBody(fnOrNode.body, ctx) };
     }
@@ -653,4 +702,6 @@ module.exports = {
     resolveExternForEvaluate,
     resolveExternForEmitter,
     toMacro,
+    withContext,
+    createRegistry,
 };

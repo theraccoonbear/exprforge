@@ -7,7 +7,7 @@
 const test = require("node:test");
 const assert = require("node:assert");
 const {
-    num, v, add, mul, sub, div, call, cmp, select, letIn, letChain, outputs, collectLets, checkUnboundVars, MACRO_GENSYM_PREFIX,
+    num, v, bin, add, mul, sub, div, call, cmp, select, letIn, letChain, outputs, field, collectLets, checkUnboundVars, MACRO_GENSYM_PREFIX,
 } = require("../ast.js");
 
 test("outputs() builds a plain {type, fields} node", () => {
@@ -199,4 +199,90 @@ test("an EARLIER let-binding referencing a LATER one's name is also fine -- chec
 test("div's operands are checked too, same as every other bin op", () => {
     const fn = { name: "f", params: ["a"], body: div(v("a"), v("typo")) };
     assert.throws(() => checkUnboundVars(fn), /"typo" is referenced/);
+});
+
+// --- raw builder input validation (identifier/op/number injection) ------
+//
+// See ast.js's own "SECURITY" comment at the top of the file: these
+// builders are the raw-AST layer -- the one place a malicious/malformed
+// name, operator, or number could reach emitted output completely
+// unchecked, verbatim, in every target at once, since fn`...`/expr`...`'s
+// own tokenizer never produces anything but a safe identifier to begin
+// with. Confirmed the actual injection first, not just reasoned about:
+// v("x); require('child_process').execSync('touch /tmp/pwned'); //")
+// used to build a Node whose `.name` landed in generated source
+// completely unescaped.
+
+test("v() rejects a name that isn't a safe identifier", () => {
+    assert.throws(() => v("x); process.exit(1); //"), /isn't a safe identifier/);
+    assert.throws(() => v("2x"), /isn't a safe identifier/); // can't start with a digit
+    assert.throws(() => v(""), /isn't a safe identifier/);
+    assert.throws(() => v(123), /isn't a safe identifier/); // not even a string
+});
+
+test("v() accepts every identifier shape the real tokenizer would produce", () => {
+    assert.doesNotThrow(() => v("x"));
+    assert.doesNotThrow(() => v("_private"));
+    assert.doesNotThrow(() => v("camelCase123"));
+});
+
+test("call() rejects an unsafe function name the same way v() does", () => {
+    assert.throws(() => call("sqrt(x); alert(1); //", num(1)), /isn't a safe identifier/);
+});
+
+test("letIn() rejects an unsafe binding name", () => {
+    assert.throws(() => letIn("total = 1; DROP TABLE x; --", num(1), num(2)), /isn't a safe identifier/);
+});
+
+test("outputs() rejects an unsafe field name, checked for EVERY key, not just the first", () => {
+    assert.throws(() => outputs({ ok: num(1), "bad name": num(2) }), /isn't a safe identifier/);
+});
+
+test("field() rejects an unsafe field name", () => {
+    assert.throws(() => field(v("b"), "rx; evil()"), /isn't a safe identifier/);
+});
+
+test("bin() rejects an operator outside the fixed +/-/*// set", () => {
+    assert.throws(() => bin("**", num(1), num(2)), /isn't one of the allowed operators/);
+    assert.throws(() => bin("; process.exit(1); //", num(1), num(2)), /isn't one of the allowed operators/);
+});
+
+test("bin() accepts every real operator", () => {
+    for (const op of ["+", "-", "*", "/"]) {
+        assert.doesNotThrow(() => bin(op, num(1), num(2)));
+    }
+});
+
+test("cmp() rejects an operator outside the fixed comparator set", () => {
+    assert.throws(() => cmp(num(1), "===", num(2)), /isn't one of the allowed operators/);
+});
+
+test("cmp() accepts every real comparator", () => {
+    for (const op of [">", "<", ">=", "<=", "==", "!="]) {
+        assert.doesNotThrow(() => cmp(num(1), op, num(2)));
+    }
+});
+
+test("num() rejects NaN, Infinity, and non-numeric values -- none of those are a valid literal in every target", () => {
+    assert.throws(() => num(NaN), /isn't a finite number/);
+    assert.throws(() => num(Infinity), /isn't a finite number/);
+    assert.throws(() => num(-Infinity), /isn't a finite number/);
+    assert.throws(() => num("1"), /isn't a finite number/);
+    assert.throws(() => num(undefined), /isn't a finite number/);
+});
+
+test("num() accepts ordinary finite numbers, including zero and negatives", () => {
+    assert.doesNotThrow(() => num(0));
+    assert.doesNotThrow(() => num(-3.5));
+    assert.doesNotThrow(() => num(1e-9));
+});
+
+test("checkUnboundVars validates fn.name as a safe identifier too, not just var() references", () => {
+    const fn = { name: "f(); process.exit(1); //", params: [], body: num(1) };
+    assert.throws(() => checkUnboundVars(fn), /isn't a safe identifier/);
+});
+
+test("checkUnboundVars validates every fn.params entry as a safe identifier", () => {
+    const fn = { name: "f", params: ["a", "b); evil(); //"], body: num(1) };
+    assert.throws(() => checkUnboundVars(fn), /isn't a safe identifier/);
 });
