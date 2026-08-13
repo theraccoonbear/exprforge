@@ -41,6 +41,7 @@ const {
     splineFrameAsts,
     kitchenSinkAst,
     mathDemoAst,
+    macroDemoAst,
     emitters,
 } = require("../index.js");
 const { evaluate } = require("../evaluate.js");
@@ -49,6 +50,19 @@ function catmullRomReference(P0, P1, P2, P3, t) {
     const t2 = t * t;
     const t3 = t2 * t;
     return 0.5 * (2 * P1 + (-P0 + P2) * t + (2 * P0 - 5 * P1 + 4 * P2 - P3) * t2 + (-P0 + 3 * P1 - 3 * P2 + P3) * t3);
+}
+
+// Independent of macro-demo.js's own AST entirely -- hand-computed
+// straight from the same arithmetic (hypot-squared twice, plus a 90°
+// rotation) rather than re-deriving it through any exprforge machinery,
+// so this also proves the macro EXPANSION itself is correct, not just
+// that every target agrees with whatever expandMacros() produced.
+function macroDemoReference(ax, ay, bx, byy) {
+    const hSq1 = ax * ax + ay * ay;
+    const hSq2 = bx * bx + byy * byy;
+    const rx = 0 - ay;
+    const ry = ax;
+    return hSq1 + hSq2 + rx + ry;
 }
 
 function fibonacciReference(n) {
@@ -191,6 +205,26 @@ const SAMPLES = {
             [0.3, 0.7],
             [0.9, 0.9], // d = 0 exactly
             [0.1, 2.5],
+        ],
+    },
+    // Coverage fixture for macros.js's AST-fn-def macro tier specifically
+    // (loadMacro(name, fn`...`), not the plain-JS-function tier mathDemo
+    // already covers) -- see samples/macro-demo.js's own header comment
+    // for exactly what risk this proves out on every real target, not
+    // just evaluate() (which can't see codegen at all): a macro's own
+    // internal "let" gets alpha-renamed to a gensym'd name on every call
+    // (hypotSq is called TWICE here, proving two calls' names don't
+    // collide with each other either), and a multi-output macro whose
+    // outputs() is wrapped in its own let-chain (rotate90) is spliced in
+    // and field-accessed correctly.
+    macroDemo: {
+        ast: macroDemoAst,
+        reference: macroDemoReference,
+        inputs: [
+            [3, 4, 5, 12],
+            [0, 0, 0, 0], // every gensym'd let evaluates to exactly 0
+            [-2, 7, 1.5, -3.25],
+            [10, -10, -10, 10],
         ],
     },
 };

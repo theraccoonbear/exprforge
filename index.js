@@ -12,6 +12,7 @@ const { fibonacciAst } = require("./samples/fibonacci.js");
 const { splineFrameAsts } = require("./samples/spline-frame.js");
 const { kitchenSinkAst } = require("./samples/kitchen-sink.js");
 const { mathDemoAst } = require("./samples/math-demo.js");
+const { macroDemoAst } = require("./samples/macro-demo.js");
 
 /**
  * Run ONE emitter against one AST function definition. Returns
@@ -121,12 +122,18 @@ module.exports = {
     // Also not a worked example -- a conformance-test fixture for
     // require("exprforge/math"). See samples/math-demo.js.
     mathDemoAst,
+    // Also not a worked example -- a conformance-test fixture for
+    // macros.js's AST-fn-def macro tier specifically (loadMacro(name,
+    // fn`...`), not the plain-JS-function tier mathDemoAst already
+    // covers). See samples/macro-demo.js.
+    macroDemoAst,
     samples: {
         catmullRom: catmullRomAst,
         fibonacci: fibonacciAst,
         splineFrame: splineFrameAsts,
         kitchenSink: kitchenSinkAst,
         mathDemo: mathDemoAst,
+        macroDemo: macroDemoAst,
     },
     // Per-language emitter instances, keyed by name (js, qb64, c, java, go, rust).
     emitters,
