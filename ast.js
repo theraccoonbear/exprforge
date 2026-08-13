@@ -129,6 +129,16 @@ function field(target, name) {
     return { type: "field", target, field: name };
 }
 
+// The prefix macros.js's own gensym'd internal let-names always start
+// with (see substituteAndRename's "let" case there) — defined HERE, not
+// there, specifically so collectLets below can recognize a collision
+// against one WITHOUT macros.js needing to require this file back (it
+// already does the other direction: macros.js requires ast.js). Kept as
+// one shared constant rather than a duplicated string literal in both
+// files, so it can't quietly drift out of sync between "the name this
+// generates" and "the name this recognizes".
+const MACRO_GENSYM_PREFIX = "efMacro_";
+
 // Lifts every `let` node out of the tree into a flat, ordered list of
 // { name, node } bindings, replacing each with a plain v(name) reference.
 // The list is in dependency order — safe to declare/assign top-to-bottom.
@@ -171,7 +181,23 @@ function collectLets(node) {
     const seen = new Set();
     for (const { name } of bindings) {
         if (seen.has(name)) {
-            throw new Error(`collectLets: duplicate let binding name "${name}" in one function`);
+            // A colliding name that happens to start with macros.js's own
+            // gensym prefix is almost certainly NOT something you wrote
+            // on purpose -- vanishingly unlikely to be an intentional
+            // collision, and confusing to debug as a plain "duplicate
+            // name" if you don't already know that prefix means
+            // "internally generated" -- named explicitly here rather
+            // than left for you to work out. The gensym'd name itself is
+            // never the one to rename (it's already unique per macro
+            // invocation, see toMacro's own comment in macros.js) -- only
+            // your OWN same-named binding actually needs to change.
+            const hint = name.startsWith(MACRO_GENSYM_PREFIX)
+                ? ` -- this looks like an internal name macro expansion generates automatically ` +
+                  `(see macros.js's own gensym'd "let" renaming), not something you wrote; if you ` +
+                  `have your own let/param actually named "${name}", rename YOURS to something that ` +
+                  `doesn't start with "${MACRO_GENSYM_PREFIX}"`
+                : "";
+            throw new Error(`collectLets: duplicate let binding name "${name}" in one function${hint}`);
         }
         seen.add(name);
     }
@@ -254,4 +280,5 @@ function checkUnboundVars(fn) {
 module.exports = {
     num, v, bin, call, add, mul, sub, div, neg, letIn, letChain, cmp, select, outputs, field, collectLets,
     checkUnboundVars,
+    MACRO_GENSYM_PREFIX,
 };

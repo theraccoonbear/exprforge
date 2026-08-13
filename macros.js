@@ -41,7 +41,7 @@
 // written in ExprForge; reach for extern only for something that
 // genuinely can't be (a call into an existing native library, for
 // instance).
-const { v, letIn, call, collectLets } = require("./ast.js");
+const { v, letIn, call, collectLets, MACRO_GENSYM_PREFIX } = require("./ast.js");
 const { PRIMITIVE_ARITY } = require("./primitives.js");
 
 const PRIMITIVE_NAMES = new Set(Object.keys(PRIMITIVE_ARITY));
@@ -232,7 +232,9 @@ function substituteAndRename(node, subst, renames) {
                 else: substituteAndRename(node.else, subst, renames),
             };
         case "let": {
-            // Starts with a letter, not "_" -- confirmed against a real
+            // MACRO_GENSYM_PREFIX ("efMacro_", defined in ast.js -- see
+            // its own comment there for why it lives there and not here)
+            // starts with a letter, not "_" -- confirmed against a real
             // Fortran compiler ("Invalid character in name") that a
             // leading underscore isn't a valid identifier start there,
             // same finding math/index.js's normalize3 already documents
@@ -241,7 +243,7 @@ function substituteAndRename(node, subst, renames) {
             // macro-with-an-internal-let to Fortran and inspecting the
             // declared name, not just running evaluate() against it (see
             // test/macros.test.js).
-            const fresh = `efMacro_${node.name}_${gensymCounter++}`;
+            const fresh = `${MACRO_GENSYM_PREFIX}${node.name}_${gensymCounter++}`;
             const value = substituteAndRename(node.value, subst, renames);
             const body = substituteAndRename(node.body, subst, { ...renames, [node.name]: fresh });
             return letIn(fresh, value, body);

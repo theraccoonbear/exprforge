@@ -6,7 +6,9 @@
 
 const test = require("node:test");
 const assert = require("node:assert");
-const { num, v, add, mul, sub, div, call, cmp, select, letIn, letChain, outputs, collectLets, checkUnboundVars } = require("../ast.js");
+const {
+    num, v, add, mul, sub, div, call, cmp, select, letIn, letChain, outputs, collectLets, checkUnboundVars, MACRO_GENSYM_PREFIX,
+} = require("../ast.js");
 
 test("outputs() builds a plain {type, fields} node", () => {
     const node = outputs({ a: num(1), b: v("x") });
@@ -51,6 +53,43 @@ test("collectLets still catches a duplicate let name when it's inside two differ
         b: letIn("x", num(2), v("x")),
     });
     assert.throws(() => collectLets(tree), /duplicate let binding name "x"/);
+});
+
+// --- duplicate-name collision with a macro's own gensym'd let ----------
+//
+// macros.js's own gensym'd internal let-names all start with
+// MACRO_GENSYM_PREFIX ("efMacro_") -- see substituteAndRename's "let"
+// case there. A caller's own let/param colliding with a LIVE gensym'd
+// name is astronomically unlikely (it would require literally guessing
+// an exact, monotonically-increasing, process-wide counter value), so
+// these tests construct the collision directly via collectLets rather
+// than relying on the real macro system's own live counter -- the point
+// isn't "can you actually trigger this by accident" (you basically
+// can't), it's "if it somehow DOES happen, does the error actually
+// explain itself instead of just naming the collision."
+
+test("a duplicate name matching the macro gensym prefix gets an explanatory hint, not just the bare collision", () => {
+    const tree = letIn(
+        `${MACRO_GENSYM_PREFIX}tmp_0`,
+        num(1),
+        letIn(`${MACRO_GENSYM_PREFIX}tmp_0`, num(2), v(`${MACRO_GENSYM_PREFIX}tmp_0`)),
+    );
+    assert.throws(
+        () => collectLets(tree),
+        new RegExp(
+            `duplicate let binding name "${MACRO_GENSYM_PREFIX}tmp_0" in one function -- this looks like an ` +
+            `internal name macro expansion generates automatically.*rename YOURS to something that doesn't ` +
+            `start with "${MACRO_GENSYM_PREFIX}"`,
+        ),
+    );
+});
+
+test("an ORDINARY duplicate name (no gensym-prefix collision) still gets the plain message, no irrelevant hint", () => {
+    const tree = letIn("total", num(1), letIn("total", num(2), v("total")));
+    assert.throws(
+        () => collectLets(tree),
+        (err) => err.message === 'collectLets: duplicate let binding name "total" in one function',
+    );
 });
 
 test("letChain([[a,..],[b,..]], body) builds the same tree as hand-nested letIn", () => {
