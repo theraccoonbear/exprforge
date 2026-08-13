@@ -42,20 +42,9 @@
 // genuinely can't be (a call into an existing native library, for
 // instance).
 const { v, letIn, call, collectLets } = require("./ast.js");
+const { PRIMITIVE_ARITY } = require("./primitives.js");
 
-// Mirrors evaluate.js's CALLS keys / every emitters/<lang>.js's own
-// `calls` table keys exactly (see evaluate.js's own header comment for
-// why those two already have to stay in sync). Kept here too, not
-// imported from either, specifically to avoid a require() cycle --
-// evaluate.js and emitters/base.js both need to require THIS file (for
-// resolveExternForEvaluate/resolveExternForEmitter below), so this file
-// can't require either of them back. Update this list too if a new
-// built-in primitive is ever added.
-const PRIMITIVE_NAMES = new Set([
-    "sqrt", "abs", "sin", "cos", "tan", "asin", "acos", "atan", "log",
-    "log2", "log10", "exp", "floor", "ceil", "round", "trunc", "sign",
-    "pow", "atan2", "min", "max", "hypot",
-]);
+const PRIMITIVE_NAMES = new Set(Object.keys(PRIMITIVE_ARITY));
 
 const macros = new Map(); // name -> { arity: number|null, fn, alreadyExpanded: boolean }
 const externs = new Map(); // name -> { evaluate?: (...args:number[])=>number, [lang]: (argStrs:string[])=>string }
@@ -119,7 +108,17 @@ function isMultiOutputResult(x) {
 function loadMacro(name, def) {
     assertNameAvailable("loadMacro", name);
     if (typeof def === "function") {
-        macros.set(name, { arity: null, fn: def, alreadyExpanded: false });
+        // def.length -- JS's own count of parameters before the first
+        // one with a default value (or a rest parameter) -- is treated
+        // as a MINIMUM, not an exact count: math/index.js's normalize3
+        // is registered exactly this way and has three trailing default
+        // parameters (fx/fy/fz), so normalize3.length is 3 even though
+        // it's valid to call with 3-6 arguments. Anything at or above
+        // this floor is JS's own call already; there's no upper bound to
+        // enforce beyond what JS itself already does with extra
+        // arguments (silently ignored, same as calling any other JS
+        // function with too many).
+        macros.set(name, { arity: { min: def.length, max: null }, fn: def, alreadyExpanded: false });
         return;
     }
     if (isFnDefShape(def)) {
@@ -139,7 +138,15 @@ function loadMacro(name, def) {
  * comes with it.
  *
  * `def` is a plain mapping object, e.g.
- * `{ evaluate: (x) => ..., js: ([x]) => `myLib.f(${x})`, zig: ([x]) => ... }`.
+ * `{ evaluate: (x) => ..., js: ([x]) => `myLib.f(${x})`, zig: ([x]) => ... }`,
+ * plus an optional `arity` (a non-negative integer): unlike a macro,
+ * there's no JS function signature to read a parameter count off of here
+ * -- every per-target entry receives a single `argStrs` array, not N
+ * positional Nodes, and `evaluate` isn't guaranteed to be present at all
+ * -- so arity has to be stated explicitly if you want it checked.
+ * Omitting it keeps today's behavior: no arg-count validation at all,
+ * same as an unmapped call name never getting one either.
+ *
  * Only the targets you provide a key for resolve; every other target
  * still throws "no mapping" for this name, same as an unmapped built-in
  * primitive would.
@@ -154,6 +161,9 @@ function loadExtern(name, def) {
             `loadExtern: "def" for "${name}" must be a plain per-target mapping object, e.g. ` +
             `{ evaluate: (x) => ..., js: ([x]) => \`myLib.f(\${x})\`, ... }`,
         );
+    }
+    if (def.arity !== undefined && (!Number.isInteger(def.arity) || def.arity < 0)) {
+        throw new Error(`loadExtern: "arity" for "${name}", if given, must be a non-negative integer`);
     }
     externs.set(name, def);
 }
@@ -222,7 +232,16 @@ function substituteAndRename(node, subst, renames) {
                 else: substituteAndRename(node.else, subst, renames),
             };
         case "let": {
-            const fresh = `__ef_${node.name}_${gensymCounter++}`;
+            // Starts with a letter, not "_" -- confirmed against a real
+            // Fortran compiler ("Invalid character in name") that a
+            // leading underscore isn't a valid identifier start there,
+            // same finding math/index.js's normalize3 already documents
+            // (and follows) for its own gensym'd binding name; this one
+            // missed it on the first pass, caught by actually emitting a
+            // macro-with-an-internal-let to Fortran and inspecting the
+            // declared name, not just running evaluate() against it (see
+            // test/macros.test.js).
+            const fresh = `efMacro_${node.name}_${gensymCounter++}`;
             const value = substituteAndRename(node.value, subst, renames);
             const body = substituteAndRename(node.body, subst, { ...renames, [node.name]: fresh });
             return letIn(fresh, value, body);
@@ -275,7 +294,10 @@ function substituteAndRename(node, subst, renames) {
 function toMacro(fnDef, extraRegistry = null) {
     const resolvedBody = expandBody(fnDef.body, { extraRegistry, aliases: new Map() });
     return {
-        arity: fnDef.params.length,
+        // Exact, unlike a plain-JS macro's min-only arity below -- fn.js's
+        // own grammar has no default-parameter syntax, so every AST
+        // fn-def's param count is unambiguous.
+        arity: { min: fnDef.params.length, max: fnDef.params.length },
         alreadyExpanded: true,
         fn: (...argNodes) => {
             const subst = {};
@@ -315,6 +337,51 @@ function lookupMacro(name, ctx) {
     return (ctx.extraRegistry && ctx.extraRegistry.get(name)) || macros.get(name);
 }
 
+// Shared by macro calls (`arity` always set -- see loadMacro/toMacro
+// above) and extern calls (`arity` only set when the caller opted in via
+// loadExtern's own optional `arity` field) -- `arity` of `null`/
+// `undefined` means "not checked here", not "zero arguments".
+// `max: null` means "no upper bound" (a plain-JS macro's own floor, via
+// def.length -- see loadMacro).
+function checkArity(name, arity, argCount) {
+    if (!arity) return;
+    const { min, max } = arity;
+    if (argCount < min || (max !== null && argCount > max)) {
+        const expected = max === null ? `at least ${min}` : min === max ? `${min}` : `${min}-${max}`;
+        throw new Error(`expandMacros: "${name}" expects ${expected} argument(s), got ${argCount}`);
+    }
+}
+
+// Extern arity is opt-in (loadExtern's own `arity` field) and checked
+// here -- the one place every "call" node, macro or not, already passes
+// through during expansion -- rather than deferred to evaluate()/an
+// emitter, which would report it (if at all) as a confusing runtime
+// crash inside whatever an extern's own per-target template does with a
+// missing/extra argString, not a clear arg-count error.
+function checkExternArity(name, argCount) {
+    const entry = externs.get(name);
+    if (!entry || entry.arity === undefined) return;
+    checkArity(name, { min: entry.arity, max: entry.arity }, argCount);
+}
+
+// Unlike extern arity (opt-in) and macro arity (declared per-registration),
+// every built-in primitive's arity is fixed and already known (see
+// primitives.js) -- checked unconditionally here, the same tier as
+// checkUnboundVars: a real correctness bug, not a style preference (a
+// wrong arg count used to silently emit e.g. "Math.sqrt(a)" for
+// call("sqrt", a, b, c) -- args b/c just silently dropped, not caught
+// anywhere, in any target, until this existed). Deliberately checked
+// here, not duplicated separately in evaluate.js/emitters/base.js: every
+// real entry point (evaluate(), every emitter's emitFunction() --
+// including the "expr" printer, which stays lenient about UNMAPPED
+// names but was never meant to accept a structurally malformed call
+// either) already runs expandMacros() first, so one check here covers
+// all of them.
+function checkPrimitiveArity(name, argCount) {
+    if (!(name in PRIMITIVE_ARITY)) return;
+    checkArity(name, { min: PRIMITIVE_ARITY[name], max: PRIMITIVE_ARITY[name] }, argCount);
+}
+
 // Resolves ONE call node against the macro registry, or returns
 // undefined if `callNode.name` isn't a macro at all (a built-in
 // primitive, an extern, or simply unmapped -- none of those are this
@@ -350,9 +417,7 @@ function tryResolveMacroCall(callNode, ctx) {
     }
 
     const expandedArgs = callNode.args.map((a) => expandExpr(a, ctx));
-    if (entry.arity !== null && expandedArgs.length !== entry.arity) {
-        throw new Error(`expandMacros: "${callNode.name}" expects ${entry.arity} argument(s), got ${expandedArgs.length}`);
-    }
+    checkArity(callNode.name, entry.arity, expandedArgs.length);
 
     const result = entry.fn(...expandedArgs);
 
@@ -448,8 +513,14 @@ function expandExpr(node, ctx) {
                 // Not a macro -- built-in primitive, extern, or simply
                 // unmapped; leave the call itself alone, just expand its
                 // args in case one of THEM has a macro call/field access
-                // inside it.
-                return call(node.name, ...node.args.map((a) => expandExpr(a, ctx)));
+                // inside it. A primitive's fixed arity, or an extern's
+                // own (opt-in) arity, is checked here too -- this is the
+                // one place every "call" node already passes through,
+                // whether or not it ends up being a macro.
+                const args = node.args.map((a) => expandExpr(a, ctx));
+                checkPrimitiveArity(node.name, args.length);
+                checkExternArity(node.name, args.length);
+                return call(node.name, ...args);
             }
             if (isMultiOutputResult(resolved)) {
                 throw new Error(

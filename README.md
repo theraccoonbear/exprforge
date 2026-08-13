@@ -166,7 +166,14 @@ package individually, or together as `samples`):
 floor ceil round trunc sign min max hypot`
 
 Add more by extending a target's `calls` table in `emitters/<lang>.js`.
-Requesting an unmapped function throws at build time, not silently.
+Requesting an unmapped function throws at build time, not silently. Each
+one takes exactly 1 argument (everything above `pow`) or 2 (`pow`
+onward) — calling one with the wrong count throws too, for every target
+including the `expr` printer: unlike an unmapped *name* (which `expr`
+prints through unchanged, having no fixed math library of its own to
+validate against), a wrong argument *count* is a structurally malformed
+call regardless of target, checked unconditionally at the same tier as
+`checkUnboundVars` — see `primitives.js`.
 
 ## Math utilities (`exprforge/math`)
 

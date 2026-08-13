@@ -17,6 +17,7 @@
     "fn.js",
     "evaluate.js",
     "macros.js",
+    "primitives.js",
     "load-expr.js",
     "build.js",
     "emitters/",

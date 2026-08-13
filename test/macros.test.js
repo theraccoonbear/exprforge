@@ -54,6 +54,138 @@ test("loadExtern rejects a def that isn't a plain object", () => {
     assert.throws(() => loadExtern(uniqueName("bad"), 42), /"def" for "bad\d+" must be a plain per-target mapping object/);
 });
 
+test("loadExtern rejects a non-integer or negative \"arity\"", () => {
+    assert.throws(() => loadExtern(uniqueName("bad"), { arity: 1.5, evaluate: (x) => x }), /"arity" for "bad\d+", if given, must be a non-negative integer/);
+    assert.throws(() => loadExtern(uniqueName("bad"), { arity: -1, evaluate: (x) => x }), /"arity" for "bad\d+", if given, must be a non-negative integer/);
+});
+
+// --- arity checking ------------------------------------------------------
+
+test("a plain-JS macro's arity is a FLOOR (def.length), not an exact count -- fewer args throws, more is fine", () => {
+    // def.length only counts params before the first default -- exactly
+    // math/index.js's real normalize3 shape (3 required, 3 defaulted).
+    const name = uniqueName("floorArity");
+    loadMacro(name, (a, b, c = num(0)) => add(add(a, b), c));
+
+    const defTooFew = { name: "f", params: ["x"], body: call(name, v("x")) };
+    assert.throws(() => evaluate(defTooFew, [1]), new RegExp(`"${name}" expects at least 2 argument\\(s\\), got 1`));
+
+    const defAtFloor = { name: "g", params: ["x", "y"], body: call(name, v("x"), v("y")) };
+    assert.strictEqual(evaluate(defAtFloor, [1, 2]), 3);
+
+    const defExtra = { name: "h", params: ["x", "y", "z"], body: call(name, v("x"), v("y"), v("z")) };
+    assert.strictEqual(evaluate(defExtra, [1, 2, 3]), 6);
+});
+
+test("normalize3 (a real plain-JS macro with default params) now rejects too few arguments instead of silently building a broken tree", () => {
+    require("../math/index.js");
+    const def = { name: "f", params: ["x", "y"], body: letIn("n", call("normalize3", v("x"), v("y")), field(v("n"), "x")) };
+    assert.throws(() => expandMacros(def), /"normalize3" expects at least 3 argument\(s\), got 2/);
+});
+
+test("an AST fn-def macro's arity is exact -- too few OR too many arguments both throw", () => {
+    const name = uniqueName("exactArity");
+    loadMacro(name, fn([`${name}(a, b): return a + b;`]));
+    assert.throws(
+        () => expandMacros({ name: "f", params: [], body: call(name, num(1)) }),
+        new RegExp(`"${name}" expects 2 argument\\(s\\), got 1`),
+    );
+    assert.throws(
+        () => expandMacros({ name: "g", params: [], body: call(name, num(1), num(2), num(3)) }),
+        new RegExp(`"${name}" expects 2 argument\\(s\\), got 3`),
+    );
+});
+
+test("an extern with an explicit arity rejects a mismatched call", () => {
+    const name = uniqueName("externArity");
+    loadExtern(name, { arity: 2, evaluate: (a, b) => a + b });
+    const def = { name: "f", params: ["a"], body: call(name, v("a")) };
+    assert.throws(() => evaluate(def, [1]), new RegExp(`"${name}" expects 2 argument\\(s\\), got 1`));
+});
+
+test("an extern with an explicit arity accepts a matching call, end to end", () => {
+    const name = uniqueName("externArityOk");
+    loadExtern(name, { arity: 2, evaluate: (a, b) => a + b });
+    const def = { name: "f", params: ["a", "b"], body: call(name, v("a"), v("b")) };
+    assert.strictEqual(evaluate(def, [3, 4]), 7);
+});
+
+test("an extern with NO arity given still accepts any argument count, same as before this feature existed", () => {
+    const name = uniqueName("externNoArity");
+    loadExtern(name, { evaluate: (a) => a });
+    const def = { name: "f", params: ["a", "b"], body: call(name, v("a"), v("b")) };
+    // No arity check configured -- reaches evaluate()'s own extern impl
+    // directly, which (being a plain JS function) just ignores the extra
+    // argument, same as calling any JS function with too many arguments.
+    assert.strictEqual(evaluate(def, [5, 99]), 5);
+});
+
+test("extern arity is checked during expansion, before evaluate()/an emitter ever runs -- same tier as a macro's own arity check", () => {
+    const name = uniqueName("externArityEarly");
+    loadExtern(name, { arity: 1, js: ([x]) => `f(${x})` });
+    const def = { name: "f", params: [], body: call(name, num(1), num(2)) };
+    assert.throws(() => expandMacros(def), new RegExp(`"${name}" expects 1 argument\\(s\\), got 2`));
+});
+
+// --- built-in primitive arity (unconditional, not opt-in) ----------------
+//
+// Regression coverage for a real, pre-existing bug found while auditing
+// this file's own coverage: call("sqrt", a, b, c) used to silently emit
+// e.g. "Math.sqrt(a)" in every target -- b/c just dropped, no error
+// anywhere. Unlike macro/extern arity (which only apply to something
+// registered through THIS file), primitive arity is checked
+// unconditionally, the same tier as checkUnboundVars -- see
+// checkPrimitiveArity's own comment in macros.js.
+
+test("a 1-arg primitive called with too many arguments throws, before evaluate() ever runs", () => {
+    const def = { name: "f", params: ["a", "b"], body: call("sqrt", v("a"), v("b")) };
+    assert.throws(() => expandMacros(def), /"sqrt" expects 1 argument\(s\), got 2/);
+    assert.throws(() => evaluate(def, [4, 9]), /"sqrt" expects 1 argument\(s\), got 2/);
+});
+
+test("a 1-arg primitive called with too few arguments throws", () => {
+    const def = { name: "f", params: [], body: call("sqrt") };
+    assert.throws(() => expandMacros(def), /"sqrt" expects 1 argument\(s\), got 0/);
+});
+
+test("a 2-arg primitive (pow) called with the wrong count throws", () => {
+    const def = { name: "f", params: ["a"], body: call("pow", v("a")) };
+    assert.throws(() => expandMacros(def), /"pow" expects 2 argument\(s\), got 1/);
+});
+
+test("primitive arity is enforced for EVERY emitter, including \"expr\" -- unlike unmapped-name handling, there's no exemption here", () => {
+    // ExprSyntaxEmitter overrides emitExpr's "call" case to print an
+    // unmapped NAME through unchanged (see test/errors.test.js) -- but
+    // that override is a later, per-emitter code path. Arity checking
+    // happens earlier, inside expandMacros(), which base.js's shared
+    // emitFunction() runs unconditionally for every emitter BEFORE any
+    // per-emitter dispatch, "expr" included (see checkPrimitiveArity's
+    // own comment in macros.js for why that's deliberate: a wrong arg
+    // count is a structurally malformed call, not an unrecognized name,
+    // the same "well-formedness, not name-mapping" distinction
+    // checkUnboundVars already draws -- and checkUnboundVars already
+    // applies to "expr" too).
+    const def = { name: "f", params: ["a", "b"], body: call("sqrt", v("a"), v("b")) };
+    for (const [lang, emitter] of Object.entries(emitters)) {
+        assert.throws(
+            () => emitter.emitFunction(def),
+            /"sqrt" expects 1 argument\(s\), got 2/,
+            `expected ${lang} to reject the wrong arg count`,
+        );
+    }
+});
+
+test("correct arity for every primitive still works normally -- not a false positive", () => {
+    // Exercises every one of the 22 primitives at its real arity, via
+    // samples/kitchen-sink.js's own fixture (a single expression summing
+    // all of them) -- if this throws, the arity table itself has a typo.
+    // x=0.5 keeps sqrt/log/log2/log10/asin/acos all in their valid
+    // domain (see that file's own header comment); y=0.3 gives d=x-y a
+    // definite sign for floor/ceil/round/trunc/sign.
+    const { kitchenSinkAst } = require("../index.js");
+    assert.doesNotThrow(() => evaluate(kitchenSinkAst, [0.5, 0.3]));
+});
+
 // --- macro: plain JS function, single value -----------------------------
 
 test("a macro (single value) splices its result directly, no leftover call node", () => {
@@ -227,6 +359,25 @@ test("an AST fn-def macro's own internal lets are alpha-renamed on every call, n
     loadMacro(name, fn([`${name}(x): let tmp = x; return tmp * tmp;`]));
     const def = { name: "f", params: ["a", "b"], body: add(call(name, v("a")), call(name, v("b"))) };
     assert.strictEqual(evaluate(def, [3, 4]), 25);
+});
+
+test("an AST fn-def macro's gensym'd internal-let names start with a letter, not \"_\" -- Fortran rejects a leading underscore", () => {
+    // Regression test for a real bug: substituteAndRename's gensym'd
+    // names used to start with "__" (an implementation detail invisible
+    // to evaluate(), which doesn't care about target identifier rules at
+    // all), and nothing in this file's own emitters validates identifier
+    // syntax before emitting it -- so this silently produced Fortran
+    // that would fail to compile, caught only by actually emitting to a
+    // real target and inspecting the declared name, not by evaluate()
+    // passing. Same finding math/index.js's normalize3 already
+    // documents (and follows) for its own gensym'd binding name -- see
+    // that file's comment.
+    const name = uniqueName("astGensymCheck");
+    loadMacro(name, fn([`${name}(x): let tmp = x * 2; return tmp + 1;`]));
+    const def = { name: "f", params: ["a"], body: call(name, v("a")) };
+    const source = emitters.fortran.emitFunction(def);
+    assert.doesNotMatch(source, /::\s*_/, "expected no Fortran variable declaration to start with \"_\"");
+    assert.match(source, /::\s*[A-Za-z]/, "expected the gensym'd variable to actually appear, starting with a letter");
 });
 
 test("an AST fn-def macro returning a multi-output (own let-chain wrapping outputs()) works via field access", () => {
