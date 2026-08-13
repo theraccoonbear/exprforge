@@ -14,7 +14,7 @@ const {
     num, v, mul, add, sub, div, call, letIn, field,
 } = require("../ast.js");
 const { fn } = require("../fn.js");
-const { evaluate, emitters, loadMacro, loadExtern, expandMacros } = require("../index.js");
+const { evaluate, emitters, loadMacro, loadExtern, expandMacros, loadExprSource } = require("../index.js");
 
 let n = 0;
 function uniqueName(base) {
@@ -319,6 +319,48 @@ test("accessing an unknown field on a multi-output macro result throws, listing 
 test("field access on a plain variable (never bound to a macro result) throws", () => {
     const def = { name: "f", params: ["x"], body: field(v("x"), "anything") };
     assert.throws(() => expandMacros(def), /"x\.anything" -- "x" isn't bound to a multi-output macro result/);
+});
+
+test("a BARE reference to a multi-output-bound name throws immediately, with a specific error naming its fields", () => {
+    // Regression test for a real gap: `let z = someMultiOutputMacro(...);
+    // return z;` -- "z" is only ever a naming PREFIX for its flattened
+    // fields ("z__x"/"z__y", never a real bound "z") -- used bare, this
+    // used to survive expansion unnoticed as an ordinary-looking "var"
+    // node and only fail later, at checkUnboundVars, with a message that
+    // can't know WHY ("never declared" reads as "you forgot the let",
+    // when you very much did write one). Caught here instead, during
+    // expansion itself, with the actual reason and which fields exist.
+    const name = uniqueName("bareMultiRef");
+    loadMacro(name, (a, b) => ({ sum: add(a, b), diff: sub(a, b) }));
+    const def = { name: "f", params: ["a", "b"], body: letIn("z", call(name, v("a"), v("b")), v("z")) };
+    assert.throws(
+        () => expandMacros(def),
+        new RegExp(`"z" is bound to a multi-output macro result \\(fields: sum, diff\\) -- reference a field directly \\(e\\.g\\. "z\\.sum"\\), not the bare name`),
+    );
+});
+
+test("...but a real field access on that same name still works fine, same as always", () => {
+    const name = uniqueName("realFieldAccess");
+    loadMacro(name, (a, b) => ({ sum: add(a, b), diff: sub(a, b) }));
+    const def = { name: "f", params: ["a", "b"], body: letIn("z", call(name, v("a"), v("b")), add(field(v("z"), "sum"), field(v("z"), "diff"))) };
+    // sum = 3+4 = 7, diff = 3-4 = -1, sum + diff = 6.
+    assert.strictEqual(evaluate(def, [3, 4]), 6);
+});
+
+test("a bare multi-output-bound name used from a loadExprSource buffer's own return-shorthand fails at load time, not first use", () => {
+    // The exact scenario that surfaced this: `return { z, y };` shorthand
+    // referencing names that were only ever bound to multi-output calls.
+    assert.throws(
+        () => loadExprSource(`
+            foo(x, y):
+              return { x, y };
+
+            bar(a, b):
+              let z = foo(a, b);
+              return { z };
+        `),
+        /"z" is bound to a multi-output macro result \(fields: x, y\)/,
+    );
 });
 
 test("cross3/rodrigues-shaped composition: two macros, one referencing fields of the other's result", () => {

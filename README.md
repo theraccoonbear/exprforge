@@ -395,6 +395,18 @@ const rodrigues = fn`
   cross3(...); b.x` — using it bare inside a larger expression throws a
   clear error rather than guessing which field you meant.
 
+  **Gotcha: the `let` name itself never becomes a real value.** `let b =
+  cross3(...);` doesn't bind `b` to anything you can reference bare —
+  `b` is consumed entirely as a naming *prefix* for `b`'s flattened
+  fields (internally, something like `b__x`/`b__y`/`b__z`). Referencing
+  `b` on its own — including accidentally, via `fn`'s own `return { b };`
+  shorthand — throws immediately, naming the fields that actually exist:
+  `"b" is bound to a multi-output macro result (fields: x, y, z) --
+  reference a field directly (e.g. "b.x"), not the bare name`. This is
+  easy to trip over precisely because the shorthand return syntax (see
+  "Full-program syntax" below) makes `{ b }` look like it should mean
+  "the whole thing," the way it would for an ordinary scalar `let`.
+
   **The classic macro trade-off still applies**: expansion is pure
   substitution, so if a macro's body references one of its own
   parameters more than once, the caller's argument expression gets

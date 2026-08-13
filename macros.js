@@ -465,8 +465,30 @@ function tryResolveMacroCall(callNode, ctx) {
 function expandExpr(node, ctx) {
     switch (node.type) {
         case "num":
-        case "var":
             return node;
+        case "var": {
+            // A bare reference to a name that's ONLY ever a multi-output
+            // alias prefix (see expandBody's own "let" case) is a
+            // near-certain mistake: that name was never actually bound to
+            // a value, only used to build its fields' flat names (e.g.
+            // "z" in "let z = someMultiOutputMacro(...); return z;" --
+            // only "z__x"/"z__y" etc. really exist). Left unchecked, this
+            // survives as an ordinary-looking "var" node and only fails
+            // later, at checkUnboundVars, with a message that can't know
+            // WHY the name isn't declared ("never declared" reads as "you
+            // forgot the let", when you very much did write one) --
+            // caught here instead, with the actual reason and the fields
+            // that ARE available.
+            const aliasMap = ctx.aliases.get(node.name);
+            if (aliasMap) {
+                throw new Error(
+                    `expandMacros: "${node.name}" is bound to a multi-output macro result (fields: ` +
+                    `${Object.keys(aliasMap).join(", ")}) -- reference a field directly (e.g. ` +
+                    `"${node.name}.${Object.keys(aliasMap)[0]}"), not the bare name`,
+                );
+            }
+            return node;
+        }
         case "field": {
             if (node.target.type !== "var") {
                 throw new Error(
