@@ -23,7 +23,8 @@
 //   additive       := multiplicative ( ("+"|"-") multiplicative )*
 //   multiplicative := unary ( ("*"|"/") unary )*
 //   unary          := "-" unary | power
-//   power          := primary ( "^" unary )?
+//   power          := postfix ( "^" unary )?
+//   postfix        := primary ( "." IDENT )*
 //   primary        := NUMBER | IDENT ("(" args ")")? | "(" expression ")" | HOLE
 //   args           := expression ("," expression)*
 //
@@ -40,7 +41,7 @@
 //     is only ever "+"|"-"|"*"|"/" (see ast.js), and every emitter's
 //     `calls` table keys "pow" by name, even for targets whose own
 //     syntax has a native ^/** operator.
-const { num, v, add, sub, mul, div, neg, call, cmp, select } = require("./ast.js");
+const { num, v, add, sub, mul, div, neg, call, cmp, select, field } = require("./ast.js");
 
 const COMPARE_OPS = [">", "<", ">=", "<=", "==", "!="];
 
@@ -131,8 +132,12 @@ function tokenizeSegment(str, offset, tokens, state = { inComment: false }, labe
         // {...};) to reuse this same tokenizer instead of forking it.
         // Inert for expr(): nothing that parses successfully today could
         // contain them anyway ("=" alone was always a lex error before,
-        // since only "==" was recognized).
-        if ("+-*/^(),?:><;{}=".includes(ch)) {
+        // since only "==" was recognized). "." is new too -- postfix field
+        // access (b.rx), see parsePostfix() below; harmless to add here
+        // since a bare "." was always a lex error before (the NUMBER
+        // branch above already claims every "." that's followed by a
+        // digit, e.g. ".5", so there's no ambiguity with number literals).
+        if ("+-*/^(),?:><;{}=.".includes(ch)) {
             tokens.push({ type: "OP", value: ch, pos: offset + start });
             i++;
             continue;
@@ -155,6 +160,21 @@ function holeToNode(value, label = "expr()") {
     );
 }
 
+// How deep parseExpression() can recurse into itself -- nested
+// parens/function-call args/ternary branches, the only places genuine
+// nesting comes from (the additive/multiplicative/unary/power/postfix
+// precedence chain always runs once per primary regardless of how deep
+// the tree ends up, so it isn't what this is bounding). 100 is
+// deliberately generous, not tight: the deepest real formula in this
+// project (Cardano's cubic, samples/ via the playground's own example)
+// doesn't come close to double digits. It exists so a pathologically
+// nested input -- "((((((...))))))" or "f(f(f(f(...))))" thousands
+// deep, plausible if this ever parses genuinely untrusted, unbounded-
+// size text -- fails with one clear, controlled error instead of a raw
+// "Maximum call stack size exceeded" RangeError once the real JS stack
+// (which this sits comfortably below at 100) actually gives out.
+const MAX_EXPRESSION_DEPTH = 100;
+
 class Parser {
     // `label` -- see tokenizeSegment above; also threaded through to
     // holeToNode so a bad interpolation inside `` fn`...` `` reports
@@ -164,6 +184,7 @@ class Parser {
         this.source = source;
         this.i = 0;
         this.label = label;
+        this.depth = 0;
     }
 
     peek() {
@@ -201,8 +222,22 @@ class Parser {
         throw new Error(`${this.label}: ${message} -- found ${tokDesc} at position ${t.pos} in \`${this.source}\``);
     }
 
+    // Every recursive re-entry (a parenthesized group, a function-call
+    // argument, a ternary's then/else branch) goes through here, so
+    // tracking depth at this ONE point -- not at every precedence-level
+    // method, which would overcount a wide-but-shallow expression like
+    // "a + b + c + ..." as if it were deeply nested -- correctly bounds
+    // genuine nesting without rejecting a merely long one.
     parseExpression() {
-        return this.parseTernary();
+        this.depth++;
+        if (this.depth > MAX_EXPRESSION_DEPTH) {
+            this.error(`expression nested too deeply (max ${MAX_EXPRESSION_DEPTH} levels of parens/calls/ternaries)`);
+        }
+        try {
+            return this.parseTernary();
+        } finally {
+            this.depth--;
+        }
     }
 
     // Only place a comparison is ever accepted -- matches cmp()'s own
@@ -270,13 +305,33 @@ class Parser {
     // into `unary`, not `power`, which is also what lets the exponent
     // itself carry a leading unary minus (2^-1 = 0.5).
     parsePower() {
-        const base = this.parsePrimary();
+        const base = this.parsePostfix();
         if (this.isOp("^")) {
             this.next();
             const exponent = this.parseUnary();
             return call("pow", base, exponent);
         }
         return base;
+    }
+
+    // Postfix "." field access (b.rx, chainable: a.b.c) -- binds tighter
+    // than "^", same as function-call parens already do inside
+    // parsePrimary. Accepted generally here, for any primary, same "defer
+    // semantic validation" precedent call() already follows for unknown
+    // function names -- whether `target` actually resolves to something
+    // with that field is checked later, by macros.js's expandMacros(),
+    // which is the only thing that ever consumes a "field" node (see its
+    // and ast.js's own comments).
+    parsePostfix() {
+        let node = this.parsePrimary();
+        while (this.isOp(".")) {
+            this.next();
+            const t = this.peek();
+            if (t.type !== "IDENT") this.error('expected a field name after "."');
+            this.next();
+            node = field(node, t.value);
+        }
+        return node;
     }
 
     parsePrimary() {

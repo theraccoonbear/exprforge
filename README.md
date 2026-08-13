@@ -1,5 +1,7 @@
 # ExprForge 🔢🔨
 
+![ExprForge — a blacksmith forging 3a² + 2ab − b² = (a+b)² − 2ab on a glowing anvil](https://raw.githubusercontent.com/theraccoonbear/exprforge/main/assets/expression-forge.png)
+
 [![npm version](https://img.shields.io/npm/v/exprforge.svg)](https://www.npmjs.com/package/exprforge)
 [![TypeScript](https://github.com/theraccoonbear/exprforge/actions/workflows/test-typescript.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test-typescript.yml)
 [![Python](https://github.com/theraccoonbear/exprforge/actions/workflows/test-python.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test-python.yml)
@@ -18,29 +20,34 @@
 [![Scheme](https://github.com/theraccoonbear/exprforge/actions/workflows/test-scheme.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test-scheme.yml)
 [![COBOL](https://github.com/theraccoonbear/exprforge/actions/workflows/test-cobol.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test-cobol.yml)
 
-Author a math expression once, as a small AST, and emit verified,
-identical-behavior implementations in JavaScript, TypeScript, Python, C#,
-Lua, QB64, C, Java, Go, Rust, Perl, PHP, Julia, Fortran, Zig, Scheme
-(Guile), and COBOL (GnuCOBOL) — plus a native in-process evaluator and a
-printer for exprforge's own readable syntax (see `fn`/`expr` below).
+## Brief
 
-No required dependencies. You can build the AST directly with plain JS
-functions, or author it as readable infix text via `expr`/`fn` (see
-below) — either way, the same tree is walked once per target.
+ExprForge authors a math formula once, as a small AST, and emits
+verified, identical-behavior implementations in JavaScript, TypeScript,
+Python, C#, Lua, QB64, C, Java, Go, Rust, Perl, PHP, Julia, Fortran, Zig,
+Scheme (Guile), and COBOL (GnuCOBOL) — plus a native in-process
+evaluator and a printer for its own readable syntax. No required
+dependencies.
 
 **[▶ Try it live](https://theraccoonbear.github.io/exprforge/)** — write
-a `` fn`...` `` formula in the browser and watch it emitted across every
-target language at once, no install required. Runs the real, current
-library (see `playground/`), not a frozen demo build.
+a formula in the browser and watch it emitted across every target
+language at once, no install required. Runs the real, current library
+(see `playground/`), not a frozen demo build.
 
-## Why
+## Motivation
 
-Codegen tools like SymPy already turn math expressions into code for
-mainstream languages. This exists for two things SymPy doesn't do:
+This grew out of a real, recurring problem in a larger multi-language
+system (internally: SSS) that needed the *same* math to be true in
+several independently-deployed pieces written in different languages at
+once — not "translate this code," but "prove these N implementations of
+one formula actually agree," which is a narrower, checkable claim.
+Codegen tools like SymPy already turn expressions into code for
+mainstream languages; this exists for the two things that leaves open:
 
-- Targets like QB64/BASIC that no general codegen project supports.
-- A conformance test harness that actually proves the emitted targets
-  agree numerically, not just that they compile.
+- Targets like QB64/BASIC or COBOL that no general codegen project
+  reaches at all.
+- A conformance harness that actually *proves* the emitted targets agree
+  numerically, compiled and run for real — not just that they compile.
 
 Two shapes of real use this tends to fall into:
 
@@ -55,49 +62,63 @@ Two shapes of real use this tends to fall into:
   target and the new one, and let the conformance suite prove they agree
   before cutover, not after.
 
-Neither is "translate my code for me" — it's "prove two independent
-implementations of one formula actually match," which is a narrower,
-checkable claim.
+## Intents
 
-## Layered by design
+**What it does**: turns one small, pure-arithmetic AST into
+identical-behavior source text for 16 real target languages, a native
+evaluator, and its own readable printer — all from the same tree, walked
+once per target.
 
-Everything here is layered, and the layers don't reach back into each
-other — worth being explicit about, especially if you're evaluating this
-for something like a migration and want to know exactly what you're
-trusting:
+**What it deliberately won't do** — not gaps waiting on a future
+release, but a boundary held on purpose everywhere in this project:
 
-- **The AST and its emitters — the whole value proposition.** `ast.js`'s
-  builders (`num`, `v`, `add`, `mul`, `letIn`, `select`, `outputs`, ...)
-  build a plain tree of plain objects; every `emitters/<lang>.js` file
-  turns that tree into target-language source text. This is also the
-  *entire* dependency graph for it: every emitter requires only
-  `emitters/base.js` and `ast.js` — nothing else in this repo. No parser,
-  no custom syntax, no interpreter sits between your AST and the code it
-  emits. Every example in `samples/` is built this way, and the library
-  worked exactly this way for its first two published releases, before
-  anything below existed.
-- **`expr`/`fn` — optional authoring sugar.** Nested builder calls
-  (`add(mul(v("a"), v("b")), num(1))`) get hard to read past a few terms.
-  `expr`/`fn` are a small hand-rolled tokenizer and recursive-descent
-  parser that turn ordinary infix text (`` expr`a * b + 1` ``) into
-  *exactly* the same tree the builders would — checked by structural unit
-  tests and a full print-reparse-evaluate round trip across every sample
-  this project has (see "Testing" below), not just asserted. It's
-  genuinely optional: nothing in the AST/emitter layer above calls into
-  it or imports it. Don't want a parser in your dependency graph, for a
-  security review or otherwise? Don't call `expr`/`fn` — build the tree
-  with the plain functions instead, and every emitter behaves identically
-  either way.
-- **The native evaluator and the `expr`-syntax printer — additive
-  conveniences.** `evaluate()` (compute a result in-process, no
-  target-language toolchain needed) and the `expr` emitter target (print
-  any AST back out as readable text) sit off to the side the same way
-  `expr`/`fn` do — nothing else depends on them either.
+- **No control flow.** No loops, no branches, no generated function
+  calling another generated function *at runtime*. This is an
+  expression AST, not a program AST. `loadMacro`/`loadExpr` (see below)
+  let one definition reference another, but only by inline expansion at
+  build time, resolved in declaration order — never a real call, never
+  recursion (which would need a stack this library doesn't have), never
+  a call graph.
+- **No RNG.** Can't be made to produce identical output across
+  languages, so it isn't offered as if it could.
+- **No arbitrary precision / complex numbers.** `float64` only, for now.
+
+**What it is not**: a general transpiler ("translate my code for me").
+It's narrower and more checkable than that — "prove two independent
+implementations of one formula actually match."
+
+**Trust only the layer you need.** Everything below is genuinely
+layered, and the layers don't reach back into each other:
+
+- **The AST and its emitters are the whole value proposition, and the
+  entire dependency graph.** `ast.js`'s builders (`num`, `v`, `add`,
+  `mul`, `letIn`, `select`, `outputs`, ...) build a plain tree of plain
+  objects; every `emitters/<lang>.js` file turns that tree into
+  target-language source text. Every emitter requires only
+  `emitters/base.js` and `ast.js` — nothing else in this repo. No
+  parser, no custom syntax, no interpreter sits between your AST and the
+  code it emits. The library worked exactly this way for its first two
+  published releases, before anything below existed.
+- **`expr`/`fn`/macros — optional authoring sugar**, all the way up to
+  the flashiest multi-function syntax below. Every layer of sugar turns
+  into *exactly* the same tree the raw builders would — checked by
+  structural unit tests and a full print-reparse-evaluate round trip
+  across every sample this project has (see "Testing"), not just
+  asserted. It's genuinely optional: nothing in the AST/emitter layer
+  calls into or imports any of it. Don't want a parser in your
+  dependency graph, for a security review or otherwise? Don't call
+  `expr`/`fn`/`loadMacro` — build the tree with the plain functions
+  instead, and every emitter behaves identically either way.
+- **The native evaluator and the `expr`-syntax printer are additive
+  conveniences** that sit off to the side the same way — nothing else
+  depends on them either.
 
 If you only care about "does this correctly turn my AST into
 COBOL/Java/whatever" — `ast.js` and the one `emitters/<lang>.js` file you
-care about are the entire surface that matters. Everything else is there
-if you want it, invisible if you don't.
+care about are the entire surface that matters. The rest of this README
+walks in from the flashiest end first, then works back down toward that
+same bottom layer, one step of sugar removed at a time — skip straight
+to whichever depth you actually plan to trust.
 
 ## Install
 
@@ -105,10 +126,125 @@ if you want it, invisible if you don't.
 npm install exprforge
 ```
 
+## Examples, flashiest first
+
+The showcase feature: several function definitions in one buffer, a
+later one referencing an earlier one by name, with dot-field access into
+a multi-output result — all inline-expanded at parse time, never a real
+runtime call (see "Intents" above for why that distinction is
+load-bearing, and "Macros and externs" below for the full mechanism).
+This is exactly what the [live playground](https://theraccoonbear.github.io/exprforge/)'s
+editor buffer accepts:
+
+```js
+const { loadExprSource, evaluate, emit } = require("exprforge");
+
+const defs = loadExprSource(`
+cross3(ax, ay, az, bx, by, bz):
+  let rx = ay * bz - az * by;
+  let ry = az * bx - ax * bz;
+  let rz = ax * by - ay * bx;
+  return { rx, ry, rz };
+
+crossLength(ax, ay, az, bx, by, bz):
+  let c = cross3(ax, ay, az, bx, by, bz);
+  return sqrt(c.rx^2 + c.ry^2 + c.rz^2);
+`);
+
+evaluate(defs.crossLength, [1, 0, 0, 0, 1, 0]); // 1
+emit(defs.crossLength, "rust").source;          // a real fn crossLength(...) -- no trace of cross3 left
+```
+
+`cross3` never appears in `crossLength`'s emitted output, in any target —
+by the time `loadExprSource` returns, `defs.crossLength` is
+self-contained arithmetic, `cross3`'s formula copied in and simplified
+away. This is also why calling `cross3` from *inside itself* isn't just
+discouraged, it's structurally impossible: a definition only becomes
+referenceable by whatever's declared *after* it, never by itself —
+covered in full under "Macros and externs" below, including exactly what
+happens if you try.
+
+This is the top of the sugar. The rest of this README works back down
+from here, one layer at a time, showing the *exact same formula* —
+cross product magnitude — at each level of undress.
+
+### One layer down: `fn` + `loadMacro`, no file/buffer needed
+
+Same result, without a multi-definition buffer: register `cross3` once
+with `loadMacro`, then reference it from an ordinary `fn` template.
+`loadExprSource` above is sugar for exactly this loop, run once per
+definition in the buffer.
+
+```js
+const { loadMacro, fn, evaluate } = require("exprforge");
+
+loadMacro("cross3", fn`
+    cross3(ax, ay, az, bx, by, bz):
+    let rx = ay * bz - az * by;
+    let ry = az * bx - ax * bz;
+    let rz = ax * by - ay * bx;
+    return { rx, ry, rz };
+`);
+
+const crossLength = fn`
+    crossLength(ax, ay, az, bx, by, bz):
+    let c = cross3(ax, ay, az, bx, by, bz);
+    return sqrt(c.rx^2 + c.ry^2 + c.rz^2);
+`;
+
+evaluate(crossLength, [1, 0, 0, 0, 1, 0]); // 1
+```
+
+### Another layer down: `expr`, hand-inlined, no macro at all
+
+Drop the macro entirely and write the whole thing as one infix
+expression — `cross3`'s formula copied in by hand, exactly what the
+macro layer above did for you automatically:
+
+```js
+const { expr, evaluate } = require("exprforge");
+
+const body = expr`sqrt((ay*bz - az*by)^2 + (az*bx - ax*bz)^2 + (ax*by - ay*bx)^2)`;
+const crossLength = { name: "crossLength", params: ["ax", "ay", "az", "bx", "by", "bz"], body };
+
+evaluate(crossLength, [1, 0, 0, 0, 1, 0]); // 1
+```
+
+### The bottom: raw AST builders, no parser involved at all
+
+The actual library API — no `expr`/`fn`/macros in the dependency graph
+whatsoever, just plain function calls building a plain tree of plain
+objects. Everything above compiles down to exactly this shape:
+
+```js
+const { v, add, sub, mul, call, letChain, evaluate } = require("exprforge");
+
+const rx = sub(mul(v("ay"), v("bz")), mul(v("az"), v("by")));
+const ry = sub(mul(v("az"), v("bx")), mul(v("ax"), v("bz")));
+const rz = sub(mul(v("ax"), v("by")), mul(v("ay"), v("bx")));
+
+const crossLength = {
+    name: "crossLength",
+    params: ["ax", "ay", "az", "bx", "by", "bz"],
+    body: letChain(
+        [["rx", rx], ["ry", ry], ["rz", rz]],
+        call("sqrt", add(mul(v("rx"), v("rx")), mul(v("ry"), v("ry")), mul(v("rz"), v("rz")))),
+    ),
+};
+
+evaluate(crossLength, [1, 0, 0, 0, 1, 0]); // 1
+```
+
+If you're only willing to trust *this* layer — no parser, no macro
+expansion, nothing but `ast.js` and one `emitters/<lang>.js` file — this
+is the entire surface you need to read. Everything above it is sugar
+that provably lowers to this same shape (see "Testing"); nothing below
+it exists.
+
 ## Usage
 
 ```js
-const { expr, emitAll } = require("exprforge");
+const { expr, emit, emitMany } = require("exprforge");
 
 const fn = {
     name: "lerp",
@@ -116,17 +252,15 @@ const fn = {
     body: expr`(b - a) * t + a`,
 };
 
-const outputs = emitAll(fn);
-console.log(outputs.rust.source);
-console.log(outputs.c.source);
-```
+console.log(emit(fn, "rust").source);
+console.log(emit(fn, "c").source);
 
-`` expr`(b - a) * t + a` `` and `add(v("a"), mul(sub(v("b"), v("a")), v("t")))`
-build the *exact same tree* — `expr` (see below) is optional infix syntax
-sugar over the same builders, not a different API. Every example below
-still uses the builders directly, since that's what `expr` compiles down
-to and what you'll reach for once a formula needs `${...}`-spliced
-sub-expressions.
+// Need several targets at once? emitMany() runs each in isolation --
+// one target's failure shows up as { source: null, error } for that
+// target alone, not a thrown exception that blanks every other result.
+const outputs = emitMany(fn, ["rust", "c", "python"]); // omit langs for every registered target
+console.log(outputs.rust.source);
+```
 
 ## Samples
 
@@ -136,7 +270,8 @@ package individually, or together as `samples`):
 - `samples/catmull-rom.js` — uniform Catmull-Rom spline interpolation.
 - `samples/fibonacci.js` — nth Fibonacci number via Binet's closed form.
   There's no loop/recursion version because exprforge has no control flow
-  (see below) — this is what "fibonacci" looks like as a pure expression.
+  (see "Intents" above) — this is what "fibonacci" looks like as a pure
+  expression.
 - `samples/spline-frame.js` — Gram-Schmidt frame construction for spline
   paths (worldUp selection, tangent normalization with a safe-division
   fallback, roll). 4 suites exercising `letIn`/`cmp`/`select`/`outputs` on
@@ -147,11 +282,16 @@ package individually, or together as `samples`):
 - `samples/kitchen-sink.js` — not a worked example: a synthetic function
   that calls all 22 supported Math functions in one expression, existing
   purely as a conformance-test fixture. It's what caught Go's and Rust's
-  `sign()` disagreeing with everyone else at exactly zero (see below) —
-  the other samples between them only ever exercised 5 of the 22.
+  `sign()` disagreeing with everyone else at exactly zero (see "Testing")
+  — the other samples between them only ever exercised 5 of the 22.
 - `samples/math-demo.js` — also not a worked example: a conformance-test
   fixture exercising every `exprforge/math` helper (see below) in one
   suite.
+- `samples/macro-demo.js` — also not a worked example: a conformance-test
+  fixture specifically for the `loadMacro(name, fn\`...\`)` AST-function
+  tier, proving its internal gensym'd let-renaming produces valid
+  identifiers on every real target, not just `evaluate()` (which can't
+  see codegen at all — see "Macros and externs").
 
 `npm run build` emits all of them, for every target language, into `out/`.
 
@@ -161,7 +301,14 @@ package individually, or together as `samples`):
 floor ceil round trunc sign min max hypot`
 
 Add more by extending a target's `calls` table in `emitters/<lang>.js`.
-Requesting an unmapped function throws at build time, not silently.
+Requesting an unmapped function throws at build time, not silently. Each
+one takes exactly 1 argument (everything above `pow`) or 2 (`pow`
+onward) — calling one with the wrong count throws too, for every target
+including the `expr` printer: unlike an unmapped *name* (which `expr`
+prints through unchanged, having no fixed math library of its own to
+validate against), a wrong argument *count* is a structurally malformed
+call regardless of target, checked unconditionally at the same tier as
+`checkUnboundVars` — see `primitives.js`.
 
 ## Math utilities (`exprforge/math`)
 
@@ -202,6 +349,179 @@ math): a "near-vertical" world-up check, baked-in-PI degree/radian
 conversion, Rodrigues rotation, and a full Gram-Schmidt frame — see
 `samples/spline-frame.js` for those, and
 `docs/v0.2.0-math-utilities.md` for the full design rationale.
+
+`require("exprforge/math")` also registers every one of these (except
+`clamp`) as macros, so they're usable directly inside `fn`/`expr`
+template **text**, not just from JS-authoring — see the next section.
+
+## Macros and externs (`loadMacro` / `loadExtern`)
+
+The 22 Math functions above are fixed and built in — call them
+**primitives**. `loadMacro`/`loadExtern` register additional names usable
+the same way, inside `fn`/`expr` template text (and in `.expr` files, see
+`loadExpr` below) — this is the mechanism behind every example in
+"Examples, flashiest first" above, with very different guarantees
+depending on which one you reach for:
+
+```js
+const { loadMacro, fn, evaluate } = require("exprforge");
+require("exprforge/math"); // registers dot3/len3/cross3/normalize3/safeDiv as macros
+
+const rodrigues = fn`
+    rodrigues(t0x, t0y, t0z, t1x, t1y, t1z):
+    let b = cross3(t0x, t0y, t0z, t1x, t1y, t1z);
+    let bLen = sqrt(b.x^2 + b.y^2 + b.z^2);
+    return bLen;
+`;
+```
+
+- **`loadMacro(name, def)`** — `def` is a plain JS function
+  `(...argNodes) => Node` or `(...argNodes) => { field: Node, ... }`,
+  built entirely from existing `ast.js` primitives/other macros
+  (`exprforge/math`'s own `dot3`/`len3`/`cross3`/`normalize3`/`safeDiv`
+  are registered exactly this way — see `math/index.js`).
+  **Inline-expanded** into the caller's AST at build time, never emitted
+  as a real call in any target: the emitted output is self-contained
+  arithmetic, identical in spirit to writing the expansion out by hand.
+  Safe by construction — if `def` returns real `ast.js` Nodes, the result
+  is exactly as trustworthy as anything else this library emits. `def`
+  can also be an AST function definition directly (e.g. straight out of
+  `fn\`...\``: `loadMacro("foo", fn\`foo(x): return x * 2;\`)`), sugar
+  for the same thing — this is exactly how "Examples, flashiest first"
+  above registers `cross3`.
+
+  A macro returning multiple named values (like `cross3`'s `{x, y, z}`)
+  must be bound with `let` before its fields are readable — `let b =
+  cross3(...); b.x` — using it bare inside a larger expression throws a
+  clear error rather than guessing which field you meant.
+
+  **Gotcha: the `let` name itself never becomes a real value.** `let b =
+  cross3(...);` doesn't bind `b` to anything you can reference bare —
+  `b` is consumed entirely as a naming *prefix* for `b`'s flattened
+  fields (internally, something like `b__x`/`b__y`/`b__z`). Referencing
+  `b` on its own — including accidentally, via `fn`'s own `return { b };`
+  shorthand — throws immediately, naming the fields that actually exist:
+  `"b" is bound to a multi-output macro result (fields: x, y, z) --
+  reference a field directly (e.g. "b.x"), not the bare name`. This is
+  easy to trip over precisely because the shorthand return syntax (see
+  "Full-program syntax" below) makes `{ b }` look like it should mean
+  "the whole thing," the way it would for an ordinary scalar `let`.
+
+  **The classic macro trade-off still applies**: expansion is pure
+  substitution, so if a macro's body references one of its own
+  parameters more than once, the caller's argument expression gets
+  duplicated in the output everywhere that parameter appears — not
+  shared, not auto-let-bound (`safeDiv`'s own doc comment above already
+  flags exactly this for its twice-referenced `denominatorExpr`; it's
+  general to every macro now, not one helper). Pass an already-let-bound
+  `v(name)` as the argument instead of a raw expensive expression if that
+  duplication matters to you.
+
+- **`loadExtern(name, def)`** — `def` is a plain per-target mapping
+  object instead of a function, e.g. `{ evaluate: (x) => ..., js: ([x])
+  => \`myLib.f(${x})\`, zig: ([x]) => \`mylib.f(${x})\` }`. A **real
+  native call**, same mechanism as the 22 built-in primitives — just
+  supplied by you instead of shipped here. Only the targets you provide a
+  key for resolve; every other target still throws "no mapping" for that
+  name, same as an unmapped primitive. **ExprForge can't verify the named
+  symbol actually exists in a given target, or that it behaves
+  identically across every target you register a mapping for — that's
+  entirely on you**, the same way linking an unfamiliar library is in any
+  other compiled language. Reach for this only when the math genuinely
+  can't be expressed by composing existing macros/primitives; prefer a
+  macro whenever it can.
+
+Names are a single shared namespace with the 22 built-in primitives and
+with each other — `loadMacro`/`loadExtern` throw on a collision rather
+than silently shadowing anything.
+
+### What this doesn't buy you: no recursion, no loops, no mutable state
+
+Now that one definition can reference another by name, it's a natural
+guess that a definition could call **itself**, or that two definitions
+could call each other back and forth. Neither works, on purpose — try it
+with the `cross3`/`crossLength` example above and have `cross3` reference
+itself, and here's exactly what happens:
+
+- **A macro can't call itself, directly or through a cycle.** This is
+  enforced two different ways depending on how the macro was defined, and
+  it's worth knowing which one applies: a macro defined as an AST
+  function (straight `fn\`...\`` text, or every function in a `.expr`
+  file/buffer) is resolved and **inline-expanded once, at
+  registration/load time**, against whatever's registered so far — a
+  definition only becomes referenceable *after* it's fully registered,
+  so a self/forward reference simply survives as an ordinary, unmapped
+  `call` node, failing later with the same "no mapping for Math
+  function" error an unrelated typo would (even once that name
+  eventually DOES get registered elsewhere) — no recursion detection
+  needed, the ordering alone rules it out. A macro defined as a **plain
+  JS function** (`loadMacro(name, someFn)`) runs fresh on every use
+  instead, so it legitimately CAN reference other real macros each
+  time — which means a genuine self/cyclic reference there needs an
+  explicit runtime check instead of relying on ordering, and gets one:
+  `"<name>" can't call itself, directly or through a cycle`, not a
+  crash.
+- **No loops.** A macro's body is built from the exact same primitives
+  every other ExprForge expression is — `select`/`cmp` for a conditional
+  *value*, nothing that iterates.
+- **No mutable state.** AST nodes are values, not locations — there's
+  nothing to assign to.
+- **Emitted output isn't a call, it's a copy.** Every use of a macro
+  expands its full arithmetic in place again — unlike a real function,
+  there's no shared implementation at the call site, so a macro used many
+  times in one formula makes the emitted source (correspondingly) larger
+  each time, not smaller. This is a size/readability trade-off to know
+  about, not a correctness concern.
+
+This isn't a launch-day limitation waiting on a future release — it's the
+same "expression AST, not a program AST" boundary declared under
+"Intents" above, applied to this feature specifically because it's the
+one place someone's most likely to assume otherwise.
+
+### Sessions (`createSession`)
+
+Every `loadMacro`/`loadExtern`/`evaluate`/`emit`/`emitMany`/`loadExpr`/
+`loadExprSource` above registers into (or resolves against) one
+process-wide registry by default — fine for a single program registering
+its own fixed set of macros once, at startup. `createSession()` gives you
+an independent, additively-scoped registry instead, for whenever more
+than one is genuinely needed at once — e.g. a service evaluating math
+defined by several different users/tenants, where one user's
+`loadMacro("helper", ...)` must never resolve inside another user's
+expression just because they happened to pick the same name:
+
+```js
+const { createSession, num, v, mul, call } = require("exprforge");
+
+const session = createSession();
+session.loadMacro("double", (x) => mul(x, num(2)));
+
+const doubled = { name: "f", params: ["x"], body: call("double", v("x")) };
+session.evaluate(doubled, [21]); // 42
+
+// The global loadMacro/evaluate never see "double" at all -- it exists
+// only inside this one session's own registry.
+```
+
+- **Purely additive**: the process-wide default registry (what every bare
+  `loadMacro`/`loadExtern`/`evaluate`/`emit` call above already uses) is
+  completely unaffected by a session's existence, and vice versa —
+  nothing here changes what any existing call site does.
+- **Every session-bound method mirrors its global counterpart 1:1**:
+  `session.loadMacro`, `session.loadExtern`, `session.evaluate`,
+  `session.emit`, `session.emitMany`, `session.loadExpr`,
+  `session.loadExprSource`, `session.expandMacros` — same signatures,
+  scoped to that session's own registry instead of the default one.
+- **Two sessions never see each other's registrations**, even when both
+  register the same name — registering `"helper"` in session A never
+  collides with, or shadows, an unrelated `"helper"` in session B.
+- **Built-in primitives (`sqrt`, `pow`, ...) work identically everywhere**
+  — they're fixed and not registry-backed at all, so a session doesn't
+  need, and can't be given, its own copy of them.
+- **No removal API.** A session's registry is a plain object,
+  garbage-collected normally once you drop your reference to it — rebuild
+  a fresh `createSession()` instead of trying to unregister one
+  macro/extern out of an existing one.
 
 ## Adding a language
 
@@ -259,7 +579,8 @@ expression model without introducing control flow:
   next, closing parens piling up at the end with no real hierarchy behind
   them — just bookkeeping to get everything hoisted before it's used.
   **`letChain(bindings, body)`** is that same nesting, built for you from a
-  flat, ordered list instead:
+  flat, ordered list instead — exactly what "The bottom: raw AST builders"
+  above uses for `crossLength`'s `rx`/`ry`/`rz`:
 
   ```js
   const { v, num, mul, add, letChain, outputs } = require("exprforge");
@@ -306,7 +627,8 @@ select" pattern is wrong.
 `add(mul(v("a"), v("b")), num(1))` is exactly what gets built, but it's
 not what a human reads at a glance. `expr` is a tagged template literal
 that parses ordinary infix math syntax into that same tree — same nodes,
-different spelling, no new capability:
+different spelling, no new capability. See "Another layer down" above
+for a full worked example (`crossLength`, hand-inlined, no macro).
 
 ```js
 const { v, expr } = require("exprforge");
@@ -325,13 +647,14 @@ expr`(-b + sqrt(b^2 - 4*a*c)) / (2*a)`
 | `-x` | `neg(x)` |
 | `name(args...)` | `call("name", ...args)` — not checked against the 22 known functions at parse time, same deferred-to-emission-time error every hand-built `call()` already gets |
 | bare `name` | `v("name")` |
+| `name.field` | `field(v("name"), "field")` — only meaningful when `name` is bound to a multi-output macro result (see "Macros and externs"); binds tighter than `^`, chainable (`a.b.c`) |
 | `cond ? then : else` | `select(cmp(left, op, right), then, else)` — the **only** place a comparison (`> < >= <= == !=`) is valid, matching `cmp()`'s own documented constraint that it's never a general boolean expression. A bare `a > b` with no `?` is a parse-time error, not a deferred one. Chains naturally: `a>0 ? 1 : b>0 ? 2 : 3`. |
 | `${...}` | Splices in an existing AST node as-is, or a plain JS number (auto-wrapped via `num()`). Anything else throws immediately. Plain strings aren't interpolatable — a bare identifier in the template text already means "variable", with no `${}` needed. |
 | `# ...` | An end-of-line comment — runs to the next newline, produces no tokens. Works across `${...}` interpolation boundaries too: a value interpolated inside an open comment is silently dropped, never validated (not even for what would otherwise be an invalid interpolation). |
 
 Deliberately **not** in the grammar: `let`/`outputs` blocks (it's a pure
-expression grammar, same "expression AST, not a program AST" boundary as
-the rest of exprforge — wrap the result in `letIn`/`letChain`/`outputs`,
+expression grammar, same "expression AST, not a program AST" boundary
+declared under "Intents" — wrap the result in `letIn`/`letChain`/`outputs`,
 or reach for `fn` below, which adds exactly that) and `&&`/`||` (the AST
 has no boolean-combinator node to lower them to).
 
@@ -346,7 +669,9 @@ letIn("mag", expr`sqrt(x^2 + y^2)`, expr`x / mag`)
 `let` bindings plus a `return`, on top of the exact same expression
 grammar (every expression inside a `fn` template is parsed by the same
 engine `expr` uses). Lowers to real `letChain`/`outputs` calls, same
-"same nodes, different spelling" guarantee as `expr` itself:
+"same nodes, different spelling" guarantee as `expr` itself. See "One
+layer down" above for a full worked example (`cross3`/`crossLength`,
+via `loadMacro`).
 
 ```js
 const { fn } = require("exprforge");
@@ -366,6 +691,7 @@ const normalize2 = { name: "normalize2", params: ["x", "y"], body };
 | `let name = expr;` | one `[name, valueNode]` pair, in order — a later `let` can reference an earlier one's name |
 | `return expr;` | the chain's final expression |
 | `return { name: expr, ... };` | `outputs({ name: node, ... })` as the chain's final expression |
+| `return { name, ... };` | shorthand for `return { name: name, ... };` — same convention JS object literals use for a property whose value is a same-named variable. Freely mixes with the explicit form: `return { rx, ry: ry * 2, rz };` |
 
 Duplicate `let` names aren't rejected by the parser itself — same
 deferred-to-`collectLets` behavior every hand-built `letIn`/`letChain`
@@ -379,7 +705,7 @@ one-off — but `fn` can carry them too, with a leading `name(params):`
 line:
 
 ```js
-const { fn, emitAll, evaluate } = require("exprforge");
+const { fn, emit, evaluate } = require("exprforge");
 
 const normalize2 = fn`
     normalize2(x, y):
@@ -390,7 +716,7 @@ const normalize2 = fn`
 // no wrapping object needed.
 
 evaluate(normalize2, [3, 4]);        // { nx: 0.6, ny: 0.8 }
-emitAll(normalize2).rust.source;     // ready to use immediately
+emit(normalize2, "rust").source;     // ready to use immediately
 ```
 
 This changes `fn`'s return type based on what you wrote, deliberately:
@@ -401,27 +727,102 @@ signature is told apart from a statement by the same rule that tells
 `let`/`return` apart from any other identifier, so naming a function
 `let` just parses as (and fails as) a `let` statement instead.
 
+### Grammar reference
+
+Everything above, as one formal grammar instead of two separate tables —
+copied verbatim from `expr.js`'s/`fn.js`'s own header comments, not a
+paraphrase, so it can't drift out of sync with what the parser actually
+does:
+
+```
+program        := signature? stmt* returnStmt
+signature      := IDENT "(" (IDENT ("," IDENT)*)? ")" ":"
+stmt           := "let" IDENT "=" expression ";"
+returnStmt     := "return" expression ";"
+                | "return" "{" field ("," field)* "}" ";"
+field          := IDENT (":" expression)?
+
+expression     := ternary
+ternary        := additive ( compOp additive "?" expression ":" expression )?
+compOp         := ">" | "<" | ">=" | "<=" | "==" | "!="
+additive       := multiplicative ( ("+"|"-") multiplicative )*
+multiplicative := unary ( ("*"|"/") unary )*
+unary          := "-" unary | power
+power          := postfix ( "^" unary )?
+postfix        := primary ( "." IDENT )*
+primary        := NUMBER | IDENT ("(" args ")")? | "(" expression ")" | HOLE
+args           := expression ("," expression)*
+```
+
+`` expr`...` `` is exactly `expression` on its own — one formula, no
+`let`/`return`. `` fn`...` `` is `program` — `expression`'s entire
+grammar embedded unchanged inside every `let`'s value and every
+`return`, parsed by the exact same `Parser` class both tags share (not a
+reimplementation — `fn` literally imports `expr.js`'s tokenizer and
+parser rather than forking either).
+
+Not shown above (lexical, not grammar): `# ...` end-of-line comments
+(run to the next newline, produce no tokens); `${...}` interpolation,
+which splices an existing `Node` or a plain number in directly (see
+"Infix expression syntax" above) and becomes a `HOLE` token in the
+grammar above; and that `let`/`return` are ordinary identifiers
+*everywhere except* statement-start position — `` expr`let * 2` `` still
+means `v("let") * 2`, not a syntax error, since `expr`'s own grammar has
+no `stmt`/`signature` rules to make either one special.
+
 ## Printing an AST back out, and a native evaluator
 
 Two things that fall out of `fn` existing: `emitters.expr` is a real,
-registered 18th target that prints any AST *back out* as `fn`/`expr`
-source text (the reverse of parsing it) — useful for debugging a
-formula built from several composed helpers, or just getting a readable
-string to log or paste into a future `fn`/`expr` call. And `evaluate(fn,
-args)` (also exported from the main package) is a native tree-walking
-interpreter over the same AST, computing a result directly in JS with no
-codegen or compile step — the same node types every emitter already
-handles, backed by the real `Math.*` functions.
+registered target that prints any AST *back out* as `fn`/`expr` source
+text (the reverse of parsing it) — useful for debugging a formula built
+from several composed helpers, or just getting a readable string to log
+or paste into a future `fn`/`expr` call. And `evaluate(fn, args)` (also
+exported from the main package) is a native tree-walking interpreter
+over the same AST, computing a result directly in JS with no codegen or
+compile step — the same node types every emitter already handles,
+backed by the real `Math.*` functions.
 
 ```js
-const { emitAll, evaluate } = require("exprforge");
+const { emit, evaluate } = require("exprforge");
 
-emitAll(normalize2).expr.source;
+emit(normalize2, "expr").source;
 // "normalize2(x, y):\n  let mag = sqrt(((x^2) + (y^2)));\n  return { nx: (x / mag), ny: (y / mag) };\n"
 
 evaluate(normalize2, [3, 4]);
 // { nx: 0.6, ny: 0.8 }
 ```
+
+### Loading a `.expr` file (`loadExpr`)
+
+`loadExpr(path)` goes the other direction from `emit(fn, "expr")` above:
+reads a `.expr` file (that same round-trip text format) and parses it as
+zero or more `name(params): let ...; return ...;` definitions, each
+usable directly with `evaluate()`/`emit()`/`emitMany()` — this is the
+file-backed sibling of `loadExprSource` in "Examples, flashiest first"
+above:
+
+```js
+const { loadExpr, evaluate } = require("exprforge");
+
+const defs = loadExpr("./formulas/vectors.expr");
+evaluate(defs.hyp, [3, 4]); // 5
+```
+
+A function defined earlier in the file is available to a function defined
+**later** in the same file — as an inline macro, the exact same
+"expanded, not called" model `loadMacro` itself uses above (see that
+section for why). Every definition needs a `name(params):` signature line
+(nothing later in the file, or the caller, could refer to one that
+didn't), and a `.expr` file can reference globally loaded macros too, not
+just earlier definitions in the same file — the two sources merge.
+
+`loadExpr(path)` is a thin `fs.readFileSync` wrapper around
+**`loadExprSource(text, label?)`** — the same parser, given source text
+directly. Use that one wherever the text isn't coming from a real file on
+disk (a browser text buffer, an HTTP response, ...) — the playground's
+editor uses it exactly this way to let one buffer hold several
+definitions. `label` (default `"loadExprSource()"`) identifies the source
+in error messages, the way a file path does for `loadExpr`.
 
 ## Multiple named outputs
 
@@ -468,13 +869,52 @@ the order instead (same reason Lua's return, also positional, gets one).
 C#'s tuple has no such risk — a tuple literal's element names aren't
 pre-declared locals the way Go's named returns are.
 
-## What this deliberately doesn't do
+## Security considerations
 
-- No control flow (loops, branches, calling other generated functions) —
-  this is an expression AST, not a program AST.
-- No RNG — can't be made to produce identical output across languages,
-  so it isn't offered as if it could.
-- No arbitrary precision / complex numbers — float64 only, for now.
+"Trust only the layer you need" (see "Intents" above) is a claim, not just
+a description — the raw AST layer specifically has to be safe to build
+from untrusted input, since it's the one this README recommends reaching
+for when you want the least amount of magic between your formula and the
+code it emits. A few concrete guarantees that follow from that:
+
+- **The raw builders validate their own inputs.** `num`/`v`/`bin`/`call`/
+  `letIn`/`cmp`/`outputs`/`field` all reject anything that isn't a safe
+  value — an identifier must match the exact same rule `expr`/`fn`'s own
+  tokenizer already enforces on text it parses (start with a letter/`_`,
+  then letters/digits/`_` only), an operator must be one of the fixed
+  `+`/`-`/`*`/`/` (or, for `cmp`, `>`/`<`/`>=`/`<=`/`==`/`!=`) set, and a
+  number must actually be finite. Without this, the raw builder layer
+  would have been the *least* safe one to build from untrusted input, not
+  the most — `fn`/`expr`'s own tokenizer never produces anything but a
+  safe identifier to begin with, so this was the one place a malformed or
+  malicious name (e.g. `v("x); process.exit(1); //")`) could otherwise
+  reach emitted output completely unescaped, verbatim, in every one of 16
+  targets at once.
+- **`expr`/`fn` cap how deeply an expression can nest.** Parens,
+  function-call arguments, and ternary branches can nest up to 100 levels
+  deep (`MAX_EXPRESSION_DEPTH` in `expr.js`) before parsing fails with one
+  clear, controlled error — comfortably below where a pathologically
+  nested input (`"((((...))))"` or `"f(f(f(...)))"` thousands deep,
+  plausible if this ever parses genuinely untrusted, unbounded-size text)
+  would otherwise blow the real JS call stack with a raw "Maximum call
+  stack size exceeded". A wide-but-shallow expression (many terms, no
+  real nesting) is unaffected regardless of length — only genuine nesting
+  depth is bounded.
+- **`createSession()` isolates macro/extern registrations** between
+  independent users/tenants sharing one process — see "Sessions" above.
+- **A caller-supplied macro/extern throwing reports which one.** A macro
+  function, or an extern's own `evaluate`/per-target template, is code
+  *you* (or whoever registered it) supplied — if it has a bug, the error
+  it throws is wrapped with context naming the macro/extern/target
+  responsible, rather than propagating bare with no indication of where
+  it came from.
+
+What this doesn't cover, deliberately: `loadExtern`'s per-target templates
+are real native code you supply — ExprForge can't verify the named symbol
+actually exists in a given target, or that it behaves identically across
+every target you provide a mapping for (see "Macros and externs" above).
+That risk is inherent to what an extern *is*, not something a validation
+layer could close without also closing off the feature itself.
 
 ## Testing
 
@@ -582,6 +1022,11 @@ compiling/running against a real toolchain rather than assumed to work:
   `select()`'s own contract exactly. The native 2-argument `SIGN(A, B)`
   ("magnitude of A, sign of B") is *not* this project's `sign(x)` —
   `SIGN(1.0, 0.0)` returns `1.0`, not `0.0` — built from `MERGE` instead.
+  Every gensym'd identifier this library ever introduces internally
+  (e.g. a macro's own alpha-renamed `let`, see "Macros and externs")
+  starts with a letter, never `_` — Fortran is the one target that
+  rejects a leading underscore outright, confirmed against a real
+  compiler ("Invalid character in name").
 - **Zig**: `std.debug.print` writes to **stderr** by design, not
   stdout — the conformance harness has to use
   `std.io.getStdOut().writer()` instead, or every result silently comes
@@ -620,10 +1065,11 @@ compiling/running against a real toolchain rather than assumed to work:
 
 One test (`normalizeX`) is deliberately excluded from the QB64 check
 only: it exists specifically to demonstrate the "don't guard division
-with `select`" pitfall from the section above, and QB64 is the one
-target where that pitfall actually produces `NaN` (every other target,
-including Lua's `and`/`or`, genuinely short-circuits around it) — that's
-the AST being correctly unsafe on purpose, not an emitter bug.
+with `select`" pitfall from "Named subexpressions and conditional
+values" above, and QB64 is the one target where that pitfall actually
+produces `NaN` (every other target, including Lua's `and`/`or`, genuinely
+short-circuits around it) — that's the AST being correctly unsafe on
+purpose, not an emitter bug.
 
 ## License
 

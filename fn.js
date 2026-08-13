@@ -14,7 +14,13 @@
 //   signature  := IDENT "(" (IDENT ("," IDENT)*)? ")" ":"
 //   stmt       := "let" IDENT "=" expression ";"
 //   returnStmt := "return" expression ";"
-//               | "return" "{" IDENT ":" expression ("," IDENT ":" expression)* "}" ";"
+//               | "return" "{" field ("," field)* "}" ";"
+//   field      := IDENT (":" expression)?
+//
+// A field with no ":" is shorthand for "name: name" (return { rx, ry, rz };
+// means return { rx: rx, ry: ry, rz: rz };) -- same convention JS object
+// literals use for a property whose value is a same-named variable, and
+// fields can freely mix shorthand and explicit form in one return.
 //
 // "let"/"return" are recognized contextually -- an IDENT token whose
 // value happens to be "let"/"return" at statement-start position. They
@@ -40,7 +46,7 @@
 // was a deliberate API choice, not an oversight -- see the GitHub issue
 // this shipped from for the alternative considered (a separate,
 // always-full-definition tag) and why this was preferred.
-const { letChain, outputs } = require("./ast.js");
+const { letChain, outputs, v } = require("./ast.js");
 const { Parser, tokenizeSegment } = require("./expr.js");
 
 function isKeyword(parser, word) {
@@ -73,7 +79,15 @@ function parseReturnStatement(parser) {
         const fields = {};
         const readField = () => {
             const name = expectIdent(parser, 'as an output name inside "return { ... }"');
-            parser.expectOp(":");
+            // No ":" -- shorthand for "name: name" (return { rx, ry, rz };
+            // means return { rx: rx, ry: ry, rz: rz };), matching JS object
+            // literal shorthand. Explicit ":" still works, and either form
+            // can appear anywhere in the same field list.
+            if (!parser.isOp(":")) {
+                fields[name] = v(name);
+                return;
+            }
+            parser.next(); // consume ":"
             fields[name] = parser.parseExpression();
         };
         if (!parser.isOp("}")) {
@@ -172,4 +186,9 @@ function fn(strings, ...values) {
     return node;
 }
 
-module.exports = { fn };
+// parseProgram is also exported for load-expr.js: loading a .expr file
+// means parsing zero or more of these back-to-back over one shared token
+// stream (see load-expr.js's own header comment), which needs the same
+// "signature? stmt* returnStmt" grammar this file already implements --
+// reused directly, not forked.
+module.exports = { fn, parseProgram };

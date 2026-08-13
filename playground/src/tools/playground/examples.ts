@@ -154,4 +154,23 @@ cardanoAllRoots(a, b, c, d):
   };
 `,
     },
+    {
+        id: "crossLength",
+        label: "Cross product + length (multi-function buffer)",
+        source: `# TWO definitions in one buffer -- crossLength references cross3
+# by name below. That reference is inline-expanded at parse time,
+# never a real function call in any emitted target -- see the
+# README's "Macros and externs" section. Pick which one to run in
+# the tabs above the "Try it" panel below.
+cross3(ax, ay, az, bx, by, bz):
+  let rx = ay * bz - az * by;
+  let ry = az * bx - ax * bz;
+  let rz = ax * by - ay * bx;
+  return { rx, ry, rz };
+
+crossLength(ax, ay, az, bx, by, bz):
+  let c = cross3(ax, ay, az, bx, by, bz);
+  return sqrt(c.rx^2 + c.ry^2 + c.rz^2);
+`,
+    },
 ];

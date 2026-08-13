@@ -26,7 +26,8 @@
 //                    suite gets emitted through this emitter; omitted
 //                    otherwise.
 
-const { collectLets } = require("../ast.js");
+const { collectLets, checkUnboundVars } = require("../ast.js");
+const { expandMacros, resolveExternForEmitter, withContext } = require("../macros.js");
 
 class Emitter {
     constructor(config) {
@@ -64,11 +65,23 @@ class Emitter {
             }
             case "call": {
                 const args = node.args.map((a) => this.emitExpr(a));
-                const template = this.calls[node.name];
+                // `this.lang` is injected by emitters/registry.js (the
+                // registered key, e.g. "js"/"cobol") -- not set for an
+                // Emitter built standalone outside the registry, in which
+                // case an extern simply never resolves here, same as an
+                // unmapped name.
+                const builtin = this.calls[node.name];
+                const template = builtin || (this.lang && resolveExternForEmitter(node.name, this.lang, this._registry));
                 if (!template) {
                     throw new Error(`emitter for .${this.ext}: no mapping for Math function "${node.name}"`);
                 }
-                return template(args);
+                // Only an extern's own per-target template is caller-
+                // supplied code that could have a bug worth attributing
+                // -- a built-in primitive's template is exprforge's own,
+                // not worth wrapping.
+                return builtin
+                    ? template(args)
+                    : withContext(`emitter for .${this.ext}: while emitting extern "${node.name}"`, () => template(args));
             }
             case "select": {
                 const thenStr = this.emitExpr(node.then);
@@ -89,7 +102,26 @@ class Emitter {
         }
     }
 
-    emitFunction(fn) {
+    // `registry` (see macros.js's createRegistry()) defaults to the
+    // process-wide default when omitted -- pass a session's own (see
+    // index.js's createSession()) to resolve macros/externs against that
+    // session instead. Stashed on `this` for emitExpr's "call" case to
+    // read, same instance-state pattern emitters/cobol.js's own
+    // `this._pool` already established.
+    emitFunction(fn, registry = undefined) {
+        this._registry = registry;
+        // Resolves every macro call and field() access into plain
+        // arithmetic first -- see macros.js's own header comment. Must
+        // run before checkUnboundVars: expansion is what introduces the
+        // flattened let-bindings a multi-output macro's fields become,
+        // and eliminates "field" nodes, which checkUnboundVars/
+        // collectLets don't know how to walk.
+        fn = expandMacros(fn, null, registry);
+        // Checked once, before any per-target work starts -- see
+        // checkUnboundVars's own comment in ast.js for why this matters
+        // (a typo'd/forgotten identifier used to silently succeed here,
+        // for every target, with no error at all).
+        checkUnboundVars(fn);
         const { bindings, body } = collectLets(fn.body);
         const letBindings = bindings.map(({ name, node }) => ({
             name,

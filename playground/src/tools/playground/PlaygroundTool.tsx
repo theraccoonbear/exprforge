@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import type { FunctionResult } from "./useExprForge";
 import CodeMirror from "@uiw/react-codemirror";
 import { oneDark } from "@codemirror/theme-one-dark";
 import { exprForgeLanguage } from "./exprForgeMode";
@@ -58,9 +59,21 @@ export function PlaygroundTool() {
     const [source, setSource] = useState(initialSource);
     const [enabled, setEnabled] = useState(initialEnabledLanguages);
     const [linkCopied, setLinkCopied] = useState(false);
+    // Which function's interpreter/language cards are showing, when the
+    // buffer holds more than one (see useExprForge.ts's own header
+    // comment for when that happens) -- a name, not an index, so
+    // switching examples/editing text doesn't leave a stale selection
+    // pointing at the wrong function; selectedFunction below falls back
+    // to the first one whenever this name isn't (or isn't yet) present.
+    const [selectedName, setSelectedName] = useState<string | null>(null);
 
-    const { error, def, outputs } = useExprForge(source);
+    const { error, functions } = useExprForge(source);
     const languageIds = useMemo(() => Object.keys(LANGUAGE_META), []);
+
+    const selectedFunction: FunctionResult | null = useMemo(() => {
+        if (functions.length === 0) return null;
+        return functions.find((f) => f.def.name === selectedName) ?? functions[0];
+    }, [functions, selectedName]);
 
     // Persisted so a refresh restores exactly what you had, not the
     // defaults -- your in-progress formula and which languages you'd
@@ -146,7 +159,26 @@ export function PlaygroundTool() {
                 {error && <div className="playground-error">{error}</div>}
             </div>
 
-            {def && <InterpreterCard def={def} />}
+            {functions.length > 1 && (
+                <div className="function-tabs" role="tablist" aria-label="Choose a function">
+                    {functions.map(({ def: fnDef }) => (
+                        <button
+                            key={fnDef.name}
+                            type="button"
+                            role="tab"
+                            aria-selected={selectedFunction?.def.name === fnDef.name}
+                            className={
+                                selectedFunction?.def.name === fnDef.name ? "function-tab function-tab--active" : "function-tab"
+                            }
+                            onClick={() => setSelectedName(fnDef.name)}
+                        >
+                            {fnDef.name}
+                        </button>
+                    ))}
+                </div>
+            )}
+
+            {selectedFunction && <InterpreterCard def={selectedFunction.def} />}
 
             <div className="playground-toggles" role="group" aria-label="Toggle visible outputs">
                 {languageIds.map((id) => (
@@ -162,10 +194,12 @@ export function PlaygroundTool() {
             </div>
 
             <div className="lang-card-grid">
-                {outputs &&
+                {selectedFunction &&
                     languageIds
                         .filter((id) => enabled.has(id))
-                        .map((id) => <LanguageCard key={id} languageId={id} label={LANGUAGE_META[id].label} result={outputs[id]} />)}
+                        .map((id) => (
+                            <LanguageCard key={id} languageId={id} label={LANGUAGE_META[id].label} result={selectedFunction.outputs[id]} />
+                        ))}
             </div>
         </div>
     );

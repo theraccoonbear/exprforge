@@ -34,6 +34,25 @@ test("the expr emitter prints an unmapped call name through unchanged, instead o
     assert.strictEqual(emitters.expr.emitFunction(fn), "f(x):\n  return definitely_not_a_real_math_fn(x);\n");
 });
 
+test("referencing an undeclared identifier throws, for every emitter -- including \"expr\" (the printer), which has no exemption here unlike the unmapped-call-name case above", () => {
+    // Unlike an unmapped Math function name (which "expr" deliberately
+    // passes through, since it has no fixed math library to validate
+    // against), an unbound VARIABLE reference means the AST itself is
+    // malformed -- there's nothing meaningful to print either way.
+    // checkUnboundVars (ast.js) runs unconditionally at the top of
+    // Emitter.emitFunction (base.js), so every config-based emitter gets
+    // this for free, and CobolEmitter (the one class that overrides
+    // emitFunction entirely) has its own explicit call to the same check.
+    const fn = { name: "f", params: ["x"], body: add(v("x"), v("definitelyNotDeclaredAnywhere")) };
+    for (const [lang, emitter] of Object.entries(emitters)) {
+        assert.throws(
+            () => emitter.emitFunction(fn),
+            /"definitelyNotDeclaredAnywhere" is referenced in "f" but never declared/,
+            `expected ${lang} to throw for an unbound variable reference`,
+        );
+    }
+});
+
 test("two let bindings sharing a name throw, even nested inside each other's value", () => {
     const fn = {
         name: "f",

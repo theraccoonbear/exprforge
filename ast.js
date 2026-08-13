@@ -11,24 +11,87 @@
 //   { type: "cmp",    op: ">" | "<" | ">=" | "<=" | "==" | "!=", left: Node, right: Node }
 //   { type: "select", cond: CmpNode, then: Node, else: Node }
 //   { type: "outputs", fields: { [name: string]: Node } }
+//   { type: "field",   target: Node, field: string }
+//
+// "field" is postfix "." access (e.g. b.rx) — parser sugar produced only
+// by expr.js/fn.js's grammar, and eliminated by macros.js's
+// expandMacros() before a tree ever reaches checkUnboundVars,
+// evaluate(), or any emitter. It only makes semantic sense when `target`
+// resolves to a name bound to a multi-output *macro* call (see
+// macros.js) — that's checked there, not here, same "defer semantic
+// validation to the consumer" precedent call() already follows for
+// function names. A "field" node reaching evaluate()/an emitter directly
+// means expandMacros() was skipped or didn't run to completion; both
+// throw their own "unknown node type" error in that case.
 //
 // Every "bin" node is emitted with explicit parens in every target, so
 // operation order (and therefore floating-point rounding behavior) is
 // identical everywhere.
+//
+// SECURITY: every builder below validates its own name/op/value
+// argument(s) -- see assertSafeIdentifier/assertSafeOp/assertFiniteNumber
+// just below. This is specifically about these builders being the "raw
+// AST" layer -- the one this project's own README recommends reaching
+// for when you want the least amount of magic between your formula and
+// the code it emits. Without validation, that would have been the LEAST
+// safe layer to build from untrusted input, not the most: fn`...`/
+// expr`...`'s own tokenizer already only ever produces safe identifier
+// characters, so these builders were the one place a malicious/malformed
+// name -- e.g. `v('x); process.exit(1); //')` -- could reach emitted
+// output completely unchecked, verbatim, in all 16 targets at once.
+// Confirmed, not assumed, before this existed.
+
+// Matches fn`...`/expr`...`'s own tokenizer IDENT rule exactly (see
+// expr.js's tokenizeSegment) -- anything that couldn't have come out of
+// the real parser isn't allowed in here either.
+const IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
+function assertSafeIdentifier(name, context) {
+    if (typeof name !== "string" || !IDENTIFIER.test(name)) {
+        throw new Error(
+            `${context}: ${JSON.stringify(name)} isn't a safe identifier -- must start with a letter or "_", ` +
+            `followed only by letters/digits/"_" (the same rule fn\`...\`/expr\`...\`'s own tokenizer already ` +
+            `enforces on anything parsed from text; this only matters when building a tree directly, bypassing ` +
+            `the parser)`,
+        );
+    }
+}
+
+const BIN_OPS = new Set(["+", "-", "*", "/"]);
+const CMP_OPS = new Set([">", "<", ">=", "<=", "==", "!="]);
+
+function assertSafeOp(op, allowed, context) {
+    if (!allowed.has(op)) {
+        throw new Error(`${context}: ${JSON.stringify(op)} isn't one of the allowed operators (${[...allowed].join(" ")})`);
+    }
+}
+
+function assertFiniteNumber(value, context) {
+    if (typeof value !== "number" || !Number.isFinite(value)) {
+        throw new Error(
+            `${context}: ${JSON.stringify(value)} isn't a finite number -- NaN/Infinity/non-numeric values ` +
+            `can't be emitted as a literal in every target`,
+        );
+    }
+}
 
 function num(value) {
+    assertFiniteNumber(value, "num()");
     return { type: "num", value };
 }
 
 function v(name) {
+    assertSafeIdentifier(name, "v()");
     return { type: "var", name };
 }
 
 function bin(op, left, right) {
+    assertSafeOp(op, BIN_OPS, "bin()");
     return { type: "bin", op, left, right };
 }
 
 function call(name, ...args) {
+    assertSafeIdentifier(name, "call()");
     return { type: "call", name, args };
 }
 
@@ -59,6 +122,7 @@ function neg(x) {
 // then divide three components by it). Lifted out by collectLets before
 // emission — see there for how `v(name)` ends up referring to it.
 function letIn(name, value, body) {
+    assertSafeIdentifier(name, "letIn()");
     return { type: "let", name, value, body };
 }
 
@@ -86,6 +150,7 @@ function letChain(bindings, body) {
 // Comparison predicate — only valid as the `cond` of a select(); not a
 // general boolean expression, and shouldn't appear anywhere else in a tree.
 function cmp(left, op, right) {
+    assertSafeOp(op, CMP_OPS, "cmp()");
     return { type: "cmp", op, left, right };
 }
 
@@ -107,8 +172,27 @@ function select(cond, thenNode, elseNode) {
 // return, an object literal, output parameters) — see formatSuite in each
 // emitters/<lang>.js.
 function outputs(fields) {
+    for (const name of Object.keys(fields)) assertSafeIdentifier(name, "outputs()");
     return { type: "outputs", fields };
 }
+
+// Postfix "." field access into a multi-output intrinsic's result — see
+// the "field" node-shape comment at the top of this file for what this
+// actually means and who consumes it.
+function field(target, name) {
+    assertSafeIdentifier(name, "field()");
+    return { type: "field", target, field: name };
+}
+
+// The prefix macros.js's own gensym'd internal let-names always start
+// with (see substituteAndRename's "let" case there) — defined HERE, not
+// there, specifically so collectLets below can recognize a collision
+// against one WITHOUT macros.js needing to require this file back (it
+// already does the other direction: macros.js requires ast.js). Kept as
+// one shared constant rather than a duplicated string literal in both
+// files, so it can't quietly drift out of sync between "the name this
+// generates" and "the name this recognizes".
+const MACRO_GENSYM_PREFIX = "efMacro_";
 
 // Lifts every `let` node out of the tree into a flat, ordered list of
 // { name, node } bindings, replacing each with a plain v(name) reference.
@@ -152,7 +236,23 @@ function collectLets(node) {
     const seen = new Set();
     for (const { name } of bindings) {
         if (seen.has(name)) {
-            throw new Error(`collectLets: duplicate let binding name "${name}" in one function`);
+            // A colliding name that happens to start with macros.js's own
+            // gensym prefix is almost certainly NOT something you wrote
+            // on purpose -- vanishingly unlikely to be an intentional
+            // collision, and confusing to debug as a plain "duplicate
+            // name" if you don't already know that prefix means
+            // "internally generated" -- named explicitly here rather
+            // than left for you to work out. The gensym'd name itself is
+            // never the one to rename (it's already unique per macro
+            // invocation, see toMacro's own comment in macros.js) -- only
+            // your OWN same-named binding actually needs to change.
+            const hint = name.startsWith(MACRO_GENSYM_PREFIX)
+                ? ` -- this looks like an internal name macro expansion generates automatically ` +
+                  `(see macros.js's own gensym'd "let" renaming), not something you wrote; if you ` +
+                  `have your own let/param actually named "${name}", rename YOURS to something that ` +
+                  `doesn't start with "${MACRO_GENSYM_PREFIX}"`
+                : "";
+            throw new Error(`collectLets: duplicate let binding name "${name}" in one function${hint}`);
         }
         seen.add(name);
     }
@@ -160,4 +260,92 @@ function collectLets(node) {
     return { bindings, body };
 }
 
-module.exports = { num, v, bin, call, add, mul, sub, div, neg, letIn, letChain, cmp, select, outputs, collectLets };
+// Every v(name) reference anywhere in `node`, regardless of whether
+// anything actually declares it -- a pure structural walk, no binding
+// awareness at all. `refs` accumulates across recursive calls so this
+// can be called repeatedly against several subtrees (e.g. once per
+// let-binding's own value, plus once for the final body) and still
+// build one combined set. Mirrors collectLets's own node-type walk
+// above exactly, since it needs to see the identical tree shape.
+function collectVarRefs(node, refs = new Set()) {
+    if (node.type === "var") {
+        refs.add(node.name);
+    } else if (node.type === "bin") {
+        collectVarRefs(node.left, refs);
+        collectVarRefs(node.right, refs);
+    } else if (node.type === "call") {
+        for (const a of node.args) collectVarRefs(a, refs);
+    } else if (node.type === "cmp") {
+        collectVarRefs(node.left, refs);
+        collectVarRefs(node.right, refs);
+    } else if (node.type === "select") {
+        collectVarRefs(node.cond, refs);
+        collectVarRefs(node.then, refs);
+        collectVarRefs(node.else, refs);
+    } else if (node.type === "let") {
+        collectVarRefs(node.value, refs);
+        collectVarRefs(node.body, refs);
+    } else if (node.type === "outputs") {
+        for (const fieldNode of Object.values(node.fields)) collectVarRefs(fieldNode, refs);
+    }
+    // num: nothing to add.
+    return refs;
+}
+
+// Confirms every var() reference anywhere in fn.body -- inside a
+// let-binding's own value, or in the final body/outputs -- corresponds
+// to something actually declared: a parameter, or a let binding
+// somewhere else in the same function. "Somewhere else", not
+// "somewhere earlier": collectLets's own doc comment already
+// establishes there's no real lexical scoping here -- every let-binding
+// is one flat, function-wide name -- so "declared anywhere in this
+// function" is the right, and only meaningful, check, not an
+// order-sensitive one.
+//
+// Catches a typo'd or forgotten identifier at the earliest possible
+// point, for every target and for evaluate() uniformly, rather than
+// relying on evaluate() happening to hit it at runtime (which it might
+// never do -- e.g. a reference inside a select() branch that a
+// particular call's arguments never take would never surface that way)
+// or on whichever target language's own compiler/runtime eventually
+// notices, with wildly inconsistent timing and clarity (a real compile
+// error in Java, a silent-until-called ReferenceError in JS). Confirmed
+// the gap first, not assumed: before this existed, emitAll() silently
+// succeeded across all 18 targets for a body referencing a completely
+// undeclared name.
+//
+// Also validates fn.name and every fn.params entry as safe identifiers
+// (see assertSafeIdentifier above) -- the SAME concern as every builder
+// above, just here instead of at a constructor call site, since
+// {name, params, body} is a plain object literal shape with no
+// constructor function of its own to hook into. This is the one place
+// every real consumption path (evaluate(), every emitter's
+// emitFunction(), cobol.js's own override) already runs unconditionally,
+// so it's the natural single checkpoint for this too.
+function checkUnboundVars(fn) {
+    assertSafeIdentifier(fn.name, "fn.name");
+    for (const p of fn.params) assertSafeIdentifier(p, "fn.params");
+
+    const { bindings, body } = collectLets(fn.body);
+    const declared = new Set([...fn.params, ...bindings.map((b) => b.name)]);
+
+    const referenced = new Set();
+    for (const { node } of bindings) collectVarRefs(node, referenced);
+    collectVarRefs(body, referenced);
+
+    for (const name of referenced) {
+        if (!declared.has(name)) {
+            throw new Error(
+                `checkUnboundVars: "${name}" is referenced in "${fn.name}" but never declared -- ` +
+                `not a parameter (${fn.params.length ? fn.params.join(", ") : "none"}) and no ` +
+                `"let ${name} = ..." binding exists anywhere in this function`,
+            );
+        }
+    }
+}
+
+module.exports = {
+    num, v, bin, call, add, mul, sub, div, neg, letIn, letChain, cmp, select, outputs, field, collectLets,
+    checkUnboundVars,
+    MACRO_GENSYM_PREFIX,
+};

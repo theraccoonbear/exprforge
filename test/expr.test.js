@@ -14,7 +14,7 @@
 const test = require("node:test");
 const assert = require("node:assert");
 const {
-    num, v, add, sub, mul, div, neg, call, cmp, select, letIn, collectLets,
+    num, v, add, sub, mul, div, neg, call, cmp, select, letIn, collectLets, field,
 } = require("../ast.js");
 const { expr } = require("../expr.js");
 const { fn } = require("../fn.js");
@@ -193,6 +193,39 @@ test("fn`...` comments work the same way, including after a signature line", () 
     assert.deepStrictEqual(def.params, ["x", "y"]);
 });
 
+// --- postfix "." field access --------------------------------------------
+//
+// Grammar-level tests only -- expr()/fn() never resolve what a "field"
+// node actually means (that's macros.js's expandMacros() job, see
+// test/macros.test.js); this just confirms the parser produces the
+// right shape and binds it at the right precedence.
+
+test("b.rx parses to a field() node wrapping v(\"b\")", () => {
+    assert.deepStrictEqual(expr`b.rx`, field(v("b"), "rx"));
+});
+
+test("field access chains: a.b.c", () => {
+    assert.deepStrictEqual(expr`a.b.c`, field(field(v("a"), "b"), "c"));
+});
+
+test("field access binds tighter than every operator, including ^", () => {
+    assert.deepStrictEqual(expr`b.rx + 1`, add(field(v("b"), "rx"), num(1)));
+    assert.deepStrictEqual(expr`b.rx ^ 2`, call("pow", field(v("b"), "rx"), num(2)));
+    assert.deepStrictEqual(expr`-b.rx`, neg(field(v("b"), "rx")));
+});
+
+test("field access works on a call's result too", () => {
+    assert.deepStrictEqual(expr`cross3(ax, ay, az, bx, by, bz).rx`, field(call("cross3", v("ax"), v("ay"), v("az"), v("bx"), v("by"), v("bz")), "rx"));
+});
+
+test("a \".\" with no following identifier throws", () => {
+    assert.throws(() => expr`b.`, /expected a field name after "."/);
+});
+
+test("\".\" still tokenizes decimal number literals unambiguously (.5, 1.5)", () => {
+    assert.deepStrictEqual(expr`.5 + 1.5`, add(num(0.5), num(1.5)));
+});
+
 test("independent expr() calls don't leak comment state into each other", () => {
     // Each call gets its own fresh { inComment: false } state object --
     // a prior call left mid-comment (which can't actually happen since
@@ -201,4 +234,58 @@ test("independent expr() calls don't leak comment state into each other", () => 
     // must never affect an unrelated call.
     expr`a + b # comment`;
     assert.deepStrictEqual(expr`c * d`, mul(v("c"), v("d")));
+});
+
+// --- expression nesting-depth limit (parseExpression, see expr.js) ------
+//
+// A pathologically nested input ("((((...))))" or "f(f(f(...)))" thousands
+// deep, plausible if this ever parses genuinely untrusted, unbounded-size
+// text) used to blow the real JS call stack with a raw, uninformative
+// "Maximum call stack size exceeded" RangeError. MAX_EXPRESSION_DEPTH
+// (100, see expr.js) catches it well before that, with a clear error
+// instead. These call expr() directly as a plain function (not via a
+// tagged template literal, which can't build a dynamic string) --
+// `` expr`...` `` is called by JS as expr(strings, ...values), and
+// expr()'s own body only ever indexes strings[i], so a plain
+// single-element array works identically to a real tagged template.
+
+function parseSource(source) {
+    return expr([source]);
+}
+
+test("deeply nested parens beyond the limit throw a clear, controlled error", () => {
+    const source = "(".repeat(150) + "1" + ")".repeat(150);
+    assert.throws(() => parseSource(source), /nested too deeply \(max 100 levels/);
+});
+
+test("deeply nested function calls beyond the limit throw the same way", () => {
+    const source = "sqrt(".repeat(150) + "1" + ")".repeat(150);
+    assert.throws(() => parseSource(source), /nested too deeply \(max 100 levels/);
+});
+
+test("nesting right at/under the limit still parses normally -- not an off-by-one false positive", () => {
+    const source = "(".repeat(50) + "1" + ")".repeat(50);
+    assert.doesNotThrow(() => parseSource(source));
+});
+
+test("a wide-but-shallow expression (many terms, no real nesting) never trips the depth limit, however long it is", () => {
+    // 200 flat terms chained with "+" -- parseAdditive's own while-loop
+    // handles this iteratively, not via parseExpression() recursion, so
+    // this must parse fine regardless of length. Confirms the limit
+    // bounds genuine NESTING, not merely long input.
+    const terms = Array.from({ length: 200 }, (_, i) => `x${i}`);
+    const source = terms.join(" + ");
+    let node;
+    assert.doesNotThrow(() => {
+        node = parseSource(source);
+    });
+    // Sanity: it's still the right shape (right-nested additive chain),
+    // not silently truncated.
+    let depth = 0;
+    let cursor = node;
+    while (cursor.type === "bin") {
+        depth++;
+        cursor = cursor.left;
+    }
+    assert.strictEqual(depth, terms.length - 1);
 });
