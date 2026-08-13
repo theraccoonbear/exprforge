@@ -670,6 +670,49 @@ signature is told apart from a statement by the same rule that tells
 `let`/`return` apart from any other identifier, so naming a function
 `let` just parses as (and fails as) a `let` statement instead.
 
+### Grammar reference
+
+Everything above, as one formal grammar instead of two separate tables —
+copied verbatim from `expr.js`'s/`fn.js`'s own header comments, not a
+paraphrase, so it can't drift out of sync with what the parser actually
+does:
+
+```
+program        := signature? stmt* returnStmt
+signature      := IDENT "(" (IDENT ("," IDENT)*)? ")" ":"
+stmt           := "let" IDENT "=" expression ";"
+returnStmt     := "return" expression ";"
+                | "return" "{" field ("," field)* "}" ";"
+field          := IDENT (":" expression)?
+
+expression     := ternary
+ternary        := additive ( compOp additive "?" expression ":" expression )?
+compOp         := ">" | "<" | ">=" | "<=" | "==" | "!="
+additive       := multiplicative ( ("+"|"-") multiplicative )*
+multiplicative := unary ( ("*"|"/") unary )*
+unary          := "-" unary | power
+power          := postfix ( "^" unary )?
+postfix        := primary ( "." IDENT )*
+primary        := NUMBER | IDENT ("(" args ")")? | "(" expression ")" | HOLE
+args           := expression ("," expression)*
+```
+
+`` expr`...` `` is exactly `expression` on its own — one formula, no
+`let`/`return`. `` fn`...` `` is `program` — `expression`'s entire
+grammar embedded unchanged inside every `let`'s value and every
+`return`, parsed by the exact same `Parser` class both tags share (not a
+reimplementation — `fn` literally imports `expr.js`'s tokenizer and
+parser rather than forking either).
+
+Not shown above (lexical, not grammar): `# ...` end-of-line comments
+(run to the next newline, produce no tokens); `${...}` interpolation,
+which splices an existing `Node` or a plain number in directly (see
+"Infix expression syntax" above) and becomes a `HOLE` token in the
+grammar above; and that `let`/`return` are ordinary identifiers
+*everywhere except* statement-start position — `` expr`let * 2` `` still
+means `v("let") * 2`, not a syntax error, since `expr`'s own grammar has
+no `stmt`/`signature` rules to make either one special.
+
 ## Printing an AST back out, and a native evaluator
 
 Two things that fall out of `fn` existing: `emitters.expr` is a real,
