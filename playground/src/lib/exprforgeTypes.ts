@@ -14,4 +14,7 @@ export interface ExprForgeModuleShape {
     emitAll(def: FnDef): Record<string, BatchEmitResult>;
     checkUnboundVars(def: FnDef): void;
     emitters: Record<string, Emitter>;
+    loadExprSource(source: string, label?: string): Record<string, FnDef>;
+    loadMacro(name: string, def: unknown): void;
+    loadExtern(name: string, def: unknown): void;
 }

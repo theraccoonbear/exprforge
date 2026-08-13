@@ -84,4 +84,17 @@ declare module "exprforge" {
     // want to enumerate registered languages (e.g. to build `langs` for
     // emitMany()) without emitting anything yet.
     export const emitters: Record<string, Emitter>;
+    // Parses source text (not a file -- see loadExprSource's own doc
+    // comment for why that matters here specifically) as zero or more
+    // "name(params): ...;" definitions back-to-back, keyed by name, each
+    // ready to use directly with evaluate()/emit()/emitMany(). A later
+    // definition can reference an earlier one by name as an inline
+    // macro -- see useExprForge.ts, which is what actually calls this
+    // (as a fallback, when the buffer holds more than one definition).
+    export function loadExprSource(source: string, label?: string): Record<string, FnDef>;
+    // Register a macro/extern -- not currently called by the playground
+    // itself (nothing here registers a custom one), typed for
+    // completeness since the linked library already exports both.
+    export function loadMacro(name: string, def: unknown): void;
+    export function loadExtern(name: string, def: unknown): void;
 }

@@ -257,6 +257,40 @@ pre,
     font-weight: 400;
 }
 
+/* Only rendered when the editor buffer holds more than one definition
+   (see PlaygroundTool.tsx) -- picks WHICH function's interpreter/
+   language cards are showing below, unlike .toggle-chip below (multi-
+   select: several languages visible at once), so styled as underlined
+   tabs rather than a togglable pill, to read as "one active view" at a
+   glance rather than "several toggled-on things". */
+.function-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1.1rem;
+    border-bottom: 1px solid var(--border);
+    padding: 0 0.2rem;
+}
+
+.function-tab {
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: var(--text-dim);
+    padding: 0.45rem 0.1rem;
+    font-size: 0.85rem;
+    font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+    cursor: pointer;
+}
+
+.function-tab:hover {
+    color: var(--text);
+}
+
+.function-tab--active {
+    color: var(--accent);
+    border-bottom-color: var(--accent-strong);
+}
+
 .playground-toggles {
     display: flex;
     flex-wrap: wrap;
