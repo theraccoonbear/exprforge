@@ -1,16 +1,18 @@
 // exprforge/test/load-expr.test.js
 //
-// loadExpr(path) -- see load-expr.js's own header comment. Writes
-// throwaway .expr fixtures into a fresh temp dir per test file run (same
-// "actually exercise the real file-loading path" discipline
-// test/package.test.js uses, not just testing the parser in isolation).
+// loadExpr(path)/loadExprSource(text) -- see load-expr.js's own header
+// comment. Writes throwaway .expr fixtures into a fresh temp dir per
+// test file run (same "actually exercise the real file-loading path"
+// discipline test/package.test.js uses, not just testing the parser in
+// isolation) for loadExpr() specifically; loadExprSource() is exercised
+// directly against strings, since its whole point is not needing a file.
 
 const test = require("node:test");
 const assert = require("node:assert");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
-const { evaluate, emit, loadExpr } = require("../index.js");
+const { evaluate, emit, loadExpr, loadExprSource } = require("../index.js");
 // Registers exprforge/math's macros (dot3/len3/cross3/normalize3/
 // safeDiv) globally -- exercised below to confirm a .expr file can
 // reference them too, not just earlier definitions in the same file.
@@ -112,4 +114,40 @@ test("a later definition can't reference an EARLIER one's own not-yet-defined se
 
 test("loading a nonexistent file throws (Node's own fs error, not swallowed)", () => {
     assert.throws(() => loadExpr(path.join(tmpDir, "does-not-exist.expr")), /ENOENT/);
+});
+
+// --- loadExprSource(text) -- the no-filesystem entry point ---------------
+
+test("loadExprSource parses source text directly, with no file involved at all", () => {
+    const defs = loadExprSource(`
+        cross3(ax, ay, az, bx, by, bz):
+          let rx = ay * bz - az * by;
+          let ry = az * bx - ax * bz;
+          let rz = ax * by - ay * bx;
+          return { rx, ry, rz };
+
+        crossLength(ax, ay, az, bx, by, bz):
+          let c = cross3(ax, ay, az, bx, by, bz);
+          return sqrt(c.rx^2 + c.ry^2 + c.rz^2);
+    `);
+    assert.deepStrictEqual(Object.keys(defs), ["cross3", "crossLength"]);
+    assert.strictEqual(evaluate(defs.crossLength, [1, 0, 0, 0, 1, 0]), 1);
+    assert.doesNotMatch(emit(defs.crossLength, "js").source, /cross3/);
+});
+
+test("loadExprSource's default label (\"loadExprSource()\") shows up in its own error messages when none is given", () => {
+    assert.throws(() => loadExprSource("return 1 + 2;"), /loadExprSource\(\): every definition needs/);
+});
+
+test("a custom label (e.g. for a browser buffer with no real file path) shows up in error messages instead", () => {
+    assert.throws(() => loadExprSource("return 1 + 2;", "playground"), /playground: every definition needs/);
+});
+
+test("loadExpr(path) is just loadExprSource(fileContents) plus a readFileSync -- same results either way", () => {
+    const source = `
+        hyp(a, b):
+        return sqrt(a^2 + b^2);
+    `;
+    const filePath = writeExpr("equivalence.expr", source);
+    assert.deepStrictEqual(loadExpr(filePath), loadExprSource(source, `loadExpr(${filePath})`));
 });

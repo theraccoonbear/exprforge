@@ -589,6 +589,14 @@ later in the file, or the caller, could refer to one that didn't), and a
 `.expr` file can reference globally loaded macros too, not just earlier
 definitions in the same file — the two sources merge.
 
+`loadExpr(path)` is a thin `fs.readFileSync` wrapper around
+**`loadExprSource(text, label?)`** — the same parser, given source text
+directly. Use that one wherever the text isn't coming from a real file on
+disk (a browser text buffer, an HTTP response, ...) — the playground's
+editor uses it exactly this way to let one buffer hold several
+definitions. `label` (default `"loadExprSource()"`) identifies the source
+in error messages, the way a file path does for `loadExpr`.
+
 ## Multiple named outputs
 
 `outputs({ name: Node, ... })` computes several named values from ONE

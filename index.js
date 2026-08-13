@@ -5,7 +5,7 @@ const { expr } = require("./expr.js");
 const { fn } = require("./fn.js");
 const { evaluate } = require("./evaluate.js");
 const { loadMacro, loadExtern, expandMacros } = require("./macros.js");
-const { loadExpr } = require("./load-expr.js");
+const { loadExpr, loadExprSource } = require("./load-expr.js");
 const emitters = require("./emitters/registry.js");
 const { catmullRomAst } = require("./samples/catmull-rom.js");
 const { fibonacciAst } = require("./samples/fibonacci.js");
@@ -106,6 +106,11 @@ module.exports = {
     // format) into its function definitions, letting later functions in
     // the file reference earlier ones as inline macros. See load-expr.js.
     loadExpr,
+    // Same parser, given source text directly instead of a file path --
+    // no filesystem involved, so this is the one usable from a browser
+    // (a text editor buffer, an HTTP response, ...). loadExpr(path) is
+    // now just this plus a readFileSync.
+    loadExprSource,
     // Built-in example formulas — see samples/ for the source.
     catmullRomAst,
     fibonacciAst,
