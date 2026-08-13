@@ -288,7 +288,7 @@ package individually, or together as `samples`):
   fixture exercising every `exprforge/math` helper (see below) in one
   suite.
 - `samples/macro-demo.js` — also not a worked example: a conformance-test
-  fixture specifically for the `loadMacro(name, fn\`...\`)` AST-function
+  fixture specifically for the `` loadMacro(name, fn`...`) `` AST-function
   tier, proving its internal gensym'd let-renaming produces valid
   identifiers on every real target, not just `evaluate()` (which can't
   see codegen at all — see "Macros and externs").
@@ -386,7 +386,7 @@ const rodrigues = fn`
   Safe by construction — if `def` returns real `ast.js` Nodes, the result
   is exactly as trustworthy as anything else this library emits. `def`
   can also be an AST function definition directly (e.g. straight out of
-  `fn\`...\``: `loadMacro("foo", fn\`foo(x): return x * 2;\`)`), sugar
+  `` fn`...` ``: `` loadMacro("foo", fn`foo(x): return x * 2;`) ``), sugar
   for the same thing — this is exactly how "Examples, flashiest first"
   above registers `cross3`.
 
@@ -418,10 +418,10 @@ const rodrigues = fn`
   duplication matters to you.
 
 - **`loadExtern(name, def)`** — `def` is a plain per-target mapping
-  object instead of a function, e.g. `{ evaluate: (x) => ..., js: ([x])
-  => \`myLib.f(${x})\`, zig: ([x]) => \`mylib.f(${x})\` }`. A **real
-  native call**, same mechanism as the 22 built-in primitives — just
-  supplied by you instead of shipped here. Only the targets you provide a
+  object instead of a function, e.g.
+  `` { evaluate: (x) => ..., js: ([x]) => `myLib.f(${x})`, zig: ([x]) => `mylib.f(${x})` } ``.
+  A **real native call**, same mechanism as the 22 built-in primitives —
+  just supplied by you instead of shipped here. Only the targets you provide a
   key for resolve; every other target still throws "no mapping" for that
   name, same as an unmapped primitive. **ExprForge can't verify the named
   symbol actually exists in a given target, or that it behaves
@@ -446,7 +446,7 @@ itself, and here's exactly what happens:
 - **A macro can't call itself, directly or through a cycle.** This is
   enforced two different ways depending on how the macro was defined, and
   it's worth knowing which one applies: a macro defined as an AST
-  function (straight `fn\`...\`` text, or every function in a `.expr`
+  function (straight `` fn`...` `` text, or every function in a `.expr`
   file/buffer) is resolved and **inline-expanded once, at
   registration/load time**, against whatever's registered so far — a
   definition only becomes referenceable *after* it's fully registered,
