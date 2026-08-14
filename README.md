@@ -19,6 +19,7 @@
 [![Zig](https://github.com/theraccoonbear/exprforge/actions/workflows/test-zig.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test-zig.yml)
 [![Scheme](https://github.com/theraccoonbear/exprforge/actions/workflows/test-scheme.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test-scheme.yml)
 [![COBOL](https://github.com/theraccoonbear/exprforge/actions/workflows/test-cobol.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test-cobol.yml)
+[![Test Coverage](https://github.com/theraccoonbear/exprforge/actions/workflows/test-coverage.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test-coverage.yml)
 
 ## Brief
 
@@ -1021,6 +1022,27 @@ independent JS/reference checks, which every workflow repeats — cheap,
 and a redundant sanity check each time. Unset locally, so a plain
 `npm test` still runs everything your own machine's installed toolchains
 allow.
+
+**Coverage**: `npm run test:coverage` runs the same suite through Node's
+own built-in instrumentation (`--experimental-test-coverage` — no
+external dependency), honoring whatever toolchains are on your machine,
+with no threshold enforced. CI's own "Test Coverage" workflow (badge
+above) is deliberately narrower and stricter: it runs only the
+toolchain-free `Interpreter` slice (`EXPRFORGE_TEST_TARGETS=Interpreter`,
+same filter every `test-*.yml` workflow already uses), gated on a fixed
+threshold, since that's the one environment where the number means the
+same thing on every run — installing zero, one, or a different subset of
+the 17 per-language toolchains would make an aggregate threshold either
+flaky or meaningless. Core logic (`ast.js`/`evaluate.js`/`expr.js`/
+`fn.js`/`index.js`/`load-expr.js`/`macros.js`/`math/`/`primitives.js`/
+`samples/`/`util.js`) sits at 95-100% in every environment, toolchains or
+not; per-target emitter coverage is intentionally excluded from that
+mental model — code that only really runs inside a real compiled/
+interpreted program can't be exercised without that target's own
+toolchain, and that verification already happens for real, by actually
+compiling and running the output, in the 17 other workflows — a lower
+coverage *percentage* there isn't itself a problem this gate is
+positioned to catch.
 
 A few of these needed real debugging to get right, all found by actually
 compiling/running against a real toolchain rather than assumed to work:

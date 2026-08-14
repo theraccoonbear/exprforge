@@ -1,0 +1,55 @@
+name: Test Coverage
+
+# Runs the toolchain-free slice of the suite (EXPRFORGE_TEST_TARGETS=
+# Interpreter -- same filter mechanism every test-<lang>.yml workflow
+# already uses, see test/conformance.test.js's own TARGET_FILTER) with
+# Node's own built-in coverage instrumentation (--experimental-test-
+# coverage), gated on a fixed threshold. Deliberately scoped to
+# Interpreter only, not the whole suite: this workflow installs no
+# per-language toolchain at all, unlike the 17 test-<lang>.yml workflows
+# (each installing exactly one) -- every toolchain-dependent conformance
+# check would otherwise either skip (harmless, but dilutes the number)
+# or, if a runner image happens to ship some SDK already, run
+# inconsistently from one CI run to the next. Neither is a stable basis
+# for a regression gate. Real cross-language correctness is already
+# verified by actually compiling and running the emitted output, in
+# those other 17 workflows -- this one measures something different (how
+# much of the JS source itself gets exercised), and needs a
+# deterministic, toolchain-free environment to mean the same thing every
+# time it runs.
+#
+# Thresholds (90% lines / 90% branches / 70% functions) are set with a
+# small margin below the real measured baseline on this exact
+# Interpreter-only slice (92.82% / 94.40% / 73.81%, all files, at the
+# time this workflow was added) -- enough to catch a genuine coverage
+# drop without failing on ordinary test-count noise. This aggregate is
+# lower than core-logic coverage alone (ast.js/evaluate.js/expr.js/
+# fn.js/index.js/load-expr.js/macros.js/math//primitives.js/samples//
+# util.js all sit at 95-100%, in every environment, toolchains or not)
+# specifically because per-target emitter code that only ever runs
+# inside a real compiled/interpreted program can't be exercised without
+# that target's own toolchain -- see the per-file table this step prints
+# for the honest per-emitter breakdown; a lower number there isn't a
+# problem this workflow is positioned to fix.
+#
+# For local development, `npm run test:coverage` runs the same
+# instrumentation unrestricted (whatever toolchains happen to be on your
+# own machine), with no threshold enforced -- informational only.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch: {}
+
+jobs:
+  coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+      - run: EXPRFORGE_TEST_TARGETS=Interpreter node --test --experimental-test-coverage --test-coverage-lines=90 --test-coverage-branches=90 --test-coverage-functions=70
