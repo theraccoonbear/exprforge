@@ -352,10 +352,10 @@ test("a bare multi-output-bound name used from a loadExprSource buffer's own ret
     // referencing names that were only ever bound to multi-output calls.
     assert.throws(
         () => loadExprSource(`
-            foo(x, y):
+            macro foo(x, y):
               return { x, y };
 
-            bar(a, b):
+            fn bar(a, b):
               let z = foo(a, b);
               return { z };
         `),

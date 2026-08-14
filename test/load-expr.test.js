@@ -6,6 +6,13 @@
 // discipline test/package.test.js uses, not just testing the parser in
 // isolation) for loadExpr() specifically; loadExprSource() is exercised
 // directly against strings, since its whole point is not needing a file.
+//
+// Every fixture below uses fn.js's requireExportKeyword grammar --
+// "fn name(...):" or "macro name(...):", never a bare "name(...):" --
+// see load-expr.js's/fn.js's own header comments for the full rationale
+// (every definition states, explicitly, whether it's meant to come back
+// out of this call or only be inlined into something else in the same
+// source; there's no default to get wrong).
 
 const test = require("node:test");
 const assert = require("node:assert");
@@ -26,9 +33,9 @@ function writeExpr(name, contents) {
     return filePath;
 }
 
-test("loadExpr parses a single definition, usable directly with evaluate()", () => {
+test("loadExpr parses a single \"fn\" definition, usable directly with evaluate()", () => {
     const filePath = writeExpr("single.expr", `
-        hyp(a, b):
+        fn hyp(a, b):
         return sqrt(a^2 + b^2);
     `);
     const defs = loadExpr(filePath);
@@ -41,35 +48,35 @@ test("loadExpr parses zero definitions (empty file) as an empty object", () => {
     assert.deepStrictEqual(loadExpr(filePath), {});
 });
 
-test("an earlier definition in the file is available to a later one as an inline macro", () => {
+test("an earlier definition in the file is available to a later one as an inline macro, regardless of fn/macro", () => {
     const filePath = writeExpr("cross.expr", `
-        cross3(ax, ay, az, bx, by, bz):
+        fn cross3(ax, ay, az, bx, by, bz):
           let rx = ay * bz - az * by;
           let ry = az * bx - ax * bz;
           let rz = ax * by - ay * bx;
           return { rx, ry, rz };
 
-        crossLength(ax, ay, az, bx, by, bz):
+        fn crossLength(ax, ay, az, bx, by, bz):
           let c = cross3(ax, ay, az, bx, by, bz);
           return sqrt(c.rx^2 + c.ry^2 + c.rz^2);
     `);
     const defs = loadExpr(filePath);
+    // Both marked "fn" here -- both come back, both independently usable.
     assert.deepStrictEqual(Object.keys(defs), ["cross3", "crossLength"]);
     // (1,0,0) x (0,1,0) = (0,0,1), length 1.
     assert.strictEqual(evaluate(defs.crossLength, [1, 0, 0, 0, 1, 0]), 1);
-    // cross3 itself still works standalone too.
     assert.deepStrictEqual(evaluate(defs.cross3, [1, 0, 0, 0, 1, 0]), { rx: 0, ry: 0, rz: 1 });
 });
 
 test("crossLength's own body has no leftover reference to cross3 -- fully inlined, not a real call", () => {
     const filePath = writeExpr("cross2.expr", `
-        cross3(ax, ay, az, bx, by, bz):
+        macro cross3(ax, ay, az, bx, by, bz):
           let rx = ay * bz - az * by;
           let ry = az * bx - ax * bz;
           let rz = ax * by - ay * bx;
           return { rx, ry, rz };
 
-        crossLength(ax, ay, az, bx, by, bz):
+        fn crossLength(ax, ay, az, bx, by, bz):
           let c = cross3(ax, ay, az, bx, by, bz);
           return sqrt(c.rx^2 + c.ry^2 + c.rz^2);
     `);
@@ -80,7 +87,7 @@ test("crossLength's own body has no leftover reference to cross3 -- fully inline
 
 test("a .expr file can reference a globally loaded macro (exprforge/math), not just earlier local definitions", () => {
     const filePath = writeExpr("normalize.expr", `
-        normalizedX(x, y, z):
+        fn normalizedX(x, y, z):
         let n = normalize3(x, y, z);
         return n.x;
     `);
@@ -88,23 +95,31 @@ test("a .expr file can reference a globally loaded macro (exprforge/math), not j
     assert.strictEqual(evaluate(defs.normalizedX, [3, 0, 0]), 1);
 });
 
-test("a definition with no \"name(params):\" signature line throws", () => {
-    const filePath = writeExpr("nosig.expr", "return 1 + 2;");
-    assert.throws(() => loadExpr(filePath), /every definition needs a "name\(params\):" signature line/);
+test("a bare \"name(params):\" signature with no \"fn\"/\"macro\" keyword throws", () => {
+    const filePath = writeExpr("bare.expr", `
+        hyp(a, b):
+        return sqrt(a^2 + b^2);
+    `);
+    assert.throws(() => loadExpr(filePath), /every definition needs to start with "fn".*or "macro"/);
 });
 
-test("two definitions sharing a name in one file throws", () => {
+test("a definition with no signature line at all throws the same \"fn\"/\"macro\" error -- there's no separate case for that anymore", () => {
+    const filePath = writeExpr("nosig.expr", "return 1 + 2;");
+    assert.throws(() => loadExpr(filePath), /every definition needs to start with "fn".*or "macro"/);
+});
+
+test("two definitions sharing a name in one file throws, even split across fn and macro", () => {
     const filePath = writeExpr("dupe.expr", `
-        f(x): return x;
-        f(x): return x * 2;
+        macro f(x): return x;
+        fn f(x): return x * 2;
     `);
     assert.throws(() => loadExpr(filePath), /duplicate function name "f"/);
 });
 
 test("a later definition can't reference an EARLIER one's own not-yet-defined self, or anything defined after it", () => {
     const filePath = writeExpr("forward.expr", `
-        f(x): return g(x);
-        g(x): return x * 2;
+        fn f(x): return g(x);
+        fn g(x): return x * 2;
     `);
     // "g" isn't registered yet when f's body is expanded -- f's call to
     // g survives as a plain unmapped call node.
@@ -116,36 +131,77 @@ test("loading a nonexistent file throws (Node's own fs error, not swallowed)", (
     assert.throws(() => loadExpr(path.join(tmpDir, "does-not-exist.expr")), /ENOENT/);
 });
 
+// --- "fn" vs "macro": what actually ends up in the returned object ------
+
+test("a \"macro\"-marked definition is registered for inlining but never appears in the returned object", () => {
+    const defs = loadExprSource(`
+        macro helper(x): return x * 2;
+        fn f(x): return helper(x) + 1;
+    `);
+    assert.deepStrictEqual(Object.keys(defs), ["f"]);
+    assert.strictEqual(evaluate(defs.f, [5]), 11);
+    // "helper" was inlined into f -- no trace of a real call to it left,
+    // same guarantee crossLength/cross3 demonstrate above.
+    assert.doesNotMatch(emit(defs.f, "js").source, /helper/);
+});
+
+test("several \"macro\"-marked helpers behind one \"fn\" result: only the fn shows up", () => {
+    const defs = loadExprSource(`
+        macro double(x): return x * 2;
+        macro triple(x): return x * 3;
+        fn combo(x): return double(x) + triple(x);
+    `);
+    assert.deepStrictEqual(Object.keys(defs), ["combo"]);
+    assert.strictEqual(evaluate(defs.combo, [2]), 10); // 2*2 + 2*3
+});
+
+test("several independent \"fn\" definitions in one buffer all come back, unrelated to each other", () => {
+    const defs = loadExprSource(`
+        fn a(x): return x + 1;
+        fn b(x): return x - 1;
+    `);
+    assert.deepStrictEqual(Object.keys(defs), ["a", "b"]);
+    assert.strictEqual(evaluate(defs.a, [5]), 6);
+    assert.strictEqual(evaluate(defs.b, [5]), 4);
+});
+
+test("a \"macro\"-only buffer (nothing marked \"fn\") returns an empty object -- every definition was inlined into another, none independently exported", () => {
+    const defs = loadExprSource(`
+        macro helper(x): return x * 2;
+    `);
+    assert.deepStrictEqual(defs, {});
+});
+
 // --- loadExprSource(text) -- the no-filesystem entry point ---------------
 
 test("loadExprSource parses source text directly, with no file involved at all", () => {
     const defs = loadExprSource(`
-        cross3(ax, ay, az, bx, by, bz):
+        macro cross3(ax, ay, az, bx, by, bz):
           let rx = ay * bz - az * by;
           let ry = az * bx - ax * bz;
           let rz = ax * by - ay * bx;
           return { rx, ry, rz };
 
-        crossLength(ax, ay, az, bx, by, bz):
+        fn crossLength(ax, ay, az, bx, by, bz):
           let c = cross3(ax, ay, az, bx, by, bz);
           return sqrt(c.rx^2 + c.ry^2 + c.rz^2);
     `);
-    assert.deepStrictEqual(Object.keys(defs), ["cross3", "crossLength"]);
+    assert.deepStrictEqual(Object.keys(defs), ["crossLength"]);
     assert.strictEqual(evaluate(defs.crossLength, [1, 0, 0, 0, 1, 0]), 1);
     assert.doesNotMatch(emit(defs.crossLength, "js").source, /cross3/);
 });
 
 test("loadExprSource's default label (\"loadExprSource()\") shows up in its own error messages when none is given", () => {
-    assert.throws(() => loadExprSource("return 1 + 2;"), /loadExprSource\(\): every definition needs/);
+    assert.throws(() => loadExprSource("return 1 + 2;"), /loadExprSource\(\): every definition needs to start with/);
 });
 
 test("a custom label (e.g. for a browser buffer with no real file path) shows up in error messages instead", () => {
-    assert.throws(() => loadExprSource("return 1 + 2;", "playground"), /playground: every definition needs/);
+    assert.throws(() => loadExprSource("return 1 + 2;", "playground"), /playground: every definition needs to start with/);
 });
 
 test("loadExpr(path) is just loadExprSource(fileContents) plus a readFileSync -- same results either way", () => {
     const source = `
-        hyp(a, b):
+        fn hyp(a, b):
         return sqrt(a^2 + b^2);
     `;
     const filePath = writeExpr("equivalence.expr", source);

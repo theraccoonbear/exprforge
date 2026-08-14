@@ -140,13 +140,13 @@ editor buffer accepts:
 const { loadExprSource, evaluate, emit } = require("exprforge");
 
 const defs = loadExprSource(`
-cross3(ax, ay, az, bx, by, bz):
+macro cross3(ax, ay, az, bx, by, bz):
   let rx = ay * bz - az * by;
   let ry = az * bx - ax * bz;
   let rz = ax * by - ay * bx;
   return { rx, ry, rz };
 
-crossLength(ax, ay, az, bx, by, bz):
+fn crossLength(ax, ay, az, bx, by, bz):
   let c = cross3(ax, ay, az, bx, by, bz);
   return sqrt(c.rx^2 + c.ry^2 + c.rz^2);
 `);
@@ -154,6 +154,20 @@ crossLength(ax, ay, az, bx, by, bz):
 evaluate(defs.crossLength, [1, 0, 0, 0, 1, 0]); // 1
 emit(defs.crossLength, "rust").source;          // a real fn crossLength(...) -- no trace of cross3 left
 ```
+
+Every definition starts with `fn` or `macro` — never optional, never
+implied. `fn` means "hand this back to me": `defs.crossLength` exists
+because it's marked `fn`. `macro` means "inline this into whatever
+references it later in this same buffer, but don't hand it back on its
+own": `cross3` is fully usable *inside* `crossLength` — that's the whole
+point — but `defs.cross3` doesn't exist; `Object.keys(defs)` here is just
+`["crossLength"]`. There's no default either way, on purpose: a helper
+you only ever meant as an internal step for something else can't
+accidentally end up looking like part of your file's real, callable
+output just because nothing said otherwise. Mark it `fn` instead if you
+*do* want `cross3` usable standalone too — both marks register the
+definition identically for inlining purposes; the only difference is
+whether it also lands in what this call returns.
 
 `cross3` never appears in `crossLength`'s emitted output, in any target —
 by the time `loadExprSource` returns, `defs.crossLength` is
@@ -770,13 +784,28 @@ grammar above; and that `let`/`return` are ordinary identifiers
 means `v("let") * 2`, not a syntax error, since `expr`'s own grammar has
 no `stmt`/`signature` rules to make either one special.
 
+`loadExprSource`/`loadExpr` (below) parse the exact same `program`
+grammar, repeatedly, over one shared buffer — with one deliberate
+difference: `signature` is no longer optional, and gains a mandatory
+leading keyword:
+
+```
+signature := ("fn" | "macro") IDENT "(" (IDENT ("," IDENT)*)? ")" ":"
+```
+
+`fn`/`macro` are contextual the same way `let`/`return` already are —
+special only in this exact position, ordinary identifiers everywhere
+else (a parameter, or even a signature name, genuinely called `fn` still
+works: `` fn`fn(x): return x * 2;` `` parses as a function named `fn`,
+unaffected, since a *single* `` fn`...` `` call never runs in this
+stricter mode at all — see "Loading a `.expr` file" below for what the
+two keywords mean and why the keyword is mandatory there specifically.
+
 ## Printing an AST back out, and a native evaluator
 
 Two things that fall out of `fn` existing: `emitters.expr` is a real,
 registered target that prints any AST *back out* as `fn`/`expr` source
-text (the reverse of parsing it) — useful for debugging a formula built
-from several composed helpers, or just getting a readable string to log
-or paste into a future `fn`/`expr` call. And `evaluate(fn, args)` (also
+text (the reverse of parsing it). And `evaluate(fn, args)` (also
 exported from the main package) is a native tree-walking interpreter
 over the same AST, computing a result directly in JS with no codegen or
 compile step — the same node types every emitter already handles,
@@ -786,17 +815,36 @@ backed by the real `Math.*` functions.
 const { emit, evaluate } = require("exprforge");
 
 emit(normalize2, "expr").source;
-// "normalize2(x, y):\n  let mag = sqrt(((x^2) + (y^2)));\n  return { nx: (x / mag), ny: (y / mag) };\n"
+// "fn normalize2(x, y):\n  let mag = sqrt(((x^2) + (y^2)));\n  return { nx: (x / mag), ny: (y / mag) };\n"
 
 evaluate(normalize2, [3, 4]);
 // { nx: 0.6, ny: 0.8 }
 ```
 
+Read this output for what it actually is, not as a pretty-printer of
+whatever you originally typed: `expandMacros()` runs before *every*
+emitter, "expr" included (same as Rust's/COBOL's/etc. own `crossLength`
+never mentions `cross3` either — see "Examples, flashiest first" above)
+— so a macro-free formula like `normalize2` above prints back out
+genuinely readable, but a formula built from several composed
+macros/helpers prints its fully-reduced canonical form instead:
+gensym'd internal let names, multi-output fields flattened to
+`name__field`, all of it. That's not a readability regression to fix —
+it's the same "converges on the true, expanded form" property every
+other target already has, just visible here because "expr" is the one
+target whose reduced output happens to also be valid input to itself
+again. What that buys you is real, just not "pretty debug output": a
+concrete, load-bearing way to confirm a composed formula actually
+reduces to what you expect (`test/conformance.test.js`'s own round-trip
+check — print, reparse, re-evaluate, compare — is exactly this, run
+against every sample this project has).
+
 ### Loading a `.expr` file (`loadExpr`)
 
 `loadExpr(path)` goes the other direction from `emit(fn, "expr")` above:
 reads a `.expr` file (that same round-trip text format) and parses it as
-zero or more `name(params): let ...; return ...;` definitions, each
+zero or more `fn name(params): let ...; return ...;` / `macro
+name(params): let ...; return ...;` definitions, each `fn`-marked one
 usable directly with `evaluate()`/`emit()`/`emitMany()` — this is the
 file-backed sibling of `loadExprSource` in "Examples, flashiest first"
 above:
@@ -804,17 +852,23 @@ above:
 ```js
 const { loadExpr, evaluate } = require("exprforge");
 
-const defs = loadExpr("./formulas/vectors.expr");
+const defs = loadExpr("./formulas/vectors.expr"); // "fn hyp(a, b): return sqrt(a^2 + b^2);"
 evaluate(defs.hyp, [3, 4]); // 5
 ```
 
 A function defined earlier in the file is available to a function defined
 **later** in the same file — as an inline macro, the exact same
 "expanded, not called" model `loadMacro` itself uses above (see that
-section for why). Every definition needs a `name(params):` signature line
-(nothing later in the file, or the caller, could refer to one that
-didn't), and a `.expr` file can reference globally loaded macros too, not
-just earlier definitions in the same file — the two sources merge.
+section for why) — **regardless of whether it's marked `fn` or `macro`**.
+The keyword only decides what's in the object this call actually returns:
+`fn` means "hand this back to me too," `macro` means "inline-only, never
+returned on its own" (see "Examples, flashiest first" above for the full
+`cross3`/`crossLength` walkthrough — `cross3` is `macro`, `crossLength`
+is `fn`, and only `defs.crossLength` exists). Neither keyword is optional
+— every definition states one explicitly; a bare `name(params):` with
+neither throws, naming both keywords and what each means. A `.expr` file
+can also reference globally loaded macros, not just earlier definitions
+in the same file — the two sources merge.
 
 `loadExpr(path)` is a thin `fs.readFileSync` wrapper around
 **`loadExprSource(text, label?)`** — the same parser, given source text
