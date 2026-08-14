@@ -1,7 +1,10 @@
 # Editor support for `expr`/`fn` syntax (VS Code / VSCodium)
 
-**Status: idea, not started.** Written up for hand-off, not as an
-implementation commitment.
+**Status: Phase 1a and 1b shipped** (`vscode-extension/`) -- both the
+standalone `.expr`/`.fn` grammar and the inline tagged-template
+injection, tested with real `vscode-textmate`-backed tokenization
+snapshots (`vscode-extension/README.md`). Phase 2 (language server) is
+still just the idea below, not started.
 
 ## Motivation
 
@@ -30,14 +33,15 @@ is a language *server* (see Phase 2) — extensions run in Node, so a
 server there can `require()` the real parser instead of approximating it
 with regex.
 
-## Phase 1a — standalone `.fn`/`.expr` file support
+## Phase 1a — standalone `.fn`/`.expr` file support (SHIPPED, see vscode-extension/)
 
-Grammar surface is small and fully regex-lexable: `let`/`return`
-keywords, identifiers, numbers (incl. `.5`, `1e-9`), and the fixed
-operator set `+ - * / ^ ( ) , ? : > < >= <= == != ; { } =`. No comment
-syntax exists in the grammar today (`expr.js`'s tokenizer has no `//` or
-`/* */` handling) — worth deciding whether to add one before this ships,
-or leave `.fn` files comment-free.
+Grammar surface is small and fully regex-lexable: `let`/`return`/`fn`/
+`macro` keywords (the last two added by issue #21/#25's loadExprSource()
+export-marking work, after this doc was first written), identifiers,
+numbers (incl. `.5`, `1e-9`), the fixed operator set
+`+ - * / ^ ( ) , ? : > < >= <= == != ; { } =`, and `#` end-of-line
+comments (added since this doc was first written -- `expr.js`'s
+tokenizer has no `//`/`/* */` handling, only `#`).
 
 - `package.json`: `contributes.languages` (id, extensions `.fn`/`.expr`,
   icon) + `contributes.grammars` (scope name, path to the `.tmLanguage.json`).
@@ -48,7 +52,7 @@ or leave `.fn` files comment-free.
   VSX vs. unpublished `.vsix` side-load).
 - **Effort: a few hours.**
 
-## Phase 1b — inline highlighting inside `` expr`...` ``/`` fn`...` `` template literals
+## Phase 1b — inline highlighting inside `` expr`...` ``/`` fn`...` `` template literals (SHIPPED, see vscode-extension/)
 
 Higher immediate value than 1a, since this is where the syntax is
 actually written day-to-day — same pattern VS Code's own
@@ -90,10 +94,9 @@ approximation of correctness.
 
 ## Open decision before starting
 
-Phase 1a and 1b solve different problems (file-format support vs.
-inline-authoring support) and aren't sequenced by necessity — 1b could
-be built without 1a ever shipping, since it only needs the grammar
-*file*, not the language *registration*. Worth deciding which one
-(or both) actually matters before committing effort: is `.fn` meant to
-become a real, opened-on-its-own file format people edit directly, or
-does all the real value live in the inline tagged-template case?
+~~Phase 1a and 1b solve different problems... worth deciding which one
+(or both) actually matters before committing effort~~ -- resolved by
+building both: 1b needs 1a's grammar file to exist first anyway (reused,
+not duplicated, see `vscode-extension/syntaxes/exprforge.injection.json`'s
+own `{"include": "source.exprforge"}`), so there was no real cost to
+shipping 1a alongside 1b rather than picking one.

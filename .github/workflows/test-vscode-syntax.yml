@@ -1,0 +1,35 @@
+name: VS Code Syntax
+
+# vscode-extension/ is a separate subproject -- its own package.json,
+# its own devDependencies (vscode-tmgrammar-test, tm-grammars for a real
+# TypeScript/JavaScript grammar to inject into during testing) -- see
+# docs/editor-support-spec.md for the design this implements (Phase 1a:
+# standalone .expr/.fn file grammar; Phase 1b: inline expr`...`/fn`...`
+# tagged-template injection into .js/.ts).
+#
+# Tested with real VS-Code-grade tokenization (vscode-textmate/
+# vscode-oniguruma, the same engine VS Code itself uses under the hood),
+# not just "the JSON parses" -- snapshot tests over real fixture files,
+# committed and reviewed like any other test expectation. A regression
+# here means actual tokenization changed, not a guess about it.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch: {}
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: vscode-extension/package-lock.json
+      - run: npm ci
+        working-directory: vscode-extension
+      - run: npm test
+        working-directory: vscode-extension
