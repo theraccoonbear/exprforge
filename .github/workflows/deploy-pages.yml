@@ -4,10 +4,21 @@ name: Deploy Playground
 # package.json, own dependencies, "exprforge": "file:.." linking the
 # real library so the live demo always reflects whatever's actually in
 # this repo (see playground/README or the root README's "Layered by
-# design" section). Build runs on every push/PR as a real CI gate;
-# deploy only runs on a push to main, via the modern GitHub-Actions-
+# design" section). Build AND the real headless-browser regression suite
+# (playground/e2e/regression.mjs) both run on every push/PR as a hard CI
+# gate; deploy only runs on a push to main, via the modern GitHub-Actions-
 # native Pages mechanism (actions/deploy-pages), not a legacy gh-pages
-# branch.
+# branch -- and only after e2e passes, not just after the build succeeds.
+#
+# e2e exists because a typecheck-clean, build-succeeding change reached
+# production and broke anyway: a breaking grammar change left every
+# returning visitor's saved localStorage content unparseable, surfacing
+# a raw parse error on load for text nobody typed that session. Neither
+# `tsc --noEmit` nor `vite build` could ever catch that class of bug --
+# both only see the bundled example TEXT, never what happens when a real
+# browser actually loads the app against realistic (including stale/
+# incompatible) persisted state. See regression.mjs's own header comment
+# for exactly what it checks and why each check exists.
 on:
   push:
     branches: [main]
@@ -34,6 +45,14 @@ jobs:
       - run: npm ci
         working-directory: playground
       - run: npm run build
+        working-directory: playground
+      - run: npx playwright install --with-deps chromium
+        working-directory: playground
+      # Hard gate, unconditional (every push AND every PR, not just
+      # pushes to main) -- a real regression here must fail CI the same
+      # way a broken build already does, long before it's ever a
+      # candidate for deploy.
+      - run: npm run test:e2e
         working-directory: playground
       - if: github.ref == 'refs/heads/main' && github.event_name == 'push'
         uses: actions/upload-pages-artifact@v3

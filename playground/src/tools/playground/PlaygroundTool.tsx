@@ -9,6 +9,9 @@ import { InterpreterCard } from "./InterpreterCard";
 import { LANGUAGE_META } from "./languageMeta";
 import { EXAMPLES } from "./examples";
 import { readStorageJSON, readStorageString, writeStorageJSON, writeStorageString } from "../../lib/storage";
+import { ExprForge } from "../../lib/exprforge";
+
+const { fn, loadExprSource } = ExprForge;
 
 const SOURCE_PARAM = "src";
 const MOBILE_BREAKPOINT_PX = 640;
@@ -25,13 +28,57 @@ function readSourceFromUrl(): string | null {
     return new URLSearchParams(window.location.search).get(SOURCE_PARAM);
 }
 
+// Same fallback fn()-then-loadExprSource() attempt useExprForge.ts's own
+// hook makes, stripped down to a bare yes/no -- used ONLY to validate
+// content that's about to become the editor's INITIAL value (from
+// localStorage or a shared link), never against a live keystroke (a
+// syntax error while you're mid-edit is exactly what the inline
+// `error` display below is for, and must never silently discard
+// whatever you're actively typing).
+//
+// This exists specifically because a real, live incident proved the gap:
+// a grammar change (loadExprSource's own "fn"/"macro" requirement, see
+// the root README's "Loading a .expr file" section) made previously-
+// saved/shared content that used to parse fine throw instead -- and
+// since this component used to trust localStorage/the URL unconditionally,
+// every returning visitor with old content saved got a raw, confusing
+// parse error on load, for text they never typed this session at all.
+function sourceParses(source: string): boolean {
+    if (!source.trim()) return true; // an empty buffer is never "broken"
+    try {
+        fn([source]);
+        return true;
+    } catch {
+        try {
+            loadExprSource(source, "playground");
+            return true;
+        } catch {
+            return false;
+        }
+    }
+}
+
 // Priority, highest first: an explicit shared link (?src=...) always
 // wins -- following a link someone sent you should show THAT formula,
 // not silently substitute whatever you last had open. Otherwise, your
 // own last session's source from localStorage. Otherwise, the built-in
 // default for a genuinely first-ever visit.
+//
+// Either candidate is validated BEFORE being trusted: content that no
+// longer parses (most likely because it predates a breaking grammar
+// change -- this has already happened once for real, see sourceParses'
+// own comment) is treated exactly as if nothing were saved/shared at
+// all, falling through to the next priority instead of handing back
+// something the editor can only ever show as a top-level error. The
+// stale value gets overwritten with real content on the very next
+// render anyway (the effect below re-persists `source` on every
+// change), so there's nothing extra to clean up here.
 function initialSource(): string {
-    return readSourceFromUrl() ?? readStorageString(SOURCE_STORAGE_KEY) ?? EXAMPLES[0].source;
+    const fromUrl = readSourceFromUrl();
+    if (fromUrl !== null && sourceParses(fromUrl)) return fromUrl;
+    const fromStorage = readStorageString(SOURCE_STORAGE_KEY);
+    if (fromStorage !== null && sourceParses(fromStorage)) return fromStorage;
+    return EXAMPLES[0].source;
 }
 
 function defaultToggledLanguages(): Set<string> {
