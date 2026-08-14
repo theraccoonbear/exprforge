@@ -52,4 +52,16 @@ jobs:
           node-version: "22"
           cache: npm
       - run: npm ci
-      - run: EXPRFORGE_TEST_TARGETS=Interpreter node --test --experimental-test-coverage --test-coverage-lines=90 --test-coverage-branches=90 --test-coverage-functions=70
+      # --test-coverage-exclude='test/**' is load-bearing, not cosmetic:
+      # confirmed the hard way that whether test/*.test.js files get
+      # counted in the aggregate depends on the Node version running
+      # this (a newer local Node excluded them by some implicit default
+      # this workflow's pinned Node 22 doesn't share) -- without it,
+      # test/conformance.test.js's own toolchain-runner helper functions
+      # (dead code in this Interpreter-only run, since nothing calls
+      # runQB64/runSuiteC/etc. here) tanked the aggregate to ~89% lines,
+      # under threshold, for a reason having nothing to do with the
+      # library's own source. Explicit, so this means the same thing on
+      # every Node version, not whatever a given version's default
+      # happens to be.
+      - run: EXPRFORGE_TEST_TARGETS=Interpreter node --test --experimental-test-coverage --test-coverage-exclude='test/**' --test-coverage-lines=90 --test-coverage-branches=90 --test-coverage-functions=70
