@@ -172,6 +172,117 @@ test("a \"macro\"-only buffer (nothing marked \"fn\") returns an empty object --
     assert.deepStrictEqual(defs, {});
 });
 
+// --- deep macro chains: macro-calling-macro-calling-macro, through the ---
+// --- new "fn"/"macro" keyword syntax specifically -------------------------
+//
+// The underlying inline-expansion mechanism (toMacro/fileRegistry) isn't
+// new -- test/macros.test.js already covers macro-calling-macro via
+// loadMacro() directly. What's new and specifically worth covering here:
+// that the SAME chaining works correctly when every link in the chain is
+// written with the new mandatory "fn"/"macro" signature keyword, that
+// every intermediate "macro" link is invisible both in the returned defs
+// object AND in the final emitted output (fully inlined, transitively,
+// not just one level), and that this holds at real depth, not just for
+// a two-link toy example.
+
+test("a five-link linear macro chain fully inlines, transitively, with only the final \"fn\" in defs", () => {
+    const defs = loadExprSource(`
+        macro m1(x): return x + 1;
+        macro m2(x): return m1(x) * 2;
+        macro m3(x): return m2(x) - 3;
+        macro m4(x): return m3(x) / 2;
+        macro m5(x): return m4(x) + 10;
+        fn final(x): return m5(x);
+    `);
+    assert.deepStrictEqual(Object.keys(defs), ["final"]);
+    // m1(4)=5, m2=10, m3=7, m4=3.5, m5=13.5
+    assert.strictEqual(evaluate(defs.final, [4]), 13.5);
+    const source = emit(defs.final, "js").source;
+    assert.doesNotMatch(source, /\bm[1-5]\b/);
+});
+
+test("a diamond composition -- two macros both depending on a shared earlier macro -- resolves correctly, no duplicate-registration issue", () => {
+    const defs = loadExprSource(`
+        macro base(x): return x * x;
+        macro left(x): return base(x) + 1;
+        macro right(x): return base(x) - 1;
+        fn combo(x): return left(x) + right(x);
+    `);
+    assert.deepStrictEqual(Object.keys(defs), ["combo"]);
+    // base(3)=9, left=10, right=8, combo=18 -- independently: 2*base(3)=18.
+    assert.strictEqual(evaluate(defs.combo, [3]), 18);
+    const source = emit(defs.combo, "js").source;
+    assert.doesNotMatch(source, /\b(base|left|right)\b/);
+});
+
+test("a multi-output macro participating mid-chain -- fields threaded through another macro, then a fn -- still resolves and inlines fully", () => {
+    const defs = loadExprSource(`
+        macro pair(x, y): return { sum: x + y, diff: x - y };
+        macro scaled(x, y):
+          let p = pair(x, y);
+          return { total: p.sum * 2, delta: p.diff * 3 };
+        fn combined(x, y):
+          let s = scaled(x, y);
+          return s.total + s.delta;
+    `);
+    assert.deepStrictEqual(Object.keys(defs), ["combined"]);
+    // pair(5,2) = {sum:7, diff:3}; scaled = {total:14, delta:9}; combined = 23.
+    assert.strictEqual(evaluate(defs.combined, [5, 2]), 23);
+    const source = emit(defs.combined, "js").source;
+    assert.doesNotMatch(source, /\b(pair|scaled)\b/);
+});
+
+test("a much deeper (12-link) macro chain still resolves correctly and inlines completely -- not just a small toy depth", () => {
+    // Built programmatically and checked against an independent plain-JS
+    // reference computing the identical recurrence, rather than hand-
+    // arithmetic -- the point here is depth/mechanism, not one specific
+    // formula, and 12 levels of by-hand arithmetic invites a transcription
+    // error a generated cross-check doesn't.
+    const DEPTH = 12;
+    const lines = ["macro d1(x): return x + 1;"];
+    for (let i = 2; i <= DEPTH; i++) {
+        const op = i % 2 === 0 ? `d${i - 1}(x) * 1.5` : `d${i - 1}(x) - 2`;
+        lines.push(`macro d${i}(x): return ${op};`);
+    }
+    lines.push(`fn deepest(x): return d${DEPTH}(x);`);
+    const defs = loadExprSource(lines.join("\n"));
+
+    assert.deepStrictEqual(Object.keys(defs), ["deepest"]);
+
+    function reference(x) {
+        let value = x + 1;
+        for (let i = 2; i <= DEPTH; i++) {
+            value = i % 2 === 0 ? value * 1.5 : value - 2;
+        }
+        return value;
+    }
+    assert.strictEqual(evaluate(defs.deepest, [7]), reference(7));
+    const source = emit(defs.deepest, "js").source;
+    assert.doesNotMatch(source, /\bd\d+\b/);
+});
+
+test("a macro deep in a chain that tries to call itself still throws the same cycle error, even through several other macros first", () => {
+    // Structural non-recursion still holds no matter how deep the chain
+    // wrapping it is -- see the README's "What this doesn't buy you"
+    // section. m1 here is an AST-fn-def macro (see fn.js), so this is
+    // caught by declaration ordering, not a runtime cycle guard: m1's own
+    // self-reference is simply unresolved (m1 isn't registered yet while
+    // ITS OWN body is being expanded), surviving as an ordinary unmapped
+    // call -- the same outcome loadExprSource's own top-level forward-
+    // reference tests above already document, just several links deeper.
+    assert.throws(
+        () => {
+            const defs = loadExprSource(`
+                macro m1(x): return m1(x) + 1;
+                macro m2(x): return m1(x) * 2;
+                fn final(x): return m2(x);
+            `);
+            evaluate(defs.final, [1]);
+        },
+        /no mapping for Math function "m1"/,
+    );
+});
+
 // --- loadExprSource(text) -- the no-filesystem entry point ---------------
 
 test("loadExprSource parses source text directly, with no file involved at all", () => {

@@ -688,6 +688,29 @@ function expandBody(node, ctx) {
  * process-wide default ones.
  */
 function expandMacros(fnOrNode, extraRegistry = null, registry = defaultRegistry) {
+    // Every real caller (evaluate(), every emitter's emitFunction()) runs
+    // this first, unconditionally, before touching fnOrNode.type/.name/
+    // .body itself -- so this is the one place positioned to catch a
+    // caller passing something that isn't actually a Node or a
+    // {name, params, body} at all (undefined, null, a typo'd lookup that
+    // silently evaluated to undefined, ...) with ONE clear message,
+    // instead of letting it fall through to expandBody below and crash
+    // with a raw "Cannot read properties of undefined (reading 'type')"
+    // several frames later -- or, worse, having emitMany() (see index.js)
+    // catch and report that same confusing crash once per language,
+    // 18 near-identical unhelpful errors instead of one. Concretely
+    // motivated by the "macro"-marked definitions loadExprSource() never
+    // returns (see load-expr.js) -- a caller looking up a macro-only name
+    // in the returned object gets `undefined` back, and previously the
+    // very next thing that happened with it was exactly this crash.
+    if (!isFnDefShape(fnOrNode) && !isNode(fnOrNode)) {
+        throw new Error(
+            `expandMacros: expected an AST Node ({type: ...}) or a {name, params, body} function ` +
+            `definition, got ${fnOrNode === null ? "null" : typeof fnOrNode} -- if this came from a ` +
+            `loadExprSource()/loadExpr() result object, double check the definition you're looking up was ` +
+            `actually marked "fn" (exported), not "macro" (private -- never included in what that call returns)`,
+        );
+    }
     const ctx = { extraRegistry, aliases: new Map(), registry };
     if (isFnDefShape(fnOrNode)) {
         return { name: fnOrNode.name, params: fnOrNode.params, body: expandBody(fnOrNode.body, ctx) };

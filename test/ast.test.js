@@ -286,3 +286,40 @@ test("checkUnboundVars validates every fn.params entry as a safe identifier", ()
     const fn = { name: "f", params: ["a", "b); evil(); //"], body: num(1) };
     assert.throws(() => checkUnboundVars(fn), /isn't a safe identifier/);
 });
+
+// --- checkUnboundVars' own shape guard -------------------------------
+//
+// checkUnboundVars is called BOTH internally (every real consumption
+// path runs it right after expandMacros, see macros.js's own comment)
+// AND directly by a caller who wants just this one check on its own
+// (e.g. the playground's useExprForge.ts) -- unlike the internal
+// callers, a direct caller hasn't necessarily gone through expandMacros'
+// own equivalent guard first, so this needs its own copy: without it,
+// `fn.name` crashes with a raw "Cannot read properties of undefined
+// (reading 'name')" for the exact same "looked up a loadExprSource()
+// 'macro'-marked name, got undefined back" mistake expandMacros' own
+// guard (see test/macros.test.js) exists to catch clearly instead.
+
+test("checkUnboundVars rejects undefined with a clear error, not a raw TypeError", () => {
+    assert.throws(
+        () => checkUnboundVars(undefined),
+        /expected a \{name, params, body\} function definition, got undefined/,
+    );
+});
+
+test("checkUnboundVars rejects null", () => {
+    assert.throws(() => checkUnboundVars(null), /got null/);
+});
+
+test("checkUnboundVars rejects a bare Node (has \"type\" but no name/params/body wrapper) -- unlike expandMacros, this entry point only ever accepts a full function definition", () => {
+    assert.throws(() => checkUnboundVars(num(5)), /expected a \{name, params, body\} function definition/);
+});
+
+test("checkUnboundVars rejects a plain object missing \"params\" or \"body\"", () => {
+    assert.throws(() => checkUnboundVars({ name: "f" }), /expected a \{name, params, body\} function definition/);
+    assert.throws(() => checkUnboundVars({ name: "f", params: [] }), /expected a \{name, params, body\} function definition/);
+});
+
+test("checkUnboundVars' error hints at the loadExprSource \"macro\" vs \"fn\" mistake specifically", () => {
+    assert.throws(() => checkUnboundVars(undefined), /marked "fn" \(exported\), not "macro" \(private/);
+});
