@@ -64,8 +64,8 @@ const emitter = new ExprSyntaxEmitter({
     // `` fn`...` `` call, and exactly what the round-trip test reparses
     // with zero unwrapping first.
     //
-    // ALWAYS includes the "name(params):" signature line -- every other
-    // emitter's formatFunction includes the full declaration per
+    // ALWAYS includes the "fn name(params):" signature line -- every
+    // other emitter's formatFunction includes the full declaration per
     // base.js's own documented contract ("Full source text for one
     // function, including any language-specific signature/type/wrapper
     // syntax"); this was the one target that didn't, dropping fn.name/
@@ -75,6 +75,24 @@ const emitter = new ExprSyntaxEmitter({
     // reparsing this emitter's own output via fn() could only ever
     // recover a bare Node, never a runnable {name, params, body}, unlike
     // literally every other target's output being immediately usable.
+    //
+    // Always "fn", never "macro" -- and this is a real, permanent,
+    // one-way loss, not an oversight: fn.name/fn.params/fn.body is ALL
+    // this function ever receives, and "was this originally marked
+    // fn/macro" isn't part of that shape at all (see load-expr.js's own
+    // loop -- the exported/private flag is read once, to decide whether
+    // to copy the result into loadExprSource's returned object, and then
+    // discarded; it was never stored on the def itself, by design --
+    // every def looks identical regardless of how it was produced,
+    // that's the whole "sugar lowers to the same primitives" guarantee).
+    // So there is nothing left here to recover a "macro" marking FROM --
+    // "fn" is simply the only correct thing to print for "you asked to
+    // print this one, standalone" once that context is gone. Same shape
+    // of loss as `2^3` reprinting as `2^3` but `pow(2, 3)` never coming
+    // back as `pow` (see emitExpr's own pow special-case above), or
+    // comments/whitespace never surviving either -- this printer
+    // round-trips VALUES, never original source text/structure.
+    //
     // Body lines (every let, the return) are indented 2 spaces deeper
     // than the signature line itself -- a Python-esque pretty-print
     // convention, not something the parser requires (whitespace is
@@ -83,7 +101,7 @@ const emitter = new ExprSyntaxEmitter({
     // AST comes out reading the same way automatically.
     formatFunction: (fn, bodyStr, letBindings = []) => {
         const body = [...letLines(letBindings), `return ${bodyStr};`].map((line) => `  ${line}`);
-        return [`${fn.name}(${fn.params.join(", ")}):`, ...body].join("\n") + "\n";
+        return [`fn ${fn.name}(${fn.params.join(", ")}):`, ...body].join("\n") + "\n";
     },
     // Each output field gets its own line (4 spaces -- one level deeper
     // than "return {" itself, which sits at the usual 2), rather than
@@ -91,7 +109,9 @@ const emitter = new ExprSyntaxEmitter({
     // this against a hand-formatted multi-output example and noticing
     // the printer didn't follow its own convention once a suite had
     // more than a couple of fields (a real, wide, 5-output formula made
-    // this one very long line instead of something readable).
+    // this one very long line instead of something readable). Signature
+    // line always "fn" here too -- see formatFunction's own comment
+    // above for why (same reasoning, same permanent one-way loss).
     formatSuite: (fn, outputStrs, letBindings = []) => {
         const entries = Object.entries(outputStrs);
         const fieldLines = entries.map(([name, valueStr], i) => {
@@ -99,7 +119,7 @@ const emitter = new ExprSyntaxEmitter({
             return `    ${name}: ${valueStr}${comma}`;
         });
         const lines = [
-            `${fn.name}(${fn.params.join(", ")}):`,
+            `fn ${fn.name}(${fn.params.join(", ")}):`,
             ...letLines(letBindings).map((line) => `  ${line}`),
             "  return {",
             ...fieldLines,

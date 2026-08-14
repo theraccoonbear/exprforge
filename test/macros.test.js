@@ -352,10 +352,10 @@ test("a bare multi-output-bound name used from a loadExprSource buffer's own ret
     // referencing names that were only ever bound to multi-output calls.
     assert.throws(
         () => loadExprSource(`
-            foo(x, y):
+            macro foo(x, y):
               return { x, y };
 
-            bar(a, b):
+            fn bar(a, b):
               let z = foo(a, b);
               return { z };
         `),
@@ -520,4 +520,60 @@ test("expansion runs before checkUnboundVars -- a macro's own flattened let name
     // real consumer (evaluate/emitFunction) runs expandMacros first.
     assert.strictEqual(evaluate(def, [10]), 5);
     assert.match(emitters.js.emitFunction(def), /half/);
+});
+
+// --- expandMacros' own input validation -----------------------------------
+//
+// Every real entry point (evaluate(), every emitter's emitFunction())
+// runs expandMacros() first, unconditionally, before ever touching
+// fnOrNode.type/.name/.body -- so this is the one place positioned to
+// catch a caller passing something that isn't a Node or a
+// {name, params, body} at all with ONE clear message, rather than a raw
+// "Cannot read properties of undefined (reading 'type')" several frames
+// into expandBody. Concretely motivated by loadExprSource()'s own
+// "macro"-marked definitions (see load-expr.js/fn.js) never appearing in
+// its returned object -- a caller looking one up gets `undefined` back,
+// and this is exactly what used to happen next.
+
+test("expandMacros rejects undefined with a clear error, not a raw TypeError", () => {
+    assert.throws(
+        () => expandMacros(undefined),
+        /expected an AST Node .* or a \{name, params, body\} function definition, got undefined/,
+    );
+});
+
+test("expandMacros rejects null", () => {
+    assert.throws(() => expandMacros(null), /got null/);
+});
+
+test("expandMacros rejects a plain object with no \"type\"/\"name\" shape at all", () => {
+    assert.throws(() => expandMacros({ foo: "bar" }), /expected an AST Node/);
+});
+
+test("expandMacros' error hints at the loadExprSource \"macro\" vs \"fn\" mistake specifically", () => {
+    assert.throws(() => expandMacros(undefined), /marked "fn" \(exported\), not "macro" \(private/);
+});
+
+test("evaluate()/emit()/emitMany() all surface the SAME clear error for a bad definition, not a crash", () => {
+    const { evaluate: ev, emit: em, emitMany: emMany } = require("../index.js");
+    assert.throws(() => ev(undefined, [1]), /expected an AST Node/);
+    assert.throws(() => em(undefined, "js"), /expected an AST Node/);
+    const results = emMany(undefined, ["js", "python"]);
+    assert.match(results.js.error, /expected an AST Node/);
+    assert.match(results.python.error, /expected an AST Node/);
+});
+
+test("looking up a real \"macro\"-marked loadExprSource definition and passing it straight to evaluate() hits this exact guard, end to end", () => {
+    const { loadExprSource, evaluate: ev } = require("../index.js");
+    const defs = loadExprSource(`
+        macro helper(x): return x * 2;
+        fn f(x): return helper(x) + 1;
+    `);
+    assert.strictEqual(defs.helper, undefined); // never returned -- see load-expr.js
+    assert.throws(() => ev(defs.helper, [1]), /expected an AST Node/);
+});
+
+test("expandMacros still accepts a bare Node (no name/params/body wrapper) -- the guard doesn't narrow its existing dual-shape contract", () => {
+    assert.doesNotThrow(() => expandMacros(num(5)));
+    assert.doesNotThrow(() => expandMacros(add(v("x"), num(1))));
 });

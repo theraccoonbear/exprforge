@@ -86,11 +86,17 @@ declare module "exprforge" {
     export const emitters: Record<string, Emitter>;
     // Parses source text (not a file -- see loadExprSource's own doc
     // comment for why that matters here specifically) as zero or more
-    // "name(params): ...;" definitions back-to-back, keyed by name, each
-    // ready to use directly with evaluate()/emit()/emitMany(). A later
-    // definition can reference an earlier one by name as an inline
-    // macro -- see useExprForge.ts, which is what actually calls this
-    // (as a fallback, when the buffer holds more than one definition).
+    // "fn name(params): ...;" / "macro name(params): ...;" definitions
+    // back-to-back -- the leading "fn"/"macro" keyword is mandatory here
+    // (unlike fn`...` above), and decides what actually ends up in the
+    // returned object: "fn" definitions are keyed by name, ready to use
+    // directly with evaluate()/emit()/emitMany(); "macro" definitions are
+    // inlined into whatever references them later in the same buffer
+    // (same as "fn" for that part) but never appear in what this
+    // returns. A later definition, either kind, can reference an earlier
+    // one by name as an inline macro -- see useExprForge.ts, which is
+    // what actually calls this (as a fallback, when the buffer holds
+    // more than one definition).
     export function loadExprSource(source: string, label?: string): Record<string, FnDef>;
     // Register a macro/extern -- not currently called by the playground
     // itself (nothing here registers a custom one), typed for

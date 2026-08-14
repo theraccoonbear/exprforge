@@ -146,7 +146,7 @@ test("session.loadExprSource resolves a session-local macro alongside definition
     session.loadMacro(name, (x) => call("abs", x));
 
     const defs = session.loadExprSource(`
-        f(a):
+        fn f(a):
         return ${name}(a);
     `);
     assert.strictEqual(session.evaluate(defs.f, [-5]), 5);
@@ -158,7 +158,7 @@ test("session.loadExpr (real file) resolves a session-local macro too", () => {
     session.loadMacro(name, (x) => call("abs", x));
 
     const filePath = writeExpr("session.expr", `
-        f(a):
+        fn f(a):
         return ${name}(a);
     `);
     const defs = session.loadExpr(filePath);

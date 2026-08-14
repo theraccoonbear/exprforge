@@ -1417,22 +1417,26 @@ test("spline-frame: SpEfMkFrame's R is unit length, including at the degenerate 
 // the one place every sample AST this project has is already in scope
 // at once, alongside the same input rows already used above.
 //
-// `fn` is imported under an alias -- this file already uses a bare `fn`
-// as a local variable name for "the loaded JS function under test" in
-// several places above; aliasing avoids any ambiguity about which one a
-// reader's looking at.
-const { fn: exprFn } = require("../fn.js");
+const { loadExprSource } = require("../load-expr.js");
 
 function assertExprSyntaxRoundTrips(ast, inputs) {
     const printed = emitters.expr.emitFunction(ast);
-    // The printed text always carries its own "name(params):" signature
-    // line (emitters/exprsyntax.js) -- reparsing it via fn() recovers a
-    // full {name, params, body} directly, with no need to borrow
-    // ast.name/ast.params from the original the way an earlier version
-    // of this test did. Asserting on the reparsed values themselves
-    // (not just reusing the source ones) is what actually proves the
-    // signature line round-trips, not just the body.
-    const reparsedDef = exprFn([printed]);
+    // The printed text always carries its own "fn name(params):"
+    // signature line (emitters/exprsyntax.js -- always "fn", never
+    // "macro": the printer only ever handles one already-resolved
+    // definition in isolation, so "fn" is the only honest thing to
+    // print, see that file's own comment). Reparsed via loadExprSource
+    // -- the real parser for this format now that a bare signature
+    // isn't legal there (see fn.js's requireExportKeyword mode) -- not
+    // fn() directly, which doesn't recognize "fn" as a keyword at all
+    // (see fn.js's own header comment on why that's scoped to
+    // load-expr.js specifically). Recovers a full {name, params, body}
+    // directly, with no need to borrow ast.name/ast.params from the
+    // original the way an earlier version of this test did. Asserting
+    // on the reparsed values themselves (not just reusing the source
+    // ones) is what actually proves the signature line round-trips, not
+    // just the body.
+    const reparsedDef = loadExprSource(printed)[ast.name];
     assert.strictEqual(reparsedDef.name, ast.name, `${ast.name}: signature name didn't round-trip -- printed:\n${printed}`);
     assert.deepStrictEqual(reparsedDef.params, ast.params, `${ast.name}: signature params didn't round-trip -- printed:\n${printed}`);
     for (const args of inputs) {

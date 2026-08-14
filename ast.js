@@ -323,6 +323,25 @@ function collectVarRefs(node, refs = new Set()) {
 // emitFunction(), cobol.js's own override) already runs unconditionally,
 // so it's the natural single checkpoint for this too.
 function checkUnboundVars(fn) {
+    // checkUnboundVars is called both internally (every real consumption
+    // path runs it after expandMacros, see macros.js's own comment on
+    // expandMacros) AND directly by callers who want the check on its
+    // own (e.g. the playground's useExprForge.ts) -- unlike the internal
+    // callers, a direct caller hasn't necessarily gone through
+    // expandMacros' own equivalent guard first, so this needs its own
+    // copy: without it, `fn.name` below crashes with a raw "Cannot read
+    // properties of undefined (reading 'name')" for the same "looked up
+    // a macro-only name loadExprSource() never returned" mistake
+    // expandMacros' own guard exists to catch clearly instead.
+    if (!fn || typeof fn !== "object" || typeof fn.name !== "string" || !Array.isArray(fn.params) ||
+        !fn.body || typeof fn.body !== "object" || typeof fn.body.type !== "string") {
+        throw new Error(
+            `checkUnboundVars: expected a {name, params, body} function definition, got ` +
+            `${fn === null ? "null" : typeof fn} -- if this came from a loadExprSource()/loadExpr() result ` +
+            `object, double check the definition you're looking up was actually marked "fn" (exported), not ` +
+            `"macro" (private -- never included in what that call returns)`,
+        );
+    }
     assertSafeIdentifier(fn.name, "fn.name");
     for (const p of fn.params) assertSafeIdentifier(p, "fn.params");
 

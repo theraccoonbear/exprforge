@@ -244,3 +244,27 @@ test("naming a function \"let\" or \"return\" is not treated as a signature -- t
     // apart from "a let statement" without ambiguity, so it doesn't try.
     assert.throws(() => fn`let(x): return x;`, /expected an identifier after "let"/);
 });
+
+// --- "fn"/"macro" are only meaningful in load-expr.js's stricter mode --
+//
+// A single fn`...` call never auto-exports anything -- you already hold
+// whatever it returns in an ordinary JS variable (see load-expr.js's own
+// header comment for the full rationale) -- so unlike load-expr.js's
+// loop, fn`...` itself doesn't recognize "fn"/"macro" as keywords at
+// all; they're ordinary identifiers here, exactly as they were before
+// that stricter mode existed.
+
+test("a function literally named \"fn\" still parses as an ordinary signature, unaffected by load-expr.js's requireExportKeyword mode", () => {
+    const def = fn`fn(x): return x * 2;`;
+    assert.deepStrictEqual(def, { name: "fn", params: ["x"], body: mul(v("x"), num(2)) });
+});
+
+test("a function literally named \"macro\" also still parses as an ordinary signature", () => {
+    const def = fn`macro(x): return x + 1;`;
+    assert.deepStrictEqual(def, { name: "macro", params: ["x"], body: add(v("x"), num(1)) });
+});
+
+test("fn`...`'s own return shape never carries an \"exported\" field -- that's load-expr.js's own internal bookkeeping only", () => {
+    const def = fn`hyp(a, b): return sqrt(a^2 + b^2);`;
+    assert.deepStrictEqual(Object.keys(def).sort(), ["body", "name", "params"]);
+});

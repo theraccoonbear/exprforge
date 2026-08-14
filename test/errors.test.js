@@ -31,7 +31,7 @@ test("requesting an unmapped Math function throws, for every real compile/run em
 
 test("the expr emitter prints an unmapped call name through unchanged, instead of throwing", () => {
     const fn = { name: "f", params: ["x"], body: call("definitely_not_a_real_math_fn", v("x")) };
-    assert.strictEqual(emitters.expr.emitFunction(fn), "f(x):\n  return definitely_not_a_real_math_fn(x);\n");
+    assert.strictEqual(emitters.expr.emitFunction(fn), "fn f(x):\n  return definitely_not_a_real_math_fn(x);\n");
 });
 
 test("referencing an undeclared identifier throws, for every emitter -- including \"expr\" (the printer), which has no exemption here unlike the unmapped-call-name case above", () => {
