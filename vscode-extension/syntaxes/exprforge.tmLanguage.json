@@ -1,0 +1,56 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "ExprForge",
+  "scopeName": "source.exprforge",
+  "comment": "Mirrors expr.js's own tokenizeSegment exactly (see that file's header comment) -- the same source of truth playground/src/tools/playground/exprForgeMode.ts's CodeMirror mode already follows, so this and the playground's own highlighting never drift apart. Grammar surface is small and fully regex-lexable, per docs/editor-support-spec.md's own Phase 1a scope: '#' comments, numbers (incl. '.5', '1e-9'), the 'let'/'return'/'fn'/'macro' keywords (contextual in the real parser -- only special at specific positions -- but colored as keywords unconditionally here, same simplification exprForgeMode.ts already makes), identifiers, and the fixed operator/punctuation set.",
+  "patterns": [
+    { "include": "#comments" },
+    { "include": "#numbers" },
+    { "include": "#keywords" },
+    { "include": "#function-calls" },
+    { "include": "#operators" },
+    { "include": "#accessor" },
+    { "include": "#punctuation" },
+    { "include": "#identifiers" }
+  ],
+  "repository": {
+    "comments": {
+      "comment": "'#' runs to end of line -- exprsegment.js's own rule, no block-comment syntax exists in the grammar.",
+      "match": "#.*$",
+      "name": "comment.line.number-sign.exprforge"
+    },
+    "numbers": {
+      "comment": "123, 123.45, .5, 1e-9, 1E+9 -- same shape as expr.js's readNumber. Tried before #accessor below so a leading '.' followed by a digit is claimed here first; '.' followed by anything else (field access, e.g. b.rx) correctly falls through instead.",
+      "match": "\\b\\d+(\\.\\d+)?([eE][+-]?\\d+)?\\b|\\.\\d+([eE][+-]?\\d+)?\\b",
+      "name": "constant.numeric.exprforge"
+    },
+    "keywords": {
+      "comment": "Contextual in the real parser (statement-start / signature-start position only, see fn.js) -- colored unconditionally here, same simplification exprForgeMode.ts already makes for highlighting purposes. 'fn'/'macro' are the mandatory leading keywords loadExprSource()'s stricter multi-definition grammar requires (see fn.js's requireExportKeyword mode); a lone fn`...` call never requires or recognizes them as anything but ordinary identifiers, but coloring them the same way here regardless is harmless and consistent.",
+      "match": "\\b(let|return|fn|macro)\\b",
+      "name": "keyword.control.exprforge"
+    },
+    "function-calls": {
+      "comment": "An identifier immediately followed by '(' -- primitive or macro/extern call, not distinguished here (same 'defer name resolution to the real parser/emitter' precedent call() itself follows, see ast.js).",
+      "match": "\\b([A-Za-z_][A-Za-z0-9_]*)\\b(?=\\s*\\()",
+      "name": "entity.name.function.exprforge"
+    },
+    "operators": {
+      "comment": "Two-character comparisons before their one-character prefixes -- same ordering rule expr.js's own tokenizer follows.",
+      "match": ">=|<=|==|!=|[+\\-*/^?:><]",
+      "name": "keyword.operator.exprforge"
+    },
+    "accessor": {
+      "comment": "Postfix '.' field access (b.rx, chainable a.b.c) -- see expr.js's parsePostfix.",
+      "match": "\\.",
+      "name": "punctuation.accessor.exprforge"
+    },
+    "punctuation": {
+      "match": "[(){};,=]",
+      "name": "punctuation.exprforge"
+    },
+    "identifiers": {
+      "match": "\\b[A-Za-z_][A-Za-z0-9_]*\\b",
+      "name": "variable.other.exprforge"
+    }
+  }
+}

@@ -1,0 +1,297 @@
+># A comment, running to end of line
+#^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ source.exprforge comment.line.number-sign.exprforge
+>macro cross3(ax, ay, az, bx, by, bz):
+#^^^^^ source.exprforge keyword.control.exprforge
+#     ^ source.exprforge
+#      ^^^^^^ source.exprforge entity.name.function.exprforge
+#            ^ source.exprforge punctuation.exprforge
+#             ^^ source.exprforge variable.other.exprforge
+#               ^ source.exprforge punctuation.exprforge
+#                ^ source.exprforge
+#                 ^^ source.exprforge variable.other.exprforge
+#                   ^ source.exprforge punctuation.exprforge
+#                    ^ source.exprforge
+#                     ^^ source.exprforge variable.other.exprforge
+#                       ^ source.exprforge punctuation.exprforge
+#                        ^ source.exprforge
+#                         ^^ source.exprforge variable.other.exprforge
+#                           ^ source.exprforge punctuation.exprforge
+#                            ^ source.exprforge
+#                             ^^ source.exprforge variable.other.exprforge
+#                               ^ source.exprforge punctuation.exprforge
+#                                ^ source.exprforge
+#                                 ^^ source.exprforge variable.other.exprforge
+#                                   ^ source.exprforge punctuation.exprforge
+#                                    ^ source.exprforge keyword.operator.exprforge
+>  let rx = ay * bz - az * by;
+#^^ source.exprforge
+#  ^^^ source.exprforge keyword.control.exprforge
+#     ^ source.exprforge
+#      ^^ source.exprforge variable.other.exprforge
+#        ^ source.exprforge
+#         ^ source.exprforge punctuation.exprforge
+#          ^ source.exprforge
+#           ^^ source.exprforge variable.other.exprforge
+#             ^ source.exprforge
+#              ^ source.exprforge keyword.operator.exprforge
+#               ^ source.exprforge
+#                ^^ source.exprforge variable.other.exprforge
+#                  ^ source.exprforge
+#                   ^ source.exprforge keyword.operator.exprforge
+#                    ^ source.exprforge
+#                     ^^ source.exprforge variable.other.exprforge
+#                       ^ source.exprforge
+#                        ^ source.exprforge keyword.operator.exprforge
+#                         ^ source.exprforge
+#                          ^^ source.exprforge variable.other.exprforge
+#                            ^ source.exprforge punctuation.exprforge
+>  let ry = az * bx - ax * bz;
+#^^ source.exprforge
+#  ^^^ source.exprforge keyword.control.exprforge
+#     ^ source.exprforge
+#      ^^ source.exprforge variable.other.exprforge
+#        ^ source.exprforge
+#         ^ source.exprforge punctuation.exprforge
+#          ^ source.exprforge
+#           ^^ source.exprforge variable.other.exprforge
+#             ^ source.exprforge
+#              ^ source.exprforge keyword.operator.exprforge
+#               ^ source.exprforge
+#                ^^ source.exprforge variable.other.exprforge
+#                  ^ source.exprforge
+#                   ^ source.exprforge keyword.operator.exprforge
+#                    ^ source.exprforge
+#                     ^^ source.exprforge variable.other.exprforge
+#                       ^ source.exprforge
+#                        ^ source.exprforge keyword.operator.exprforge
+#                         ^ source.exprforge
+#                          ^^ source.exprforge variable.other.exprforge
+#                            ^ source.exprforge punctuation.exprforge
+>  let rz = ax * by - ay * bx;
+#^^ source.exprforge
+#  ^^^ source.exprforge keyword.control.exprforge
+#     ^ source.exprforge
+#      ^^ source.exprforge variable.other.exprforge
+#        ^ source.exprforge
+#         ^ source.exprforge punctuation.exprforge
+#          ^ source.exprforge
+#           ^^ source.exprforge variable.other.exprforge
+#             ^ source.exprforge
+#              ^ source.exprforge keyword.operator.exprforge
+#               ^ source.exprforge
+#                ^^ source.exprforge variable.other.exprforge
+#                  ^ source.exprforge
+#                   ^ source.exprforge keyword.operator.exprforge
+#                    ^ source.exprforge
+#                     ^^ source.exprforge variable.other.exprforge
+#                       ^ source.exprforge
+#                        ^ source.exprforge keyword.operator.exprforge
+#                         ^ source.exprforge
+#                          ^^ source.exprforge variable.other.exprforge
+#                            ^ source.exprforge punctuation.exprforge
+>  return { rx, ry, rz };
+#^^ source.exprforge
+#  ^^^^^^ source.exprforge keyword.control.exprforge
+#        ^ source.exprforge
+#         ^ source.exprforge punctuation.exprforge
+#          ^ source.exprforge
+#           ^^ source.exprforge variable.other.exprforge
+#             ^ source.exprforge punctuation.exprforge
+#              ^ source.exprforge
+#               ^^ source.exprforge variable.other.exprforge
+#                 ^ source.exprforge punctuation.exprforge
+#                  ^ source.exprforge
+#                   ^^ source.exprforge variable.other.exprforge
+#                     ^ source.exprforge
+#                      ^ source.exprforge punctuation.exprforge
+#                       ^ source.exprforge punctuation.exprforge
+>
+>fn crossLength(ax, ay, az, bx, by, bz):
+#^^ source.exprforge keyword.control.exprforge
+#  ^ source.exprforge
+#   ^^^^^^^^^^^ source.exprforge entity.name.function.exprforge
+#              ^ source.exprforge punctuation.exprforge
+#               ^^ source.exprforge variable.other.exprforge
+#                 ^ source.exprforge punctuation.exprforge
+#                  ^ source.exprforge
+#                   ^^ source.exprforge variable.other.exprforge
+#                     ^ source.exprforge punctuation.exprforge
+#                      ^ source.exprforge
+#                       ^^ source.exprforge variable.other.exprforge
+#                         ^ source.exprforge punctuation.exprforge
+#                          ^ source.exprforge
+#                           ^^ source.exprforge variable.other.exprforge
+#                             ^ source.exprforge punctuation.exprforge
+#                              ^ source.exprforge
+#                               ^^ source.exprforge variable.other.exprforge
+#                                 ^ source.exprforge punctuation.exprforge
+#                                  ^ source.exprforge
+#                                   ^^ source.exprforge variable.other.exprforge
+#                                     ^ source.exprforge punctuation.exprforge
+#                                      ^ source.exprforge keyword.operator.exprforge
+>  let c = cross3(ax, ay, az, bx, by, bz);
+#^^ source.exprforge
+#  ^^^ source.exprforge keyword.control.exprforge
+#     ^ source.exprforge
+#      ^ source.exprforge variable.other.exprforge
+#       ^ source.exprforge
+#        ^ source.exprforge punctuation.exprforge
+#         ^ source.exprforge
+#          ^^^^^^ source.exprforge entity.name.function.exprforge
+#                ^ source.exprforge punctuation.exprforge
+#                 ^^ source.exprforge variable.other.exprforge
+#                   ^ source.exprforge punctuation.exprforge
+#                    ^ source.exprforge
+#                     ^^ source.exprforge variable.other.exprforge
+#                       ^ source.exprforge punctuation.exprforge
+#                        ^ source.exprforge
+#                         ^^ source.exprforge variable.other.exprforge
+#                           ^ source.exprforge punctuation.exprforge
+#                            ^ source.exprforge
+#                             ^^ source.exprforge variable.other.exprforge
+#                               ^ source.exprforge punctuation.exprforge
+#                                ^ source.exprforge
+#                                 ^^ source.exprforge variable.other.exprforge
+#                                   ^ source.exprforge punctuation.exprforge
+#                                    ^ source.exprforge
+#                                     ^^ source.exprforge variable.other.exprforge
+#                                       ^ source.exprforge punctuation.exprforge
+#                                        ^ source.exprforge punctuation.exprforge
+>  let mag = sqrt(c.rx^2 + c.ry^2 + c.rz^2);
+#^^ source.exprforge
+#  ^^^ source.exprforge keyword.control.exprforge
+#     ^ source.exprforge
+#      ^^^ source.exprforge variable.other.exprforge
+#         ^ source.exprforge
+#          ^ source.exprforge punctuation.exprforge
+#           ^ source.exprforge
+#            ^^^^ source.exprforge entity.name.function.exprforge
+#                ^ source.exprforge punctuation.exprforge
+#                 ^ source.exprforge variable.other.exprforge
+#                  ^ source.exprforge punctuation.accessor.exprforge
+#                   ^^ source.exprforge variable.other.exprforge
+#                     ^ source.exprforge keyword.operator.exprforge
+#                      ^ source.exprforge constant.numeric.exprforge
+#                       ^ source.exprforge
+#                        ^ source.exprforge keyword.operator.exprforge
+#                         ^ source.exprforge
+#                          ^ source.exprforge variable.other.exprforge
+#                           ^ source.exprforge punctuation.accessor.exprforge
+#                            ^^ source.exprforge variable.other.exprforge
+#                              ^ source.exprforge keyword.operator.exprforge
+#                               ^ source.exprforge constant.numeric.exprforge
+#                                ^ source.exprforge
+#                                 ^ source.exprforge keyword.operator.exprforge
+#                                  ^ source.exprforge
+#                                   ^ source.exprforge variable.other.exprforge
+#                                    ^ source.exprforge punctuation.accessor.exprforge
+#                                     ^^ source.exprforge variable.other.exprforge
+#                                       ^ source.exprforge keyword.operator.exprforge
+#                                        ^ source.exprforge constant.numeric.exprforge
+#                                         ^ source.exprforge punctuation.exprforge
+#                                          ^ source.exprforge punctuation.exprforge
+>  return mag > 0.000001 ? mag : 0;
+#^^ source.exprforge
+#  ^^^^^^ source.exprforge keyword.control.exprforge
+#        ^ source.exprforge
+#         ^^^ source.exprforge variable.other.exprforge
+#            ^ source.exprforge
+#             ^ source.exprforge keyword.operator.exprforge
+#              ^ source.exprforge
+#               ^^^^^^^^ source.exprforge constant.numeric.exprforge
+#                       ^ source.exprforge
+#                        ^ source.exprforge keyword.operator.exprforge
+#                         ^ source.exprforge
+#                          ^^^ source.exprforge variable.other.exprforge
+#                             ^ source.exprforge
+#                              ^ source.exprforge keyword.operator.exprforge
+#                               ^ source.exprforge
+#                                ^ source.exprforge constant.numeric.exprforge
+#                                 ^ source.exprforge punctuation.exprforge
+>
+>fn hyp(a, b):
+#^^ source.exprforge keyword.control.exprforge
+#  ^ source.exprforge
+#   ^^^ source.exprforge entity.name.function.exprforge
+#      ^ source.exprforge punctuation.exprforge
+#       ^ source.exprforge variable.other.exprforge
+#        ^ source.exprforge punctuation.exprforge
+#         ^ source.exprforge
+#          ^ source.exprforge variable.other.exprforge
+#           ^ source.exprforge punctuation.exprforge
+#            ^ source.exprforge keyword.operator.exprforge
+>  return sqrt(a^2 + b^2);
+#^^ source.exprforge
+#  ^^^^^^ source.exprforge keyword.control.exprforge
+#        ^ source.exprforge
+#         ^^^^ source.exprforge entity.name.function.exprforge
+#             ^ source.exprforge punctuation.exprforge
+#              ^ source.exprforge variable.other.exprforge
+#               ^ source.exprforge keyword.operator.exprforge
+#                ^ source.exprforge constant.numeric.exprforge
+#                 ^ source.exprforge
+#                  ^ source.exprforge keyword.operator.exprforge
+#                   ^ source.exprforge
+#                    ^ source.exprforge variable.other.exprforge
+#                     ^ source.exprforge keyword.operator.exprforge
+#                      ^ source.exprforge constant.numeric.exprforge
+#                       ^ source.exprforge punctuation.exprforge
+#                        ^ source.exprforge punctuation.exprforge
+>
+>fn numbers(x):
+#^^ source.exprforge keyword.control.exprforge
+#  ^ source.exprforge
+#   ^^^^^^^ source.exprforge entity.name.function.exprforge
+#          ^ source.exprforge punctuation.exprforge
+#           ^ source.exprforge variable.other.exprforge
+#            ^ source.exprforge punctuation.exprforge
+#             ^ source.exprforge keyword.operator.exprforge
+>  let a = .5;
+#^^ source.exprforge
+#  ^^^ source.exprforge keyword.control.exprforge
+#     ^ source.exprforge
+#      ^ source.exprforge variable.other.exprforge
+#       ^ source.exprforge
+#        ^ source.exprforge punctuation.exprforge
+#         ^ source.exprforge
+#          ^^ source.exprforge constant.numeric.exprforge
+#            ^ source.exprforge punctuation.exprforge
+>  let b = 1e-9;
+#^^ source.exprforge
+#  ^^^ source.exprforge keyword.control.exprforge
+#     ^ source.exprforge
+#      ^ source.exprforge variable.other.exprforge
+#       ^ source.exprforge
+#        ^ source.exprforge punctuation.exprforge
+#         ^ source.exprforge
+#          ^^^^ source.exprforge constant.numeric.exprforge
+#              ^ source.exprforge punctuation.exprforge
+>  let c = 123.45;
+#^^ source.exprforge
+#  ^^^ source.exprforge keyword.control.exprforge
+#     ^ source.exprforge
+#      ^ source.exprforge variable.other.exprforge
+#       ^ source.exprforge
+#        ^ source.exprforge punctuation.exprforge
+#         ^ source.exprforge
+#          ^^^^^^ source.exprforge constant.numeric.exprforge
+#                ^ source.exprforge punctuation.exprforge
+>  return a + b + c + x;
+#^^ source.exprforge
+#  ^^^^^^ source.exprforge keyword.control.exprforge
+#        ^ source.exprforge
+#         ^ source.exprforge variable.other.exprforge
+#          ^ source.exprforge
+#           ^ source.exprforge keyword.operator.exprforge
+#            ^ source.exprforge
+#             ^ source.exprforge variable.other.exprforge
+#              ^ source.exprforge
+#               ^ source.exprforge keyword.operator.exprforge
+#                ^ source.exprforge
+#                 ^ source.exprforge variable.other.exprforge
+#                  ^ source.exprforge
+#                   ^ source.exprforge keyword.operator.exprforge
+#                    ^ source.exprforge
+#                     ^ source.exprforge variable.other.exprforge
+#                      ^ source.exprforge punctuation.exprforge
+>

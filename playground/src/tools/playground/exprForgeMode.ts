@@ -18,7 +18,16 @@
 import { StreamLanguage } from "@codemirror/language";
 import type { StringStream } from "@codemirror/language";
 
-const KEYWORDS = new Set(["let", "return"]);
+// "fn"/"macro" are the mandatory leading keywords loadExprSource()'s
+// stricter grammar requires on every signature line in a multi-
+// definition buffer (see fn.js's requireExportKeyword mode and the root
+// README's "Loading a .expr file" section) -- colored the same as
+// "let"/"return" for the same reason: all four are only ever recognized
+// contextually by the real parser (specific positions, never reserved
+// everywhere), but coloring the literal word as a keyword unconditionally
+// is the same reasonable simplification already made for "let"/"return"
+// below.
+const KEYWORDS = new Set(["let", "return", "fn", "macro"]);
 
 function readNumber(stream: StringStream) {
     stream.eatWhile(/[0-9]/);
