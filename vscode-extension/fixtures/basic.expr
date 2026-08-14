@@ -1,0 +1,20 @@
+# A comment, running to end of line
+macro cross3(ax, ay, az, bx, by, bz):
+  let rx = ay * bz - az * by;
+  let ry = az * bx - ax * bz;
+  let rz = ax * by - ay * bx;
+  return { rx, ry, rz };
+
+fn crossLength(ax, ay, az, bx, by, bz):
+  let c = cross3(ax, ay, az, bx, by, bz);
+  let mag = sqrt(c.rx^2 + c.ry^2 + c.rz^2);
+  return mag > 0.000001 ? mag : 0;
+
+fn hyp(a, b):
+  return sqrt(a^2 + b^2);
+
+fn numbers(x):
+  let a = .5;
+  let b = 1e-9;
+  let c = 123.45;
+  return a + b + c + x;

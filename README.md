@@ -20,6 +20,7 @@
 [![Scheme](https://github.com/theraccoonbear/exprforge/actions/workflows/test-scheme.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test-scheme.yml)
 [![COBOL](https://github.com/theraccoonbear/exprforge/actions/workflows/test-cobol.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test-cobol.yml)
 [![Test Coverage](https://github.com/theraccoonbear/exprforge/actions/workflows/test-coverage.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test-coverage.yml)
+[![VS Code Syntax](https://github.com/theraccoonbear/exprforge/actions/workflows/test-vscode-syntax.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test-vscode-syntax.yml)
 
 ## Brief
 
@@ -801,6 +802,20 @@ works: `` fn`fn(x): return x * 2;` `` parses as a function named `fn`,
 unaffected, since a *single* `` fn`...` `` call never runs in this
 stricter mode at all — see "Loading a `.expr` file" below for what the
 two keywords mean and why the keyword is mandatory there specifically.
+
+### Editor support
+
+[`vscode-extension/`](vscode-extension/) is a real VS Code (and
+VSCodium — same OSS core) extension providing syntax highlighting for
+this grammar: standalone `.expr`/`.fn` files, and — the more common
+case — `` expr`...` ``/`` fn`...` `` tagged templates highlighted inline
+inside `.js`/`.ts` source, `${...}` interpolation switching back to real
+JS/TS highlighting for its contents. Not a second approximation of the
+grammar — its TextMate patterns mirror `expr.js`'s own tokenizer
+rule-for-rule, the same source of truth the playground's own CodeMirror
+mode already follows. Highlighting only, no diagnostics yet (see that
+directory's own README for what a real parser-backed language server
+would add, and why it's a separate, larger effort).
 
 ## Printing an AST back out, and a native evaluator
 
