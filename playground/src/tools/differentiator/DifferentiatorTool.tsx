@@ -94,7 +94,7 @@ function computeDerivative(source: string, varName: string): DiffResult {
 
         const dNode = differentiate(def.body, varName.trim());
 
-        const diffDef: FnDef = { name: def.name + "'", params: def.params, body: dNode as Node };
+        const diffDef: FnDef = { name: "d_" + def.name + "_d" + varName.trim(), params: def.params, body: dNode as Node };
         let derivativeSource: string;
         try {
             derivativeSource = emit(diffDef, "expr").source;
@@ -159,8 +159,8 @@ export function DifferentiatorTool() {
 
     const diffDef = useMemo((): FnDef | null => {
         if (!derivativeNode || !sourceDef) return null;
-        return { name: sourceDef.name + "'", params: sourceDef.params, body: derivativeNode as Node };
-    }, [derivativeNode, sourceDef]);
+        return { name: "d_" + sourceDef.name + "_d" + varName, params: sourceDef.params, body: derivativeNode as Node };
+    }, [derivativeNode, sourceDef, varName]);
 
     const verification = useMemo(() => {
         if (!sourceDef || !diffDef) return null;
