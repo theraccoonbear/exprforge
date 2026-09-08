@@ -16,6 +16,7 @@
     "expr.js",
     "fn.js",
     "evaluate.js",
+    "differentiate.js",
     "macros.js",
     "primitives.js",
     "load-expr.js",

@@ -4,6 +4,7 @@ const { forComponents } = require("./util.js");
 const { expr } = require("./expr.js");
 const { fn } = require("./fn.js");
 const { evaluate } = require("./evaluate.js");
+const { differentiate } = require("./differentiate.js");
 const { loadMacro, loadExtern, expandMacros, createRegistry } = require("./macros.js");
 const { loadExpr, loadExprSource } = require("./load-expr.js");
 const emitters = require("./emitters/registry.js");
@@ -132,6 +133,9 @@ module.exports = {
     // A native interpreter over the AST -- evaluate(fn, args) computes a
     // result directly in JS, no codegen/compile step. See evaluate.js.
     evaluate,
+    // Symbolic differentiation: differentiate(node, varName) returns an
+    // AST node for the derivative. See differentiate.js.
+    differentiate,
     // Register a macro: a name usable inside fn`...`/expr`...` text
     // beyond the built-in primitives, inline-expanded at build time,
     // never emitted as a real call. See macros.js's own header comment.
