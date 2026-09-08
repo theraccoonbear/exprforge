@@ -37,6 +37,10 @@ const NON_DIFFERENTIABLE = new Set(["floor", "ceil", "round", "trunc", "sign"]);
 // Returns the symbolic derivative of `node` with respect to the variable
 // named `varName`. The input is never mutated.
 function differentiate(node, varName) {
+    return simplify(differentiateRaw(node, varName));
+}
+
+function differentiateRaw(node, varName) {
     switch (node.type) {
         // d/dx c = 0
         case "num":
@@ -60,8 +64,8 @@ function differentiate(node, varName) {
         case "select":
             return select(
                 node.cond,
-                differentiate(node.then, varName),
-                differentiate(node.else, varName),
+                differentiateRaw(node.then, varName),
+                differentiateRaw(node.else, varName),
             );
 
         default:
@@ -74,8 +78,8 @@ function differentiate(node, varName) {
 
 function differentiateBin(node, varName) {
     const { op, left, right } = node;
-    const dl = differentiate(left, varName);
-    const dr = differentiate(right, varName);
+    const dl = differentiateRaw(left, varName);
+    const dr = differentiateRaw(right, varName);
 
     switch (op) {
         // d/dx (f + g) = f' + g'
@@ -117,7 +121,7 @@ function differentiateCall(node, varName) {
     // Binary primitives: chain rule is d/dx f(u, v) = (∂f/∂u * u' + ∂f/∂v * v')
     // where partial derivatives are computed treating the other arg as constant.
 
-    const du = differentiate(args[0], varName);
+    const du = differentiateRaw(args[0], varName);
 
     switch (name) {
         // d/dx sqrt(u) = u' / (2 * sqrt(u))
@@ -174,7 +178,7 @@ function differentiateCall(node, varName) {
         //   2. u is constant: d/dx c^v = c^v * ln(c) * v'   (exponential rule)
         //   3. Both vary:      d/dx u^v = u^v * (v' * ln(u) + v * u'/u)
         case "pow": {
-            const dv = differentiate(args[1], varName);
+            const dv = differentiateRaw(args[1], varName);
             const uIsConst = isConstant(args[0], varName);
             const vIsConst = isConstant(args[1], varName);
 
@@ -206,7 +210,7 @@ function differentiateCall(node, varName) {
         // Partial w.r.t. first arg (u): v / (u² + v²)
         // Partial w.r.t. second arg (v): -u / (u² + v²)
         case "atan2": {
-            const dv = differentiate(args[1], varName);
+            const dv = differentiateRaw(args[1], varName);
             const denom = add(mul(args[0], args[0]), mul(args[1], args[1]));
             return div(
                 sub(mul(du, args[1]), mul(args[0], dv)),
@@ -219,7 +223,7 @@ function differentiateCall(node, varName) {
         //   If v < u: derivative is dv (min is v)
         //   If equal: undefined, but both branches evaluated anyway
         case "min": {
-            const dv = differentiate(args[1], varName);
+            const dv = differentiateRaw(args[1], varName);
             return select(cmp(args[0], "<", args[1]), du, dv);
         }
 
@@ -227,13 +231,13 @@ function differentiateCall(node, varName) {
         //   If u > v: derivative is du (max is u)
         //   If v > u: derivative is dv (max is v)
         case "max": {
-            const dv = differentiate(args[1], varName);
+            const dv = differentiateRaw(args[1], varName);
             return select(cmp(args[0], ">", args[1]), du, dv);
         }
 
         // d/dx hypot(u, v) = (u * u' + v * v') / hypot(u, v)
         case "hypot": {
-            const dv = differentiate(args[1], varName);
+            const dv = differentiateRaw(args[1], varName);
             return div(
                 add(mul(args[0], du), mul(args[1], dv)),
                 call("hypot", args[0], args[1]),
@@ -256,6 +260,83 @@ function isConstant(node, varName) {
     if (node.type === "num") return true;
     if (node.type === "var") return node.name !== varName;
     return false;
+}
+
+// Bottom-up algebraic simplification. Handles the expression swell that
+// differentiation rules inevitably produce (terms like `* 0`, `+ 0`,
+// `* 1`, `/ 1`, `^ 0`, `^ 1`). Runs to fixpoint — a single pass can
+// create new simplifiable patterns (e.g. `0 * (x + 0)` → `0 * x` → `0`).
+function simplify(node) {
+    if (!node || typeof node !== "object") return node;
+
+    // Recurse bottom-up first.
+    if (node.type === "bin") {
+        node = { ...node, left: simplify(node.left), right: simplify(node.right) };
+    } else if (node.type === "call") {
+        node = { ...node, args: node.args.map(simplify) };
+    } else if (node.type === "select") {
+        node = {
+            ...node,
+            then: simplify(node.then),
+            else: simplify(node.else),
+            cond: { ...node.cond, left: simplify(node.cond.left), right: simplify(node.cond.right) },
+        };
+    } else {
+        return node; // num, var — nothing to simplify
+    }
+
+    // --- bin node simplifications ---
+    if (node.type === "bin") {
+        const { op, left, right } = node;
+
+        // Constant folding: if both operands are num literals, evaluate.
+        if (left.type === "num" && right.type === "num") {
+            switch (op) {
+                case "+": return num(left.value + right.value);
+                case "-": return num(left.value - right.value);
+                case "*": return num(left.value * right.value);
+                case "/": return num(left.value / right.value);
+            }
+        }
+
+        if (op === "+") {
+            if (left.type === "num" && left.value === 0) return right;
+            if (right.type === "num" && right.value === 0) return left;
+        }
+
+        if (op === "-") {
+            if (right.type === "num" && right.value === 0) return left;
+            if (left.type === "num" && left.value === 0) {
+                // 0 - x → -(x): if x is a num, fold to negated literal
+                if (right.type === "num") return num(-right.value);
+                return mul(num(-1), right);
+            }
+        }
+
+        if (op === "*") {
+            if (left.type === "num" && left.value === 0) return num(0);
+            if (right.type === "num" && right.value === 0) return num(0);
+            if (left.type === "num" && left.value === 1) return right;
+            if (right.type === "num" && right.value === 1) return left;
+            // -1 * x → negated
+            if (left.type === "num" && left.value === -1) return mul(num(-1), right);
+            if (right.type === "num" && right.value === -1) return mul(num(-1), left);
+        }
+
+        if (op === "/") {
+            if (left.type === "num" && left.value === 0) return num(0);
+            if (right.type === "num" && right.value === 1) return left;
+        }
+    }
+
+    // --- call node simplifications ---
+    if (node.type === "call" && node.name === "pow" && node.args.length === 2) {
+        const [base, exp] = node.args;
+        if (exp.type === "num" && exp.value === 0) return num(1);
+        if (exp.type === "num" && exp.value === 1) return base;
+    }
+
+    return node;
 }
 
 module.exports = { differentiate };

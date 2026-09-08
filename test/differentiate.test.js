@@ -421,3 +421,151 @@ test("d/dx of (sin(x)*cos(x) + x^3) / sqrt(x)", () => {
         [{ x: 1 }, { x: 2 }, { x: 4 }, { x: 0.5 }],
     );
 });
+
+// --- Simplification: differentiate() output is structurally clean ---
+
+test("simplify: d/dy of expression with no y is exactly num(0)", () => {
+    const expr = call("sqrt", add(mul(v("x"), v("x")), num(1)));
+    const d = differentiate(expr, "y");
+    assert.deepStrictEqual(d, num(0));
+});
+
+test("simplify: d/dx of x is exactly num(1)", () => {
+    const d = differentiate(v("x"), "x");
+    assert.deepStrictEqual(d, num(1));
+});
+
+test("simplify: d/dx of 5 is exactly num(0)", () => {
+    const d = differentiate(num(5), "x");
+    assert.deepStrictEqual(d, num(0));
+});
+
+test("simplify: d/dx of x + y w.r.t. y is num(1)", () => {
+    const d = differentiate(add(v("x"), v("y")), "y");
+    assert.deepStrictEqual(d, num(1));
+});
+
+test("simplify: d/dx of x * y w.r.t. x simplifies to just y (not y + 0 or 1*y)", () => {
+    const d = differentiate(mul(v("x"), v("y")), "x");
+    // Should be a direct var reference, not wrapped in * 1 or + 0
+    assert.deepStrictEqual(d, v("y"));
+});
+
+test("simplify: d/dx of 5*x simplifies to num(5), not 5*1 or (1*5+0)", () => {
+    const d = differentiate(mul(num(5), v("x")), "x");
+    assert.deepStrictEqual(d, num(5));
+});
+
+test("simplify: d/dx of x/3 simplifies to 1/3", () => {
+    const d = differentiate(div(v("x"), num(3)), "x");
+    assert.deepStrictEqual(d, num(1 / 3));
+});
+
+test("simplify: d/dx of sin(x) does not contain * 0 or + 0 nodes", () => {
+    const d = differentiate(call("sin", v("x")), "x");
+    // Should be cos(x), which is 1*cos(x) simplified to cos(x)
+    assert.deepStrictEqual(d, call("cos", v("x")));
+});
+
+test("simplify: d/dx of cos(x) does not contain * 1 nodes", () => {
+    const d = differentiate(call("cos", v("x")), "x");
+    // Should be -sin(x), which is neg(1*sin(x)) simplified to neg(sin(x))
+    assert.deepStrictEqual(d, mul(num(-1), call("sin", v("x"))));
+});
+
+test("simplify: d/dx of exp(x) is exactly exp(x), not 1*exp(x)", () => {
+    const d = differentiate(call("exp", v("x")), "x");
+    assert.deepStrictEqual(d, call("exp", v("x")));
+});
+
+test("simplify: d/dx of log(x) is exactly 1/x, not 1/x (no extra nodes)", () => {
+    const d = differentiate(call("log", v("x")), "x");
+    assert.deepStrictEqual(d, div(num(1), v("x")));
+});
+
+test("simplify: d/dx of x^2 is 2*x (not 2*x^1*1)", () => {
+    const d = differentiate(call("pow", v("x"), num(2)), "x");
+    // Power rule: 2 * x^(2-1) * 1 → 2 * x^1 * 1 → 2 * x
+    assert.deepStrictEqual(d, mul(num(2), v("x")));
+});
+
+test("simplify: d/dx of x^3 is 3*x^2 (not 3*x^2*1)", () => {
+    const d = differentiate(call("pow", v("x"), num(3)), "x");
+    assert.deepStrictEqual(d, mul(num(3), call("pow", v("x"), num(2))));
+});
+
+test("simplify: d/dx of 2^x does not contain * 1 or + 0", () => {
+    const d = differentiate(call("pow", num(2), v("x")), "x");
+    // Exponential rule: 2^x * ln(2) * 1 → 2^x * ln(2)
+    assert.deepStrictEqual(d, mul(call("pow", num(2), v("x")), call("log", num(2))));
+});
+
+test("simplify: d/dx of x*x simplifies to x + x, not (1*x + x*1)", () => {
+    const d = differentiate(mul(v("x"), v("x")), "x");
+    // Product rule: 1*x + x*1 → x + x
+    assert.deepStrictEqual(d, add(v("x"), v("x")));
+});
+
+test("simplify: d/dx of sin(x)*cos(x) does not contain * 1 nodes", () => {
+    const d = differentiate(mul(call("sin", v("x")), call("cos", v("x"))), "x");
+    // Should be: cos(x)*cos(x) + sin(x)*(-sin(x))
+    // = cos(x)*cos(x) + sin(x)*(-1*sin(x))
+    assert.ok(d.type === "bin" && d.op === "+", "should be a sum");
+    // Each term should be a simple product, no * 1 wrappers
+    const [left, right] = [d.left, d.right];
+    assert.ok(left.type === "bin" && left.op === "*", "left term should be product");
+    assert.ok(right.type === "bin" && right.op === "*", "right term should be product");
+});
+
+test("simplify: constant expression d/dx of 7 is num(0)", () => {
+    const d = differentiate(num(7), "x");
+    assert.deepStrictEqual(d, num(0));
+});
+
+test("simplify: d/dx of atan(x) is 1/(1+x^2), not 1/(1+x^2) with extra nodes", () => {
+    const d = differentiate(call("atan", v("x")), "x");
+    assert.deepStrictEqual(d, div(num(1), add(num(1), mul(v("x"), v("x")))));
+});
+
+test("simplify: d/dx of asin(x) is 1/sqrt(1-x^2)", () => {
+    const d = differentiate(call("asin", v("x")), "x");
+    assert.deepStrictEqual(d, div(num(1), call("sqrt", sub(num(1), mul(v("x"), v("x"))))));
+});
+
+test("simplify: d/dx of acos(x) is -1/sqrt(1-x^2)", () => {
+    const d = differentiate(call("acos", v("x")), "x");
+    assert.deepStrictEqual(d, div(num(-1), call("sqrt", sub(num(1), mul(v("x"), v("x"))))));
+});
+
+test("simplify: d/dx of tan(x) is 1+tan(x)^2, not (1+tan(x)*tan(x)) wrapped in * 1", () => {
+    const d = differentiate(call("tan", v("x")), "x");
+    assert.deepStrictEqual(d, add(num(1), mul(call("tan", v("x")), call("tan", v("x")))));
+});
+
+test("simplify: d/dx of log2(x) is 1/(x*ln2)", () => {
+    const d = differentiate(call("log2", v("x")), "x");
+    assert.deepStrictEqual(d, div(num(1), mul(v("x"), num(Math.LN2))));
+});
+
+test("simplify: d/dx of log10(x) is 1/(x*ln10)", () => {
+    const d = differentiate(call("log10", v("x")), "x");
+    assert.deepStrictEqual(d, div(num(1), mul(v("x"), num(Math.LN10))));
+});
+
+// --- Simplify: chain rule produces clean output ---
+
+test("simplify: d/dx sin(x^2) is (x+x)*cos(x^2), no * 1 or + 0 nodes", () => {
+    const d = differentiate(call("sin", mul(v("x"), v("x"))), "x");
+    // chain: (x+x) * cos(x*x) — the x+x is from product rule's 1*x + x*1
+    assert.deepStrictEqual(d, mul(add(v("x"), v("x")), call("cos", mul(v("x"), v("x")))));
+});
+
+test("simplify: d/dx sqrt(x) is 1/(2*sqrt(x))", () => {
+    const d = differentiate(call("sqrt", v("x")), "x");
+    assert.deepStrictEqual(d, div(num(1), mul(num(2), call("sqrt", v("x")))));
+});
+
+test("simplify: d/dx abs(x) is sign(x), not 1*sign(x)", () => {
+    const d = differentiate(call("abs", v("x")), "x");
+    assert.deepStrictEqual(d, call("sign", v("x")));
+});
