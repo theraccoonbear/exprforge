@@ -17,4 +17,5 @@ export interface ExprForgeModuleShape {
     loadExprSource(source: string, label?: string): Record<string, FnDef>;
     loadMacro(name: string, def: unknown): void;
     loadExtern(name: string, def: unknown): void;
+    differentiate(node: unknown, varName: string): unknown;
 }

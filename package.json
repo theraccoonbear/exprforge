@@ -16,6 +16,7 @@
     "expr.js",
     "fn.js",
     "evaluate.js",
+    "differentiate.js",
     "macros.js",
     "primitives.js",
     "load-expr.js",
@@ -25,6 +26,7 @@
     "math/"
   ],
   "scripts": {
+    "dev": "npm run dev --prefix playground",
     "build": "node build.js",
     "test": "node --test",
     "test:coverage": "node --test --experimental-test-coverage --test-coverage-exclude=\"test/**\"",

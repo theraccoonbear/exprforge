@@ -103,4 +103,9 @@ declare module "exprforge" {
     // completeness since the linked library already exports both.
     export function loadMacro(name: string, def: unknown): void;
     export function loadExtern(name: string, def: unknown): void;
+    // Symbolic differentiation: returns an AST node representing the
+    // derivative of `node` with respect to `varName`. The result is an
+    // ordinary AST emittable to all targets via emit()/emitMany() and
+    // evaluable via evaluate(), unchanged.
+    export function differentiate(node: Node, varName: string): Node;
 }

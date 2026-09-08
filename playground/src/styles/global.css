@@ -421,6 +421,213 @@ pre,
     font-size: 0.85rem;
 }
 
+/* ---- differentiator ------------------------------------------------- */
+
+.diff {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    max-width: 1400px;
+    margin: 0 auto;
+}
+
+.diff-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+}
+
+.diff-examples {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.85rem;
+    color: var(--text-dim);
+}
+
+.diff-examples select {
+    background: var(--bg-panel);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 6px;
+    padding: 0.35rem 0.5rem;
+    font-size: 0.85rem;
+}
+
+.diff-toolbar-right {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.diff-var-label {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.85rem;
+    color: var(--text-dim);
+}
+
+.diff-var-input {
+    width: 3.5rem;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text);
+    padding: 0.3rem 0.4rem;
+    font-size: 0.85rem;
+    font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+}
+
+.diff-copy-link {
+    background: var(--bg-panel);
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    border-radius: 999px;
+    padding: 0.35rem 0.9rem;
+    font-size: 0.82rem;
+    cursor: pointer;
+}
+
+.diff-copy-link:hover {
+    color: var(--text);
+    border-color: var(--accent-strong);
+}
+
+.diff-panes {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+}
+
+.diff-editor-pane,
+.diff-result-pane {
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+.diff-pane-header {
+    background: var(--bg-panel-raised);
+    border-bottom: 1px solid var(--border);
+    padding: 0.45rem 0.75rem;
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--text-dim);
+}
+
+.diff-editor-resize {
+    height: 320px;
+    min-height: 120px;
+    max-height: 80vh;
+    resize: vertical;
+    overflow: auto;
+}
+
+.diff-editor-pane .cm-editor {
+    font-size: 0.95rem;
+    height: 100%;
+}
+
+.diff-result-pane .cm-editor {
+    background: transparent;
+}
+
+.diff-result-pane .cm-editor.cm-focused {
+    outline: none;
+}
+
+.diff-result-empty {
+    padding: 2rem;
+    text-align: center;
+    color: var(--text-dim);
+    font-size: 0.85rem;
+}
+
+.diff-error {
+    background: var(--error-bg);
+    border-top: 1px solid var(--error-border);
+    color: var(--error-text);
+    padding: 0.6rem 0.9rem;
+    font-size: 0.85rem;
+    white-space: pre-wrap;
+}
+
+.diff-verify {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    background: var(--bg-panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 0.6rem 0.9rem;
+}
+
+.diff-verify-label {
+    font-weight: 600;
+    font-size: 0.82rem;
+    color: var(--accent);
+}
+
+.diff-verify-point {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.8rem;
+    color: var(--text-dim);
+}
+
+.diff-verify-input {
+    width: 7rem;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text);
+    padding: 0.3rem 0.4rem;
+    font-size: 0.85rem;
+    font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+}
+
+.diff-verify-results {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    margin-left: 0.5rem;
+}
+
+.diff-verify-val {
+    font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+    font-size: 0.85rem;
+    color: var(--text);
+}
+
+.diff-verify-val strong {
+    color: var(--text);
+}
+
+.diff-verify-match {
+    font-weight: 600;
+    font-size: 0.82rem;
+    color: #4ade80;
+}
+
+.diff-verify-mismatch {
+    font-weight: 600;
+    font-size: 0.82rem;
+    color: var(--error-text);
+}
+
+.diff-verify-error {
+    font-size: 0.82rem;
+    color: var(--text-dim);
+}
+
 /* ---- responsive / mobile ------------------------------------------- */
 
 @media (max-width: 640px) {
@@ -442,5 +649,9 @@ pre,
 
     .lang-card-source {
         max-height: 240px;
+    }
+
+    .diff-panes {
+        grid-template-columns: 1fr;
     }
 }
