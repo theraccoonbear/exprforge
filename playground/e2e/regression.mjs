@@ -14,9 +14,16 @@
 // own `sourceParses`/`initialSource` comments for the actual fix this
 // verifies.
 //
-// Wired into CI (.github/workflows/deploy-pages.yml) as a hard gate
-// BEFORE deploy -- a regression here must never reach the live site
-// again, not just be caught eventually by someone noticing.
+// Also covers a second real incident of the same shape: DifferentiatorTool's
+// "Copy link" wrote a ?src=/?var= URL that nothing ever read back, and
+// App.tsx had no way to land on any tab but Playground -- so every
+// differentiator share link silently opened Playground instead. See the
+// "Share-link tab activation" checks below.
+//
+// Wired into CI (.github/workflows/deploy-pages.yml and
+// deploy-pr-preview.yml) as a hard gate BEFORE deploy -- a regression here
+// must never reach the live site again, not just be caught eventually by
+// someone noticing.
 //
 // Requires: `npm run build` already run (this serves playground/dist
 // as-is), and `playwright`'s chromium browser available (see
@@ -131,9 +138,42 @@ async function main() {
         await page.waitForTimeout(400);
         assert.ok(await currentError(page), "a genuine live-typed syntax error must still surface inline");
 
+        // --- Share-link tab activation ------------------------------------
+        // The actual bug this check exists for: DifferentiatorTool's
+        // copyLink() used to write ?src=/?var= that nothing ever read back,
+        // and App.tsx had no way to land on any tab but Playground
+        // regardless of what a copied link pointed at -- so opening a
+        // differentiator link silently showed Playground instead, with the
+        // differentiator's ?src= sometimes misinterpreted as Playground
+        // source (see PlaygroundTool's own ?src= handling).
+        await page.evaluate(() => localStorage.clear());
+        const DIFF_LINK_SOURCE = "f(x): x^2 + 3*x";
+        await page.goto(`http://localhost:${PORT}/?tool=differentiator&src=${encodeURIComponent(DIFF_LINK_SOURCE)}&var=x`);
+        await page.waitForSelector(".diff-editor-pane", { timeout: 15000 });
+        assert.strictEqual(
+            await page.$eval(".shell-nav-item--active", (el) => el.textContent),
+            "Differentiation",
+            "a differentiator share link must activate the Differentiation tab, not default to Playground",
+        );
+        assert.ok(
+            (await page.$eval(".diff-editor-pane .cm-content", (el) => el.textContent)).includes("x^2"),
+            "differentiator share link must restore its ?src= into the editor",
+        );
+
+        // A playground share link (the pre-existing, already-working case)
+        // must still land on Playground now that ?tool= exists too.
+        await page.evaluate(() => localStorage.clear());
+        await page.goto(`http://localhost:${PORT}/?tool=playground&src=${encodeURIComponent(DIFF_LINK_SOURCE)}`);
+        await page.waitForSelector(".cm-content", { timeout: 15000 });
+        assert.strictEqual(
+            await page.$eval(".shell-nav-item--active", (el) => el.textContent),
+            "Playground",
+            "a playground share link must activate the Playground tab",
+        );
+
         assert.strictEqual(pageErrors.length, 0, `unexpected uncaught page error(s): ${pageErrors.join("; ")}`);
 
-        console.log(`playground e2e regression: all checks passed (${exampleIds.length} examples + stale-content + live-error checks)`);
+        console.log(`playground e2e regression: all checks passed (${exampleIds.length} examples + stale-content + live-error + share-link-tab checks)`);
     } finally {
         await browser.close();
         server.close();

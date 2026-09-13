@@ -8,6 +8,8 @@
 // needs to know how many tools exist or what any individual one does.
 import type { ComponentType } from "react";
 import { PlaygroundTool } from "./playground/PlaygroundTool";
+import { DifferentiatorTool } from "./differentiator/DifferentiatorTool";
+import { PLAYGROUND_TOOL_ID, DIFFERENTIATOR_TOOL_ID } from "./ids";
 
 export interface Tool {
     id: string;
@@ -18,11 +20,15 @@ export interface Tool {
 
 export const TOOLS: Tool[] = [
     {
-        id: "playground",
+        id: PLAYGROUND_TOOL_ID,
         label: "Playground",
         description: "Write a formula, see it emitted live across every target language.",
         component: PlaygroundTool,
     },
-    // Future tools slot in here, e.g.:
-    // { id: "repl", label: "REPL", description: "...", component: ReplTool },
+    {
+        id: DIFFERENTIATOR_TOOL_ID,
+        label: "Differentiation",
+        description: "Symbolic differentiation: enter an expression, get its derivative, verify numerically.",
+        component: DifferentiatorTool,
+    },
 ];

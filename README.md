@@ -32,8 +32,15 @@ dependencies.
 
 **[▶ Try it live](https://theraccoonbear.github.io/exprforge/)** — write
 a formula in the browser and watch it emitted across every target
-language at once, no install required. Runs the real, current library
-(see `playground/`), not a frozen demo build.
+language at once, no install required, or switch to the Differentiation
+tab to get a formula's derivative and a numeric spot-check side by side.
+Runs the real, current library (see `playground/`), not a frozen demo
+build.
+
+Every open pull request also gets its own live preview of the
+playground, deployed automatically to
+`https://theraccoonbear.github.io/exprforge/pr-<N>/` and linked in a
+comment on the PR (see `.github/workflows/deploy-pr-preview.yml`).
 
 ## Motivation
 
@@ -68,7 +75,9 @@ Two shapes of real use this tends to fall into:
 **What it does**: turns one small, pure-arithmetic AST into
 identical-behavior source text for 16 real target languages, a native
 evaluator, and its own readable printer — all from the same tree, walked
-once per target.
+once per target. Symbolic differentiation (`differentiate`) works over
+that same AST too, so a derivative is just another tree, emittable and
+evaluable exactly the same way.
 
 **What it deliberately won't do** — not gaps waiting on a future
 release, but a boundary held on purpose everywhere in this project:
@@ -324,6 +333,53 @@ prints through unchanged, having no fixed math library of its own to
 validate against), a wrong argument *count* is a structurally malformed
 call regardless of target, checked unconditionally at the same tier as
 `checkUnboundVars` — see `primitives.js`.
+
+## Symbolic differentiation (`differentiate`)
+
+```js
+const { fn, differentiate, emit, evaluate } = require("exprforge");
+
+const f = fn`
+    f(x):
+    return x^2 * sin(x);
+`;
+const df = { name: "df_dx", params: f.params, body: differentiate(f.body, "x") };
+
+console.log(emit(df, "python").source);
+console.log(evaluate(df, [Math.PI])); // -π² ≈ -9.8696
+```
+
+`differentiate(node, varName)` returns an ordinary AST node — the
+symbolic derivative of `node` with respect to `varName` — in the exact
+same representation as everything else, so it's emittable to all 18
+targets via `emit()`/`emitMany()` and evaluable via `evaluate()`
+unchanged. The input is never mutated.
+
+- **Covers every differentiable primitive**: sum/difference/product/
+  quotient rule, plus the chain rule for `sqrt abs sin cos tan asin acos
+  atan log log2 log10 exp pow atan2 min max hypot` (`pow` picks power
+  rule, exponential rule, or the general product-and-chain-rule case,
+  depending on which side of `^` actually varies with respect to
+  `varName`).
+- **`floor ceil round trunc sign` throw** at differentiation time, with a
+  clear error naming the offending call — these are piecewise-constant/
+  discontinuous primitives with no meaningful derivative, so this fails
+  loudly instead of silently producing a wrong AST.
+- **Output is simplified, not the raw mechanical rules verbatim.** A
+  bottom-up pass folds constant subtrees (`num op num` → `num`) and
+  eliminates arithmetic identities (`x + 0`, `x * 1`, `x / 1`, `x^0`,
+  `x^1`, `0 - x`) to a fixpoint, so a real formula's derivative doesn't
+  come back buried in the `* 1`/`+ 0` swell every mechanical
+  product/chain rule application produces.
+- **Verified numerically, not hand-checked algebraically** — every rule's
+  test asserts the symbolic result against a central-difference
+  approximation at several sample points (see `test/differentiate.test.js`),
+  the same "proof by running" approach this project already uses for
+  round-tripping expr syntax (see "Testing").
+
+Try it interactively in the [live playground](https://theraccoonbear.github.io/exprforge/)'s
+Differentiation tab — enter a formula, see the derivative and a numeric
+spot-check side by side.
 
 ## Math utilities (`exprforge/math`)
 

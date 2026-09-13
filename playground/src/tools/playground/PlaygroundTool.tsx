@@ -10,9 +10,11 @@ import { LANGUAGE_META } from "./languageMeta";
 import { EXAMPLES } from "./examples";
 import { readStorageJSON, readStorageString, writeStorageJSON, writeStorageString } from "../../lib/storage";
 import { ExprForge } from "../../lib/exprforge";
+import { PLAYGROUND_TOOL_ID } from "../ids";
 
 const { fn, loadExprSource } = ExprForge;
 
+const TOOL_PARAM = "tool";
 const SOURCE_PARAM = "src";
 const MOBILE_BREAKPOINT_PX = 640;
 const SOURCE_STORAGE_KEY = "source";
@@ -159,6 +161,7 @@ export function PlaygroundTool() {
     async function copyLink() {
         const params = new URLSearchParams();
         // .set() already encodes -- see readSourceFromUrl()'s comment.
+        params.set(TOOL_PARAM, PLAYGROUND_TOOL_ID);
         params.set(SOURCE_PARAM, source);
         const url = `${window.location.origin}${window.location.pathname}?${params.toString()}`;
         try {
