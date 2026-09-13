@@ -35,6 +35,11 @@ a formula in the browser and watch it emitted across every target
 language at once, no install required. Runs the real, current library
 (see `playground/`), not a frozen demo build.
 
+Every open pull request also gets its own live preview of the
+playground, deployed automatically to
+`https://theraccoonbear.github.io/exprforge/pr-<N>/` and linked in a
+comment on the PR (see `.github/workflows/deploy-pr-preview.yml`).
+
 ## Motivation
 
 This grew out of a real, recurring problem in a larger multi-language

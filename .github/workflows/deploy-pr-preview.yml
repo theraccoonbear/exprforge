@@ -1,0 +1,101 @@
+name: Deploy PR preview
+
+# Each open PR gets a live preview of the playground at
+# gh-pages/pr-<N>/, alongside the live site at gh-pages's root
+# (deploy-pages.yml) -- see that file's header comment for why both
+# share the same gh-pages-branch mechanism rather than PR previews using
+# something like actions/deploy-pages independently.
+#
+# Builds TWICE: once at the standard "/exprforge/" base so
+# playground/e2e/regression.mjs (which assumes that exact prefix when
+# stripping it to serve dist/ locally) can run unmodified as the same
+# hard gate deploy-pages.yml enforces, then again at the PR-specific
+# "/exprforge/pr-<N>/" base -- via a direct `vite build` rather than
+# `npm run build`, to skip re-running tsc --noEmit -- to produce the
+# actual artifact that gets published, since every asset reference in
+# the deployed subdirectory needs that prefix or it 404s once live.
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, closed]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+# Same shared group as deploy-pages.yml -- see that file's comment.
+# Deliberately not scoped per-PR: a per-PR group would let two DIFFERENT
+# PRs' deploys race each other on the shared gh-pages branch even though
+# neither would cancel the other.
+concurrency:
+  group: gh-pages-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: github.event.action != 'closed'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: playground/package-lock.json
+      - run: npm ci
+        working-directory: playground
+      - run: npm run build
+        working-directory: playground
+      - run: npx playwright install --with-deps chromium
+        working-directory: playground
+      - run: npm run test:e2e
+        working-directory: playground
+      - name: Rebuild at PR-specific base path
+        run: npx vite build --base=/exprforge/pr-${{ github.event.pull_request.number }}/
+        working-directory: playground
+      - uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: playground/dist
+          destination_dir: pr-${{ github.event.pull_request.number }}
+          keep_files: true
+      - uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: pr-preview
+          message: |
+            🔍 **Playground preview deployed:** https://theraccoonbear.github.io/exprforge/pr-${{ github.event.pull_request.number }}/
+
+            Updates automatically on every push to this PR.
+
+  cleanup:
+    if: github.event.action == 'closed'
+    runs-on: ubuntu-latest
+    steps:
+      # Tolerant of gh-pages not existing yet, or this PR never having
+      # deployed a preview (e.g. closed immediately) -- continue-on-error
+      # here plus the outcome check below skip the rest of the job
+      # cleanly instead of a red X for a directory that was never
+      # created.
+      - uses: actions/checkout@v4
+        continue-on-error: true
+        id: checkout
+        with:
+          ref: gh-pages
+      - if: steps.checkout.outcome == 'success'
+        run: |
+          if [ ! -d "pr-${{ github.event.pull_request.number }}" ]; then
+            echo "Nothing to clean up."
+            exit 0
+          fi
+          rm -rf "pr-${{ github.event.pull_request.number }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "chore: remove preview for closed PR #${{ github.event.pull_request.number }}"
+          git push
+      - uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: pr-preview
+          message: |
+            🧹 Playground preview removed (PR closed).

@@ -6,9 +6,15 @@ name: Deploy Playground
 # this repo (see playground/README or the root README's "Layered by
 # design" section). Build AND the real headless-browser regression suite
 # (playground/e2e/regression.mjs) both run on every push/PR as a hard CI
-# gate; deploy only runs on a push to main, via the modern GitHub-Actions-
-# native Pages mechanism (actions/deploy-pages), not a legacy gh-pages
-# branch -- and only after e2e passes, not just after the build succeeds.
+# gate; deploy only runs on a push to main.
+#
+# Deploys to the gh-pages branch (root), not the actions/deploy-pages
+# "environments" flow -- switched deliberately so PR previews
+# (deploy-pr-preview.yml) can live alongside the live site as
+# gh-pages/pr-<N>/ subdirectories. GitHub Pages only supports one source
+# per repo, so this and the PR-preview workflow must agree on the same
+# mechanism. Repo Settings -> Pages -> Source must be "Deploy from a
+# branch" (gh-pages, /root), not "GitHub Actions".
 #
 # e2e exists because a typecheck-clean, build-succeeding change reached
 # production and broke anyway: a breaking grammar change left every
@@ -26,15 +32,22 @@ on:
     branches: [main]
   workflow_dispatch: {}
 
-# Only one deployment in flight at a time -- a second push to main
-# before the first deploy finishes shouldn't race it.
+# Shared with deploy-pr-preview.yml's deploy/cleanup jobs, not just this
+# workflow: every job that pushes to the gh-pages branch needs to be
+# mutually exclusive with every other one, or two concurrent pushes
+# (e.g. a main deploy and a PR preview landing at the same moment) can
+# race. Queue rather than cancel -- cancel-in-progress would drop a
+# legitimate PR preview or live deploy just because something else
+# touched gh-pages at the same time.
 concurrency:
-  group: pages
+  group: gh-pages-deploy
   cancel-in-progress: false
 
 jobs:
-  build:
+  build-deploy:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -55,20 +68,11 @@ jobs:
       - run: npm run test:e2e
         working-directory: playground
       - if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-        uses: actions/upload-pages-artifact@v3
+        uses: peaceiris/actions-gh-pages@v4
         with:
-          path: playground/dist
-
-  deploy:
-    needs: build
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    runs-on: ubuntu-latest
-    permissions:
-      pages: write
-      id-token: write
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - id: deployment
-        uses: actions/deploy-pages@v4
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: playground/dist
+          # Without this, every live deploy would wipe out every PR
+          # preview subdirectory sitting alongside it on the gh-pages
+          # branch.
+          keep_files: true
