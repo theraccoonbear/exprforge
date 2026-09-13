@@ -8,12 +8,16 @@ import { ExprForge } from "../../lib/exprforge";
 import { DIFF_EXAMPLES } from "./examples";
 import { readStorageString, writeStorageString } from "../../lib/storage";
 import type { FnDef, Node } from "../../lib/exprforgeTypes";
+import { DIFFERENTIATOR_TOOL_ID } from "../ids";
 
 const { fn, loadExprSource, differentiate, evaluate, emit } = ExprForge;
 
 const SOURCE_STORAGE_KEY = "diffSource";
 const VAR_STORAGE_KEY = "diffVar";
 const POINT_STORAGE_KEY = "diffPoint";
+const TOOL_PARAM = "tool";
+const SOURCE_PARAM = "src";
+const VAR_PARAM = "var";
 const editorExtensions = [exprForgeLanguage];
 
 const READONLY_THEME_EXT = EditorView.theme({
@@ -22,22 +26,61 @@ const READONLY_THEME_EXT = EditorView.theme({
     ".cm-scroller": { overflow: "auto" },
 });
 
-function initialSource(): string {
-    const saved = readStorageString(SOURCE_STORAGE_KEY);
-    if (saved !== null) {
+// Mirrors PlaygroundTool.tsx's own sourceParses() -- used ONLY to
+// validate content that's about to become the editor's INITIAL value
+// (from localStorage or a shared link), never a live keystroke.
+function sourceParses(source: string): boolean {
+    if (!source.trim()) return true; // an empty buffer is never "broken"
+    try {
+        fn([source]);
+        return true;
+    } catch {
         try {
-            fn([saved]);
-            return saved;
+            loadExprSource(source, "diff");
+            return true;
         } catch {
-            try {
-                loadExprSource(saved, "diff");
-                return saved;
-            } catch {
-                // fall through
-            }
+            return false;
         }
     }
+}
+
+// URLSearchParams.get() already decodes -- see PlaygroundTool.tsx's
+// readSourceFromUrl() for why NOT to also call decodeURIComponent().
+function readSourceFromUrl(): string | null {
+    return new URLSearchParams(window.location.search).get(SOURCE_PARAM);
+}
+
+function readVarFromUrl(): string | null {
+    return new URLSearchParams(window.location.search).get(VAR_PARAM);
+}
+
+// Priority, highest first: an explicit shared link (?src=...) always
+// wins, then your own last session from localStorage, then the
+// built-in default -- same ordering PlaygroundTool.tsx uses, and for
+// the same reason (see its initialSource() comment). Either candidate
+// is validated first; content that no longer parses falls through to
+// the next priority instead of handing the editor something it can
+// only show as a top-level error.
+function initialSource(): string {
+    const fromUrl = readSourceFromUrl();
+    if (fromUrl !== null && sourceParses(fromUrl)) return fromUrl;
+    const saved = readStorageString(SOURCE_STORAGE_KEY);
+    if (saved !== null && sourceParses(saved)) return saved;
     return DIFF_EXAMPLES[0].source;
+}
+
+// A shared link's ?var= is only trusted paired with a ?src= that
+// actually validated above -- an unrelated var name surviving in the
+// URL alongside a rejected/stale src would silently pair it with
+// whatever localStorage/the default source happens to be instead,
+// which isn't what the link meant.
+function initialVarName(): string {
+    const fromUrl = readSourceFromUrl();
+    if (fromUrl !== null && sourceParses(fromUrl)) {
+        const urlVar = readVarFromUrl();
+        if (urlVar !== null) return urlVar;
+    }
+    return readStorageString(VAR_STORAGE_KEY) ?? "x";
 }
 
 function formatNumber(n: number): string {
@@ -130,7 +173,7 @@ function parsePoint(raw: string, params: string[]): Record<string, number> | nul
 
 export function DifferentiatorTool() {
     const [source, setSource] = useState(initialSource);
-    const [varName, setVarName] = useState(() => readStorageString(VAR_STORAGE_KEY) ?? "x");
+    const [varName, setVarName] = useState(initialVarName);
     const [pointStr, setPointStr] = useState(() => readStorageString(POINT_STORAGE_KEY) ?? "1");
     const [linkCopied, setLinkCopied] = useState(false);
 
@@ -199,8 +242,9 @@ export function DifferentiatorTool() {
 
     async function copyLink() {
         const params = new URLSearchParams();
-        params.set("src", source);
-        params.set("var", varName);
+        params.set(TOOL_PARAM, DIFFERENTIATOR_TOOL_ID);
+        params.set(SOURCE_PARAM, source);
+        params.set(VAR_PARAM, varName);
         const url = `${window.location.origin}${window.location.pathname}?${params.toString()}`;
         try {
             await navigator.clipboard.writeText(url);
