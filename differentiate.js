@@ -14,11 +14,14 @@
 // producing a wrong result.
 //
 // Design notes:
-//   - No simplification pass here -- product/quotient/chain rules produce
-//     expression swell (terms like `* 1`, `+ 0`). That's expected and
-//     left to a separate constant-folding / algebraic-simplification
-//     pass (issue #9) to clean up. Keeping this file purely mechanical
-//     makes every rule obviously correct by inspection.
+//   - differentiateRaw() is purely mechanical -- product/quotient/chain
+//     rules produce expression swell (terms like `* 1`, `+ 0`) verbatim,
+//     which keeps every rule obviously correct by inspection. simplify()
+//     (below) is a separate bottom-up pass over that raw output --
+//     constant folding plus arithmetic-identity elimination -- run
+//     automatically by the exported differentiate(), so callers never
+//     see the raw swell. A standalone, general-purpose version of this
+//     (usable on any AST, not just differentiate()'s output) is issue #9.
 //   - Every rule is structural: it only looks at node.type and recurses.
 //     No alpha-renaming, no capture-avoiding substitution -- the output
 //     is a fresh tree built from the input's subterms, never mutating

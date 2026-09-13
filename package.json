@@ -38,7 +38,9 @@
     "math",
     "cross-language",
     "transpiler",
-    "qb64"
+    "qb64",
+    "differentiation",
+    "calculus"
   ],
   "license": "MIT",
   "author": {
