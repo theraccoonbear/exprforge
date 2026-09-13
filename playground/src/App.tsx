@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { TOOLS } from "./tools";
+import { GitHubIcon, NpmIcon } from "./icons";
 
 const TOOL_PARAM = "tool";
 
@@ -42,14 +43,26 @@ export function App() {
                         </button>
                     ))}
                 </nav>
-                <a
-                    className="shell-github-link"
-                    href="https://github.com/theraccoonbear/exprforge"
-                    target="_blank"
-                    rel="noreferrer"
-                >
-                    GitHub
-                </a>
+                <div className="shell-external-links">
+                    <a
+                        className="shell-external-link"
+                        href="https://github.com/theraccoonbear/exprforge"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                    >
+                        <GitHubIcon />
+                        GitHub
+                    </a>
+                    <a
+                        className="shell-external-link"
+                        href="https://www.npmjs.com/package/exprforge"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                    >
+                        <NpmIcon />
+                        npm
+                    </a>
+                </div>
             </header>
             <main className="shell-main">
                 <ActiveComponent />

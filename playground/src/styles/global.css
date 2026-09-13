@@ -96,14 +96,23 @@ pre,
     border-color: var(--border);
 }
 
-.shell-github-link {
+.shell-external-links {
     margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 0.9rem;
+}
+
+.shell-external-link {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
     color: var(--text-dim);
     text-decoration: none;
     font-size: 0.9rem;
 }
 
-.shell-github-link:hover {
+.shell-external-link:hover {
     color: var(--text);
 }
 
@@ -635,7 +644,7 @@ pre,
         gap: 0.75rem;
     }
 
-    .shell-github-link {
+    .shell-external-links {
         display: none;
     }
 
