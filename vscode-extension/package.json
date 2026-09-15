@@ -3,7 +3,7 @@
   "displayName": "ExprForge fn/expr Syntax",
   "description": "Syntax highlighting for exprforge's fn`...`/expr`...` grammar -- standalone .expr/.fn files, and inline expr`...`/fn`...` tagged templates inside JS/TS.",
   "version": "0.1.0",
-  "publisher": "theraccoonbear",
+  "publisher": "DS1930",
   "license": "MIT",
   "icon": "icon.png",
   "repository": {
@@ -55,7 +55,6 @@
     "test:standalone": "vscode-tmgrammar-snap -s source.exprforge -g syntaxes/exprforge.tmLanguage.json \"fixtures/*.expr\"",
     "test:injection": "vscode-tmgrammar-snap -s source.ts -g node_modules/tm-grammars/grammars/typescript.json -g node_modules/tm-grammars/grammars/javascript.json -g syntaxes/exprforge.tmLanguage.json -g syntaxes/exprforge.injection.json \"fixtures/*.ts\"",
     "package": "vsce package",
-    "publish:marketplace": "vsce publish",
     "publish:ovsx": "ovsx publish"
   },
   "devDependencies": {

@@ -1,76 +1,73 @@
 name: Publish VS Code extension
 
-# vscode-extension/ is versioned independently from the root exprforge
-# npm package (see its own package.json), so it gets its own release
-# train -- a GitHub Release tagged "vscode-v<version>" (e.g.
-# "vscode-v0.1.0"), distinct from the npm package's plain "v<version>"
-# tags publish.yml reacts to. Fires only on an explicit Release, same
-# reasoning as publish.yml: publishing is always a deliberate action,
-# never a side effect of pushing a commit or bumping a version number.
+# Fully automatic: publishes whenever vscode-extension/package.json's
+# version actually changes on a push to main. No separate release/tag
+# step -- bumping the version and merging a PR IS the release process.
+# Skips cleanly (not a failure) when vscode-extension/ changed but the
+# version didn't, e.g. a grammar tweak or doc fix landing without a
+# version bump, so this can react to every push that touches the
+# extension without retrying a publish that's already live.
 #
-# Publishes to both the VS Code Marketplace (vsce) and Open VSX (ovsx,
-# what VSCodium and other non-Microsoft-branded editors use) -- see
-# vscode-extension/README.md. Needs a VSCE_PAT repo secret to publish to
-# the Marketplace at all; OVSX_PAT is optional -- that step is skipped
-# (not failed) when it isn't set, so Marketplace-only publishing works
-# without ever configuring Open VSX. One-time setup required before this
-# can succeed: a "theraccoonbear" publisher registered at
-# marketplace.visualstudio.com/manage (VSCE_PAT is an Azure DevOps
-# Personal Access Token with Marketplace "Manage" scope), and optionally
-# a namespace/token at open-vsx.org for OVSX_PAT.
+# Open VSX only, deliberately -- not the VS Code Marketplace. See
+# vscode-extension/README.md's "Publishing (maintainers)" section and
+# docs/editor-support-spec.md for the full reasoning; short version:
+# generating the Marketplace's publish token (VSCE_PAT) requires an
+# Azure DevOps organization, which as of 2026 requires an active Azure
+# subscription (a card on file, even though nothing is charged) just to
+# create a token for publishing a free extension. Open VSX has no such
+# requirement. Needs an OVSX_PAT repo secret.
 on:
-  release:
-    types: [published]
+  push:
+    branches: [main]
+    paths:
+      - "vscode-extension/**"
 
 permissions:
   contents: read
 
 jobs:
   publish:
-    if: startsWith(github.event.release.tag_name, 'vscode-v')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
           cache: npm
           cache-dependency-path: vscode-extension/package-lock.json
-      # The release tag (e.g. "vscode-v0.1.0") must match
-      # vscode-extension/package.json's version exactly, so a forgotten
-      # version bump fails loudly here instead of publishing the wrong
-      # code under the wrong number -- same reasoning as publish.yml's
-      # own check for the npm package.
-      - name: Verify release tag matches vscode-extension/package.json version
+      # Only actually publish when the version changed in THIS push --
+      # otherwise every grammar tweak or doc fix under vscode-extension/
+      # would retry publishing a version already live, and fail loudly
+      # every time (ovsx refuses to republish an existing version).
+      # Compares against the pre-push commit (github.event.before), not
+      # against whatever's currently live on Open VSX, so this works
+      # correctly even before the very first publish.
+      - name: Check whether package.json's version changed
+        id: version_check
         run: |
-          TAG="${GITHUB_REF_NAME#vscode-v}"
-          PKG_VERSION=$(node -p "require('./package.json').version")
-          if [ "$TAG" != "$PKG_VERSION" ]; then
-            echo "Release tag $GITHUB_REF_NAME does not match vscode-extension/package.json version $PKG_VERSION" >&2
-            exit 1
-          fi
-        working-directory: vscode-extension
-      - run: npm ci
-        working-directory: vscode-extension
-      # Also runs via `npm test` above being a prerequisite in spirit,
-      # but a named step here gives a clear, separately-attributed CI
-      # failure if it's the grammar tests (not the publish itself) that
-      # break -- same reasoning as publish.yml's own separate `npm test`
-      # step.
-      - run: npm test
-        working-directory: vscode-extension
-      - name: Publish to VS Code Marketplace
-        run: npx vsce publish --pat "$VSCE_PAT"
-        working-directory: vscode-extension
-        env:
-          VSCE_PAT: ${{ secrets.VSCE_PAT }}
-      - name: Publish to Open VSX
-        run: |
-          if [ -n "$OVSX_PAT" ]; then
-            npx ovsx publish --pat "$OVSX_PAT"
+          NEW_VERSION=$(jq -r '.version' package.json)
+          OLD_VERSION=$(git show "${{ github.event.before }}:vscode-extension/package.json" 2>/dev/null | jq -r '.version // ""')
+          echo "old version: $OLD_VERSION"
+          echo "new version: $NEW_VERSION"
+          if [ "$NEW_VERSION" != "$OLD_VERSION" ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
           else
-            echo "OVSX_PAT not set -- skipping Open VSX publish (Marketplace-only is fine)."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
           fi
+        working-directory: vscode-extension
+      - if: steps.version_check.outputs.changed == 'true'
+        run: npm ci
+        working-directory: vscode-extension
+      # Hard gate before publish, same reasoning as publish.yml's own
+      # separate `npm test` step for the root npm package.
+      - if: steps.version_check.outputs.changed == 'true'
+        run: npm test
+        working-directory: vscode-extension
+      - name: Publish to Open VSX
+        if: steps.version_check.outputs.changed == 'true'
+        run: npx ovsx publish --pat "$OVSX_PAT"
         working-directory: vscode-extension
         env:
           OVSX_PAT: ${{ secrets.OVSX_PAT }}

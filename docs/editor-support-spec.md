@@ -1,21 +1,35 @@
 # Editor support for `expr`/`fn` syntax (VS Code / VSCodium)
 
-**Status: Phase 1a and 1b shipped** (`vscode-extension/`) -- both the
+**Status: Phase 1a and 1b shipped** (`vscode-extension/`): both the
 standalone `.expr`/`.fn` grammar and the inline tagged-template
 injection, tested with real `vscode-textmate`-backed tokenization
 snapshots (`vscode-extension/README.md`). Phase 2 (language server) is
 still just the idea below, not started.
+
+**Distribution: [Open VSX](https://open-vsx.org) only, not the VS Code
+Marketplace, deliberately.** Generating the Marketplace's publish token
+requires an Azure DevOps organization, and as of 2026 creating a new one
+requires an active Azure subscription -- a card on file, even though
+nothing is charged -- just to get a token for publishing a free
+extension. Open VSX needs only a GitHub login. Cost of that choice:
+official VS Code doesn't search/install from Open VSX by default (no
+simple settings toggle exists for it, only a manual `product.json` edit
+most users never make), so VSCodium and other OSS forks get this
+extension the normal way, while plain VS Code users would need to
+manually download and side-load the `.vsix`. See
+`vscode-extension/README.md`'s "Distribution" section for the same
+note kept next to the thing it describes.
 
 ## Motivation
 
 `expr`/`fn` source shows up in two places today, and they want different
 tooling:
 
-1. **Inline, as JS/TS tagged templates** — `` expr`a * b + 1` `` and
+1. **Inline, as JS/TS tagged templates**: `` expr`a * b + 1` `` and
    `` fn`let m = ...; return m;` `` written directly inside `.js`/`.ts`
    files. This is the primary, everyday way the syntax is actually
    authored right now.
-2. **As standalone files** — `emitters/exprsyntax.js` (registry key
+2. **As standalone files**: `emitters/exprsyntax.js` (registry key
    `expr`, `.ext = "fn"`) really does produce bare `.fn` source text as
    one of the 18 output targets, so a real `.fn` file on disk is also a
    legitimate artifact, not hypothetical.
@@ -25,11 +39,11 @@ separately, not conflated into one "add a language" task.
 
 ## Not Electron-relevant
 
-Syntax highlighting doesn't run any JS or touch Electron at all — it's a
+Syntax highlighting doesn't run any JS or touch Electron at all. It's a
 declarative TextMate grammar (a JSON file of regex patterns mapping
 token classes to scopes) plus a `package.json` contribution block
 registering the language. The place a Node host process actually matters
-is a language *server* (see Phase 2) — extensions run in Node, so a
+is a language *server* (see Phase 2): extensions run in Node, so a
 server there can `require()` the real parser instead of approximating it
 with regex.
 
@@ -48,8 +62,8 @@ tokenizer has no `//`/`/* */` handling, only `#`).
 - One grammar file, ~60-100 lines, adaptable from any minimal-language
   TextMate template.
 - VSCodium reuses the same extension unchanged (same OSS core as VS
-  Code) — only the distribution channel differs (Marketplace vs. Open
-  VSX vs. unpublished `.vsix` side-load).
+  Code); only the distribution channel differs. Published to Open VSX
+  only, not the Marketplace (see this doc's Status note above for why).
 - **Effort: a few hours.**
 
 ## Phase 1b — inline highlighting inside `` expr`...` ``/`` fn`...` `` template literals (SHIPPED, see vscode-extension/)
