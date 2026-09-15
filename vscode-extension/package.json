@@ -5,6 +5,7 @@
   "version": "0.1.0",
   "publisher": "theraccoonbear",
   "license": "MIT",
+  "icon": "icon.png",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/theraccoonbear/exprforge.git",
@@ -52,9 +53,14 @@
   "scripts": {
     "test": "npm run test:standalone && npm run test:injection",
     "test:standalone": "vscode-tmgrammar-snap -s source.exprforge -g syntaxes/exprforge.tmLanguage.json \"fixtures/*.expr\"",
-    "test:injection": "vscode-tmgrammar-snap -s source.ts -g node_modules/tm-grammars/grammars/typescript.json -g node_modules/tm-grammars/grammars/javascript.json -g syntaxes/exprforge.tmLanguage.json -g syntaxes/exprforge.injection.json \"fixtures/*.ts\""
+    "test:injection": "vscode-tmgrammar-snap -s source.ts -g node_modules/tm-grammars/grammars/typescript.json -g node_modules/tm-grammars/grammars/javascript.json -g syntaxes/exprforge.tmLanguage.json -g syntaxes/exprforge.injection.json \"fixtures/*.ts\"",
+    "package": "vsce package",
+    "publish:marketplace": "vsce publish",
+    "publish:ovsx": "ovsx publish"
   },
   "devDependencies": {
+    "@vscode/vsce": "^3.2.1",
+    "ovsx": "^0.10.1",
     "tm-grammars": "^1.32.5",
     "vscode-tmgrammar-test": "^0.1.3"
   }
