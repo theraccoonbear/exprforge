@@ -65,8 +65,12 @@ jobs:
         env:
           VSCE_PAT: ${{ secrets.VSCE_PAT }}
       - name: Publish to Open VSX
-        if: ${{ secrets.OVSX_PAT != '' }}
-        run: npx ovsx publish --pat "$OVSX_PAT"
+        run: |
+          if [ -n "$OVSX_PAT" ]; then
+            npx ovsx publish --pat "$OVSX_PAT"
+          else
+            echo "OVSX_PAT not set -- skipping Open VSX publish (Marketplace-only is fine)."
+          fi
         working-directory: vscode-extension
         env:
           OVSX_PAT: ${{ secrets.OVSX_PAT }}
