@@ -1,0 +1,131 @@
+>import { fn, expr, evaluate } from "exprforge";
+#^^^^^^ source.ts meta.import.ts keyword.control.import.ts
+#      ^ source.ts meta.import.ts
+#       ^ source.ts meta.import.ts meta.block.ts punctuation.definition.block.ts
+#        ^ source.ts meta.import.ts meta.block.ts
+#         ^^ source.ts meta.import.ts meta.block.ts variable.other.readwrite.alias.ts
+#           ^ source.ts meta.import.ts meta.block.ts punctuation.separator.comma.ts
+#            ^ source.ts meta.import.ts meta.block.ts
+#             ^^^^ source.ts meta.import.ts meta.block.ts variable.other.readwrite.alias.ts
+#                 ^ source.ts meta.import.ts meta.block.ts punctuation.separator.comma.ts
+#                  ^ source.ts meta.import.ts meta.block.ts
+#                   ^^^^^^^^ source.ts meta.import.ts meta.block.ts variable.other.readwrite.alias.ts
+#                           ^ source.ts meta.import.ts meta.block.ts
+#                            ^ source.ts meta.import.ts meta.block.ts punctuation.definition.block.ts
+#                             ^ source.ts meta.import.ts
+#                              ^^^^ source.ts meta.import.ts keyword.control.from.ts
+#                                  ^ source.ts meta.import.ts
+#                                   ^ source.ts meta.import.ts string.quoted.double.ts punctuation.definition.string.begin.ts
+#                                    ^^^^^^^^^ source.ts meta.import.ts string.quoted.double.ts
+#                                             ^ source.ts meta.import.ts string.quoted.double.ts punctuation.definition.string.end.ts
+#                                              ^ source.ts punctuation.terminator.statement.ts
+>
+>const normalize2 = fn`
+#^^^^^ source.ts meta.var.expr.ts storage.type.ts
+#     ^ source.ts meta.var.expr.ts
+#      ^^^^^^^^^^ source.ts meta.var.expr.ts meta.var-single-variable.expr.ts meta.definition.variable.ts variable.other.constant.ts
+#                ^ source.ts meta.var.expr.ts meta.var-single-variable.expr.ts
+#                 ^ source.ts meta.var.expr.ts keyword.operator.assignment.ts
+#                  ^ source.ts meta.var.expr.ts
+#                   ^^ source.ts meta.var.expr.ts meta.embedded.block.exprforge entity.name.function.tagged-template.exprforge
+#                     ^ source.ts meta.var.expr.ts meta.embedded.block.exprforge punctuation.definition.string.template.begin.exprforge
+>    normalize2(x, y):
+#^^^^ source.ts meta.var.expr.ts meta.embedded.block.exprforge
+#    ^^^^^^^^^^ source.ts meta.var.expr.ts meta.embedded.block.exprforge entity.name.function.exprforge
+#              ^ source.ts meta.var.expr.ts meta.embedded.block.exprforge punctuation.exprforge
+#               ^ source.ts meta.var.expr.ts meta.embedded.block.exprforge variable.other.exprforge
+#                ^ source.ts meta.var.expr.ts meta.embedded.block.exprforge punctuation.exprforge
+#                 ^ source.ts meta.var.expr.ts meta.embedded.block.exprforge
+#                  ^ source.ts meta.var.expr.ts meta.embedded.block.exprforge variable.other.exprforge
+#                   ^ source.ts meta.var.expr.ts meta.embedded.block.exprforge punctuation.exprforge
+#                    ^ source.ts meta.var.expr.ts meta.embedded.block.exprforge keyword.operator.exprforge
+>      let mag = sqrt(x^2 + y^2);
+#^^^^^^ source.ts meta.var.expr.ts meta.embedded.block.exprforge
+#      ^^^ source.ts meta.var.expr.ts meta.embedded.block.exprforge keyword.control.exprforge
+#         ^ source.ts meta.var.expr.ts meta.embedded.block.exprforge
+#          ^^^ source.ts meta.var.expr.ts meta.embedded.block.exprforge variable.other.exprforge
+#             ^ source.ts meta.var.expr.ts meta.embedded.block.exprforge
+#              ^ source.ts meta.var.expr.ts meta.embedded.block.exprforge punctuation.exprforge
+#               ^ source.ts meta.var.expr.ts meta.embedded.block.exprforge
+#                ^^^^ source.ts meta.var.expr.ts meta.embedded.block.exprforge entity.name.function.exprforge
+#                    ^ source.ts meta.var.expr.ts meta.embedded.block.exprforge punctuation.exprforge
+#                     ^ source.ts meta.var.expr.ts meta.embedded.block.exprforge variable.other.exprforge
+#                      ^ source.ts meta.var.expr.ts meta.embedded.block.exprforge keyword.operator.exprforge
+#                       ^ source.ts meta.var.expr.ts meta.embedded.block.exprforge constant.numeric.exprforge
+#                        ^ source.ts meta.var.expr.ts meta.embedded.block.exprforge
+#                         ^ source.ts meta.var.expr.ts meta.embedded.block.exprforge keyword.operator.exprforge
+#                          ^ source.ts meta.var.expr.ts meta.embedded.block.exprforge
+#                           ^ source.ts meta.var.expr.ts meta.embedded.block.exprforge variable.other.exprforge
+#                            ^ source.ts meta.var.expr.ts meta.embedded.block.exprforge keyword.operator.exprforge
+#                             ^ source.ts meta.var.expr.ts meta.embedded.block.exprforge constant.numeric.exprforge
+#                              ^ source.ts meta.var.expr.ts meta.embedded.block.exprforge punctuation.exprforge
+#                               ^ source.ts meta.var.expr.ts meta.embedded.block.exprforge punctuation.exprforge
+>      return { nx: x / mag, ny: y / mag };
+#^^^^^^ source.ts meta.var.expr.ts meta.embedded.block.exprforge
+#      ^^^^^^ source.ts meta.var.expr.ts meta.embedded.block.exprforge keyword.control.exprforge
+#            ^ source.ts meta.var.expr.ts meta.embedded.block.exprforge
+#             ^ source.ts meta.var.expr.ts meta.embedded.block.exprforge punctuation.exprforge
+#              ^ source.ts meta.var.expr.ts meta.embedded.block.exprforge
+#               ^^ source.ts meta.var.expr.ts meta.embedded.block.exprforge variable.other.exprforge
+#                 ^ source.ts meta.var.expr.ts meta.embedded.block.exprforge keyword.operator.exprforge
+#                  ^ source.ts meta.var.expr.ts meta.embedded.block.exprforge
+#                   ^ source.ts meta.var.expr.ts meta.embedded.block.exprforge variable.other.exprforge
+#                    ^ source.ts meta.var.expr.ts meta.embedded.block.exprforge
+#                     ^ source.ts meta.var.expr.ts meta.embedded.block.exprforge keyword.operator.exprforge
+#                      ^ source.ts meta.var.expr.ts meta.embedded.block.exprforge
+#                       ^^^ source.ts meta.var.expr.ts meta.embedded.block.exprforge variable.other.exprforge
+#                          ^ source.ts meta.var.expr.ts meta.embedded.block.exprforge punctuation.exprforge
+#                           ^ source.ts meta.var.expr.ts meta.embedded.block.exprforge
+#                            ^^ source.ts meta.var.expr.ts meta.embedded.block.exprforge variable.other.exprforge
+#                              ^ source.ts meta.var.expr.ts meta.embedded.block.exprforge keyword.operator.exprforge
+#                               ^ source.ts meta.var.expr.ts meta.embedded.block.exprforge
+#                                ^ source.ts meta.var.expr.ts meta.embedded.block.exprforge variable.other.exprforge
+#                                 ^ source.ts meta.var.expr.ts meta.embedded.block.exprforge
+#                                  ^ source.ts meta.var.expr.ts meta.embedded.block.exprforge keyword.operator.exprforge
+#                                   ^ source.ts meta.var.expr.ts meta.embedded.block.exprforge
+#                                    ^^^ source.ts meta.var.expr.ts meta.embedded.block.exprforge variable.other.exprforge
+#                                       ^ source.ts meta.var.expr.ts meta.embedded.block.exprforge
+#                                        ^ source.ts meta.var.expr.ts meta.embedded.block.exprforge punctuation.exprforge
+#                                         ^ source.ts meta.var.expr.ts meta.embedded.block.exprforge punctuation.exprforge
+>`;
+#^ source.ts meta.var.expr.ts meta.embedded.block.exprforge punctuation.definition.string.template.end.exprforge
+# ^ source.ts punctuation.terminator.statement.ts
+>
+>const scaled = expr`${base} * 2 + offset`;
+#^^^^^ source.ts meta.var.expr.ts storage.type.ts
+#     ^ source.ts meta.var.expr.ts
+#      ^^^^^^ source.ts meta.var.expr.ts meta.var-single-variable.expr.ts meta.definition.variable.ts variable.other.constant.ts
+#            ^ source.ts meta.var.expr.ts meta.var-single-variable.expr.ts
+#             ^ source.ts meta.var.expr.ts keyword.operator.assignment.ts
+#              ^ source.ts meta.var.expr.ts
+#               ^^^^ source.ts meta.var.expr.ts meta.embedded.block.exprforge entity.name.function.tagged-template.exprforge
+#                   ^ source.ts meta.var.expr.ts meta.embedded.block.exprforge punctuation.definition.string.template.begin.exprforge
+#                    ^^ source.ts meta.var.expr.ts meta.embedded.block.exprforge meta.embedded.line.js punctuation.definition.template-expression.begin.exprforge
+#                      ^^^^ source.ts meta.var.expr.ts meta.embedded.block.exprforge meta.embedded.line.js variable.other.readwrite.js
+#                          ^ source.ts meta.var.expr.ts meta.embedded.block.exprforge meta.embedded.line.js punctuation.definition.template-expression.end.exprforge
+#                           ^ source.ts meta.var.expr.ts meta.embedded.block.exprforge
+#                            ^ source.ts meta.var.expr.ts meta.embedded.block.exprforge keyword.operator.exprforge
+#                             ^ source.ts meta.var.expr.ts meta.embedded.block.exprforge
+#                              ^ source.ts meta.var.expr.ts meta.embedded.block.exprforge constant.numeric.exprforge
+#                               ^ source.ts meta.var.expr.ts meta.embedded.block.exprforge
+#                                ^ source.ts meta.var.expr.ts meta.embedded.block.exprforge keyword.operator.exprforge
+#                                 ^ source.ts meta.var.expr.ts meta.embedded.block.exprforge
+#                                  ^^^^^^ source.ts meta.var.expr.ts meta.embedded.block.exprforge variable.other.exprforge
+#                                        ^ source.ts meta.var.expr.ts meta.embedded.block.exprforge punctuation.definition.string.template.end.exprforge
+#                                         ^ source.ts punctuation.terminator.statement.ts
+>
+>evaluate(normalize2, [3, 4]);
+#^^^^^^^^ source.ts meta.function-call.ts entity.name.function.ts
+#        ^ source.ts meta.brace.round.ts
+#         ^^^^^^^^^^ source.ts variable.other.readwrite.ts
+#                   ^ source.ts punctuation.separator.comma.ts
+#                    ^ source.ts meta.array.literal.ts
+#                     ^ source.ts meta.array.literal.ts meta.brace.square.ts
+#                      ^ source.ts meta.array.literal.ts constant.numeric.decimal.ts
+#                       ^ source.ts meta.array.literal.ts punctuation.separator.comma.ts
+#                        ^ source.ts meta.array.literal.ts
+#                         ^ source.ts meta.array.literal.ts constant.numeric.decimal.ts
+#                          ^ source.ts meta.array.literal.ts meta.brace.square.ts
+#                           ^ source.ts meta.brace.round.ts
+#                            ^ source.ts punctuation.terminator.statement.ts
+>
