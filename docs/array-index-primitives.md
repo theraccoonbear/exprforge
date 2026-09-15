@@ -1,10 +1,14 @@
 # Array parameters + `wrapIndex`/`clampIndex` primitives
 
-Status: proposed, not implemented. Written up after a real cross-language bug
-in a consumer project (Super Spaceguy Shooter / TrailForge) traced back to
-logic that ExprForge structurally cannot express today. Follows the format of
-`planned-additions.md` (design rationale first, node shapes and emitter
-implications second) since that's what this doc was modeled on.
+Status: implemented (see PR #34) for every registered emitter except cobol
+(deferred, see its own section below), including `expr`/`fn` text syntax --
+`arr[i]` indexing and `name: number[]` parameter type annotations both parse
+and round-trip via `loadExprSource()`. Originally written up after a real
+cross-language bug in a consumer project (Super Spaceguy Shooter / TrailForge)
+traced back to logic that ExprForge structurally could not express at all.
+Follows the format of `planned-additions.md` (design rationale first, node
+shapes and emitter implications second) since that's what this doc was
+modeled on.
 
 ## Motivation
 

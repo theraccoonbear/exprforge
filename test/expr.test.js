@@ -14,7 +14,7 @@
 const test = require("node:test");
 const assert = require("node:assert");
 const {
-    num, v, add, sub, mul, div, neg, call, cmp, select, letIn, collectLets, field,
+    num, v, add, sub, mul, div, neg, call, cmp, select, letIn, collectLets, field, idx,
 } = require("../ast.js");
 const { expr } = require("../expr.js");
 const { fn } = require("../fn.js");
@@ -224,6 +224,38 @@ test("a \".\" with no following identifier throws", () => {
 
 test("\".\" still tokenizes decimal number literals unambiguously (.5, 1.5)", () => {
     assert.deepStrictEqual(expr`.5 + 1.5`, add(num(0.5), num(1.5)));
+});
+
+test("arr[i] parses to an idx() node wrapping v(\"arr\")", () => {
+    assert.deepStrictEqual(expr`arr[i]`, idx(v("arr"), v("i")));
+});
+
+test("array indexing chains: matrix[i][j]", () => {
+    assert.deepStrictEqual(expr`matrix[i][j]`, idx(idx(v("matrix"), v("i")), v("j")));
+});
+
+test("array indexing combines with field access in either order: arr[i].rx, b.arr[i]", () => {
+    assert.deepStrictEqual(expr`arr[i].rx`, field(idx(v("arr"), v("i")), "rx"));
+    assert.deepStrictEqual(expr`b.arr[i]`, idx(field(v("b"), "arr"), v("i")));
+});
+
+test("the index expression can be arbitrary, not just a bare identifier/number", () => {
+    assert.deepStrictEqual(expr`arr[wrapIndex(i, m)]`, idx(v("arr"), call("wrapIndex", v("i"), v("m"))));
+    assert.deepStrictEqual(expr`arr[i + 1]`, idx(v("arr"), add(v("i"), num(1))));
+});
+
+test("array indexing binds tighter than every operator, including ^", () => {
+    assert.deepStrictEqual(expr`arr[i] + 1`, add(idx(v("arr"), v("i")), num(1)));
+    assert.deepStrictEqual(expr`arr[i] ^ 2`, call("pow", idx(v("arr"), v("i")), num(2)));
+    assert.deepStrictEqual(expr`-arr[i]`, neg(idx(v("arr"), v("i"))));
+});
+
+test("a \"[\" with no closing \"]\" throws", () => {
+    assert.throws(() => expr`arr[i`, /expected "\]"/);
+});
+
+test("an empty \"[]\" (no index expression) throws", () => {
+    assert.throws(() => expr`arr[]`, /expected a number, identifier, function call, or parenthesized expression/);
 });
 
 test("independent expr() calls don't leak comment state into each other", () => {

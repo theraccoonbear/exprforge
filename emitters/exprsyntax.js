@@ -37,11 +37,17 @@ class ExprSyntaxEmitter extends Emitter {
 }
 
 // Prints "name: number[]" for an array-typed param (matching the design
-// doc's own example syntax), "name" for an ordinary scalar. Print-only:
-// expr.js's parser doesn't read this type-annotation syntax back in yet
-// (see docs/array-index-primitives.md), so this emitter's output isn't
-// yet round-trippable for a function with an array parameter, unlike
-// every scalar-only function it already handles.
+// doc's own example syntax), "name" for an ordinary scalar. Round-trips
+// via loadExprSource() the same way every scalar-only function already
+// does (fn.js's parseSignature reads this same "name: number[]" syntax
+// back in) -- confirmed with an actual print -> reparse ->
+// deepStrictEqual, not just assumed. NOT round-trippable through the
+// bare fn`...` tag directly, but that's true of every function this
+// emitter prints, array-typed or not: this always prints the "fn "
+// signature prefix (see formatFunction's own comment below), which only
+// loadExprSource()'s requireExportKeyword mode recognizes -- the bare
+// tag treats "fn" as just another identifier, per fn.js's own header
+// comment.
 function paramList(fn) {
     return fn.params.map((p) => (fn.paramTypes?.[p] === "number[]" ? `${p}: number[]` : p)).join(", ");
 }

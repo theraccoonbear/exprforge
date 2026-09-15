@@ -108,11 +108,18 @@ function loadExprSource(source, label = "loadExprSource()", registry = undefined
         // definitions in this same source) PLUS every macro/extern
         // registered in `registry` (expandMacros merges both -- see
         // macros.js). `raw` carries an extra `exported` field (see
-        // fn.js's parseProgram) that expandMacros' own fn-def branch
-        // ignores -- it only ever reads/returns name/params/body, so
-        // `expanded` below comes back with exactly those three keys
-        // regardless.
+        // fn.js's parseProgram) -- expandMacros' own fn-def branch
+        // preserves every field on `raw` it doesn't itself recompute
+        // (see its own comment: this is what lets paramTypes survive
+        // expansion), which means `exported` rides along into `expanded`
+        // too, unlike before that preservation existed. Stripped here
+        // rather than left to leak into what this function hands back:
+        // `exported` is parsing metadata this loop itself already
+        // consumed (the `if (raw.exported)` check below), not something
+        // a caller of loadExprSource()/loadExpr() should ever see on a
+        // {name, params, body[, paramTypes]} definition.
         const expanded = expandMacros(raw, fileRegistry, registry);
+        delete expanded.exported;
         if (raw.exported) {
             defs[raw.name] = expanded;
         }
