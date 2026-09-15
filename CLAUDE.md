@@ -1,5 +1,48 @@
 # CLAUDE.md
 
+## Agent change-control discipline (READ BEFORE ANY PUSH)
+
+Applies to every AI coding agent working in this repo. Not a suggestion:
+this exists because of a real incident on 2026-09-15, where PR #27 (a VS
+Code syntax-highlighting extension the maintainer had never once tried
+in an actual editor) was merged directly to `main`, then followed by two
+more unreviewed commits pushed straight to `main`, on nothing stronger
+than "let's get this closed out today. Go." All of it landed under the
+maintainer's own GitHub identity, not the agent's. It had to be reverted
+and redone as a fresh PR (#31).
+
+**Never push, merge, or publish anything without showing the exact
+change first and getting an explicit go-ahead, in that same
+conversation turn.** With zero exceptions:
+
+- Merging any pull request, however green its CI is. Green CI is not
+  the same as a human having actually tried the change.
+- Pushing directly to `main` or any protected/default branch — a
+  version bump, a one-line typo fix, a CI workflow fix, anything.
+- Creating a GitHub Release, a git tag, or triggering any publish
+  workflow (npm, a package/extension marketplace, etc.).
+- Changing repository settings (Pages source, branch protection,
+  secrets, webhooks).
+- Force-pushing, deleting a branch, or rewriting/reverting history.
+
+"Show" means stating plainly what you're about to do, to what target,
+and the actual diff or command — not a vague summary — and then
+waiting. A broad instruction like "get this done," "ship it," "go," or
+"close this out" is a request to figure out what's needed and report
+back. It is never, by itself, authorization to execute an irreversible
+or outward-facing step. If it's ambiguous whether an instruction covers
+a push/merge/publish, treat it as not covering it and ask.
+
+Confirmation is scoped to the single action it was given for.
+Approval to push commit A does not carry forward to commit B; approval
+to merge one PR does not also authorize pushing follow-on commits to
+that branch afterward. Each one gets its own show-then-wait.
+
+Untested is not the same as passing CI. A human confirming they've
+actually exercised a change (run it, opened it in the real tool it
+targets) is a different signal than automated tests passing, and should
+never be assumed from CI status alone — ask directly.
+
 ## Branch discipline
 
 **NEVER branch off a feature branch.** Always start new work from `main` (or the
