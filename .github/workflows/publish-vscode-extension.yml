@@ -1,0 +1,72 @@
+name: Publish VS Code extension
+
+# vscode-extension/ is versioned independently from the root exprforge
+# npm package (see its own package.json), so it gets its own release
+# train -- a GitHub Release tagged "vscode-v<version>" (e.g.
+# "vscode-v0.1.0"), distinct from the npm package's plain "v<version>"
+# tags publish.yml reacts to. Fires only on an explicit Release, same
+# reasoning as publish.yml: publishing is always a deliberate action,
+# never a side effect of pushing a commit or bumping a version number.
+#
+# Publishes to both the VS Code Marketplace (vsce) and Open VSX (ovsx,
+# what VSCodium and other non-Microsoft-branded editors use) -- see
+# vscode-extension/README.md. Needs a VSCE_PAT repo secret to publish to
+# the Marketplace at all; OVSX_PAT is optional -- that step is skipped
+# (not failed) when it isn't set, so Marketplace-only publishing works
+# without ever configuring Open VSX. One-time setup required before this
+# can succeed: a "theraccoonbear" publisher registered at
+# marketplace.visualstudio.com/manage (VSCE_PAT is an Azure DevOps
+# Personal Access Token with Marketplace "Manage" scope), and optionally
+# a namespace/token at open-vsx.org for OVSX_PAT.
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    if: startsWith(github.event.release.tag_name, 'vscode-v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: vscode-extension/package-lock.json
+      # The release tag (e.g. "vscode-v0.1.0") must match
+      # vscode-extension/package.json's version exactly, so a forgotten
+      # version bump fails loudly here instead of publishing the wrong
+      # code under the wrong number -- same reasoning as publish.yml's
+      # own check for the npm package.
+      - name: Verify release tag matches vscode-extension/package.json version
+        run: |
+          TAG="${GITHUB_REF_NAME#vscode-v}"
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          if [ "$TAG" != "$PKG_VERSION" ]; then
+            echo "Release tag $GITHUB_REF_NAME does not match vscode-extension/package.json version $PKG_VERSION" >&2
+            exit 1
+          fi
+        working-directory: vscode-extension
+      - run: npm ci
+        working-directory: vscode-extension
+      # Also runs via `npm test` above being a prerequisite in spirit,
+      # but a named step here gives a clear, separately-attributed CI
+      # failure if it's the grammar tests (not the publish itself) that
+      # break -- same reasoning as publish.yml's own separate `npm test`
+      # step.
+      - run: npm test
+        working-directory: vscode-extension
+      - name: Publish to VS Code Marketplace
+        run: npx vsce publish --pat "$VSCE_PAT"
+        working-directory: vscode-extension
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+      - name: Publish to Open VSX
+        if: ${{ secrets.OVSX_PAT != '' }}
+        run: npx ovsx publish --pat "$OVSX_PAT"
+        working-directory: vscode-extension
+        env:
+          OVSX_PAT: ${{ secrets.OVSX_PAT }}

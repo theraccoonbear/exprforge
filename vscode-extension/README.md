@@ -27,8 +27,35 @@ To review a snapshot change (a deliberate grammar update, not a regression): `np
 Not yet on the Marketplace or Open VSX. Package and side-load:
 
 ```
-npx @vscode/vsce package
+npm run package
 code --install-extension exprforge-syntax-0.1.0.vsix
 ```
 
 VSCodium: same `.vsix`, same install command (`codium` in place of `code`) -- same OSS core, only the distribution channel differs.
+
+## Publishing (maintainers)
+
+Tagged releases are what actually ship this -- pushing a commit or
+bumping the version number in `package.json` publishes nothing by
+itself. `.github/workflows/publish-vscode-extension.yml` fires on a
+GitHub Release tagged `vscode-v<version>` (e.g. `vscode-v0.1.0`,
+distinct from the root npm package's plain `v<version>` tags, since this
+extension is versioned independently), verifies that tag matches this
+directory's `package.json` version, runs the grammar tests as a gate,
+then publishes to the VS Code Marketplace (`vsce`) and, if configured,
+Open VSX (`ovsx`) -- what VSCodium and other non-Microsoft-branded
+editors install from.
+
+One-time setup before that workflow can succeed:
+
+- A `theraccoonbear` publisher registered at
+  [marketplace.visualstudio.com/manage](https://marketplace.visualstudio.com/manage),
+  and a `VSCE_PAT` repo secret: an Azure DevOps Personal Access Token
+  with Marketplace "Manage" scope.
+- Optionally, a namespace + access token at [open-vsx.org](https://open-vsx.org)
+  as an `OVSX_PAT` repo secret -- that publish step is skipped (not
+  failed) when this isn't set, so Marketplace-only publishing works
+  without ever touching Open VSX.
+
+Local dry run of packaging alone (no publish, no secrets needed):
+`npm run package`.
