@@ -1,6 +1,0 @@
-.vscodeignore
-.gitignore
-node_modules/**
-fixtures/**
-package-lock.json
-*.vsix

@@ -30,7 +30,3 @@ coverage/
 *.swp
 .vscode/
 .idea/
-
-# Packaged VS Code extension output (vscode-extension/) -- built on
-# demand via `npx @vscode/vsce package`, not committed.
-*.vsix
