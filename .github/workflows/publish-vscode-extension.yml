@@ -1,0 +1,73 @@
+name: Publish VS Code extension
+
+# Fully automatic: publishes whenever vscode-extension/package.json's
+# version actually changes on a push to main. No separate release/tag
+# step -- bumping the version and merging a PR IS the release process.
+# Skips cleanly (not a failure) when vscode-extension/ changed but the
+# version didn't, e.g. a grammar tweak or doc fix landing without a
+# version bump, so this can react to every push that touches the
+# extension without retrying a publish that's already live.
+#
+# Open VSX only, deliberately -- not the VS Code Marketplace. See
+# vscode-extension/README.md's "Publishing (maintainers)" section and
+# docs/editor-support-spec.md for the full reasoning; short version:
+# generating the Marketplace's publish token (VSCE_PAT) requires an
+# Azure DevOps organization, which as of 2026 requires an active Azure
+# subscription (a card on file, even though nothing is charged) just to
+# create a token for publishing a free extension. Open VSX has no such
+# requirement. Needs an OVSX_PAT repo secret.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "vscode-extension/**"
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: vscode-extension/package-lock.json
+      # Only actually publish when the version changed in THIS push --
+      # otherwise every grammar tweak or doc fix under vscode-extension/
+      # would retry publishing a version already live, and fail loudly
+      # every time (ovsx refuses to republish an existing version).
+      # Compares against the pre-push commit (github.event.before), not
+      # against whatever's currently live on Open VSX, so this works
+      # correctly even before the very first publish.
+      - name: Check whether package.json's version changed
+        id: version_check
+        run: |
+          NEW_VERSION=$(jq -r '.version' package.json)
+          OLD_VERSION=$(git show "${{ github.event.before }}:vscode-extension/package.json" 2>/dev/null | jq -r '.version // ""')
+          echo "old version: $OLD_VERSION"
+          echo "new version: $NEW_VERSION"
+          if [ "$NEW_VERSION" != "$OLD_VERSION" ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+        working-directory: vscode-extension
+      - if: steps.version_check.outputs.changed == 'true'
+        run: npm ci
+        working-directory: vscode-extension
+      # Hard gate before publish, same reasoning as publish.yml's own
+      # separate `npm test` step for the root npm package.
+      - if: steps.version_check.outputs.changed == 'true'
+        run: npm test
+        working-directory: vscode-extension
+      - name: Publish to Open VSX
+        if: steps.version_check.outputs.changed == 'true'
+        run: npx ovsx publish --pat "$OVSX_PAT"
+        working-directory: vscode-extension
+        env:
+          OVSX_PAT: ${{ secrets.OVSX_PAT }}

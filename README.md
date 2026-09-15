@@ -20,6 +20,7 @@
 [![Scheme](https://github.com/theraccoonbear/exprforge/actions/workflows/test-scheme.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test-scheme.yml)
 [![COBOL](https://github.com/theraccoonbear/exprforge/actions/workflows/test-cobol.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test-cobol.yml)
 [![Test Coverage](https://github.com/theraccoonbear/exprforge/actions/workflows/test-coverage.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test-coverage.yml)
+[![VS Code Syntax](https://github.com/theraccoonbear/exprforge/actions/workflows/test-vscode-syntax.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test-vscode-syntax.yml)
 
 ## Brief
 
@@ -41,6 +42,9 @@ Every open pull request also gets its own live preview of the
 playground, deployed automatically to
 `https://theraccoonbear.github.io/exprforge/pr-<N>/` and linked in a
 comment on the PR (see `.github/workflows/deploy-pr-preview.yml`).
+
+Writing `.expr`/`.fn` in your own editor? See [Editor support](#editor-support)
+below for real VS Code/VSCodium syntax highlighting.
 
 ## Motivation
 
@@ -857,6 +861,26 @@ works: `` fn`fn(x): return x * 2;` `` parses as a function named `fn`,
 unaffected, since a *single* `` fn`...` `` call never runs in this
 stricter mode at all — see "Loading a `.expr` file" below for what the
 two keywords mean and why the keyword is mandatory there specifically.
+
+### Editor support
+
+[`vscode-extension/`](vscode-extension/) is a real VS Code/VSCodium
+extension (same OSS core) providing syntax highlighting for this
+grammar: standalone `.expr`/`.fn` files, and, the more common case,
+`` expr`...` ``/`` fn`...` `` tagged templates highlighted inline inside
+`.js`/`.ts` source, with `${...}` interpolation switching back to real
+JS/TS highlighting for its contents. Not a second approximation of the
+grammar: its TextMate patterns mirror `expr.js`'s own tokenizer
+rule-for-rule, the same source of truth the playground's own CodeMirror
+mode already follows. Highlighting only, no diagnostics yet (see that
+directory's own README for what a real parser-backed language server
+would add, and why it's a separate, larger effort).
+
+Published on [Open VSX](https://open-vsx.org) only, not the Microsoft
+Marketplace, by deliberate choice: VSCodium and other open-source VS
+Code forks install from it the normal way; official VS Code users need
+to manually download and side-load the `.vsix`. See
+`vscode-extension/README.md`'s "Distribution" section for why.
 
 ## Printing an AST back out, and a native evaluator
 

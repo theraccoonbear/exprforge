@@ -1,0 +1,66 @@
+{
+  "name": "exprforge-syntax",
+  "displayName": "ExprForge fn/expr Syntax",
+  "description": "Syntax highlighting for exprforge's fn`...`/expr`...` grammar -- standalone .expr/.fn files, and inline expr`...`/fn`...` tagged templates inside JS/TS.",
+  "version": "0.1.0",
+  "publisher": "DS1930",
+  "license": "MIT",
+  "icon": "icon.png",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/theraccoonbear/exprforge.git",
+    "directory": "vscode-extension"
+  },
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "exprforge",
+        "aliases": [
+          "ExprForge",
+          "exprforge"
+        ],
+        "extensions": [
+          ".expr",
+          ".fn"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "exprforge",
+        "scopeName": "source.exprforge",
+        "path": "./syntaxes/exprforge.tmLanguage.json"
+      },
+      {
+        "scopeName": "inline.exprforge",
+        "path": "./syntaxes/exprforge.injection.json",
+        "injectTo": [
+          "source.js",
+          "source.jsx",
+          "source.ts",
+          "source.tsx"
+        ]
+      }
+    ]
+  },
+  "scripts": {
+    "test": "npm run test:standalone && npm run test:injection",
+    "test:standalone": "vscode-tmgrammar-snap -s source.exprforge -g syntaxes/exprforge.tmLanguage.json \"fixtures/*.expr\"",
+    "test:injection": "vscode-tmgrammar-snap -s source.ts -g node_modules/tm-grammars/grammars/typescript.json -g node_modules/tm-grammars/grammars/javascript.json -g syntaxes/exprforge.tmLanguage.json -g syntaxes/exprforge.injection.json \"fixtures/*.ts\"",
+    "package": "vsce package",
+    "publish:ovsx": "ovsx publish"
+  },
+  "devDependencies": {
+    "@vscode/vsce": "^3.2.1",
+    "ovsx": "^0.10.1",
+    "tm-grammars": "^1.32.5",
+    "vscode-tmgrammar-test": "^0.1.3"
+  }
+}

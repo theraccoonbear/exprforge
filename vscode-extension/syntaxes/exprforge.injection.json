@@ -1,0 +1,44 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "ExprForge (inline)",
+  "scopeName": "inline.exprforge",
+  "injectionSelector": "L:source.js -comment -string, L:source.jsx -comment -string, L:source.ts -comment -string, L:source.tsx -comment -string",
+  "comment": "Phase 1b, per docs/editor-support-spec.md: this is where fn`...`/expr`...` is actually authored day-to-day -- a tagged-template injection, same pattern VS Code's own graphql/styled-components/sql extensions use. Depends on exprforge.tmLanguage.json's own patterns (source.exprforge, included below), not a duplicate grammar. `${...}` interpolation switches back to the HOST language's own grammar for its contents (a real spliced-in Node or JS value, see expr.js's own header comment on HOLE tokens) -- it is deliberately NOT exprforge grammar in there.",
+  "patterns": [
+    { "include": "#exprforge-template" }
+  ],
+  "repository": {
+    "exprforge-template": {
+      "comment": "Matches `expr` or `fn` immediately followed by a backtick -- the exact same 'called as a tagged template' shape expr.js's/fn.js's own header comments describe. The tag identifier itself is captured as a function-name-ish scope so it reads as 'this is the exprforge tag', not a a variable.",
+      "begin": "\\b(expr|fn)(`)",
+      "beginCaptures": {
+        "1": { "name": "entity.name.function.tagged-template.exprforge" },
+        "2": { "name": "punctuation.definition.string.template.begin.exprforge" }
+      },
+      "end": "(`)",
+      "endCaptures": {
+        "1": { "name": "punctuation.definition.string.template.end.exprforge" }
+      },
+      "name": "meta.embedded.block.exprforge",
+      "patterns": [
+        { "include": "#interpolation" },
+        { "include": "source.exprforge" }
+      ]
+    },
+    "interpolation": {
+      "comment": "${...} splices in a real host-language value (an existing AST Node, or a plain number auto-wrapped via num() -- see expr.js's holeToNode) -- switches back to the actual JS/TS grammar for its contents, not exprforge's.",
+      "begin": "\\$\\{",
+      "beginCaptures": {
+        "0": { "name": "punctuation.definition.template-expression.begin.exprforge" }
+      },
+      "end": "\\}",
+      "endCaptures": {
+        "0": { "name": "punctuation.definition.template-expression.end.exprforge" }
+      },
+      "name": "meta.embedded.line.js",
+      "patterns": [
+        { "include": "source.js" }
+      ]
+    }
+  }
+}

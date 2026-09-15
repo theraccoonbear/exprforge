@@ -30,3 +30,14 @@ coverage/
 *.swp
 .vscode/
 .idea/
+
+# Exception: vscode-extension/'s own launch.json is project
+# infrastructure (how you F5-run/debug the extension itself), not
+# personal editor preference -- needs to be committed, unlike every
+# other .vscode/ dir in this repo.
+!vscode-extension/.vscode/
+!vscode-extension/.vscode/launch.json
+
+# Packaged VS Code extension output (vscode-extension/) -- built on
+# demand via `npx @vscode/vsce package`, not committed.
+*.vsix
