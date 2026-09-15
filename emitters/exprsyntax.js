@@ -29,8 +29,21 @@ class ExprSyntaxEmitter extends Emitter {
             const args = node.args.map((a) => this.emitExpr(a));
             return `${node.name}(${args.join(", ")})`;
         }
+        if (node.type === "index") {
+            return `${this.emitExpr(node.target)}[${this.emitExpr(node.at)}]`;
+        }
         return super.emitExpr(node);
     }
+}
+
+// Prints "name: number[]" for an array-typed param (matching the design
+// doc's own example syntax), "name" for an ordinary scalar. Print-only:
+// expr.js's parser doesn't read this type-annotation syntax back in yet
+// (see docs/array-index-primitives.md), so this emitter's output isn't
+// yet round-trippable for a function with an array parameter, unlike
+// every scalar-only function it already handles.
+function paramList(fn) {
+    return fn.params.map((p) => (fn.paramTypes?.[p] === "number[]" ? `${p}: number[]` : p)).join(", ");
 }
 
 function letLines(letBindings) {
@@ -101,7 +114,7 @@ const emitter = new ExprSyntaxEmitter({
     // AST comes out reading the same way automatically.
     formatFunction: (fn, bodyStr, letBindings = []) => {
         const body = [...letLines(letBindings), `return ${bodyStr};`].map((line) => `  ${line}`);
-        return [`fn ${fn.name}(${fn.params.join(", ")}):`, ...body].join("\n") + "\n";
+        return [`fn ${fn.name}(${paramList(fn)}):`, ...body].join("\n") + "\n";
     },
     // Each output field gets its own line (4 spaces -- one level deeper
     // than "return {" itself, which sits at the usual 2), rather than
@@ -119,7 +132,7 @@ const emitter = new ExprSyntaxEmitter({
             return `    ${name}: ${valueStr}${comma}`;
         });
         const lines = [
-            `fn ${fn.name}(${fn.params.join(", ")}):`,
+            `fn ${fn.name}(${paramList(fn)}):`,
             ...letLines(letBindings).map((line) => `  ${line}`),
             "  return {",
             ...fieldLines,

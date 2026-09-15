@@ -62,6 +62,13 @@ const emitter = new Emitter({
         ceil: ([x]) => `(-INT(-(${x})))`,
         trunc: ([x]) => `(SGN(${x}) * INT(ABS(${x})))`,
         hypot: ([a, b]) => `SQR((${a}) * (${a}) + (${b}) * (${b}))`,
+        // QB64's MOD operator truncates both operands to LONG first --
+        // wrong for a general modulo, so this is built from INT (already
+        // confirmed to mean floor(), see the floor: template above) as a
+        // real floating floor-mod instead of relying on MOD's integer
+        // semantics/sign convention at all.
+        wrapIndex: ([i, m]) => `((${i}) - (${m}) * INT((${i}) / (${m})))`,
+        clampIndex: ([i, lo, hi]) => `_MAX(${lo}, _MIN(${hi}, ${i}))`,
     },
     // QB64 has no ternary operator. Comparison operators return -1 (true)
     // or 0 (false), so the algebraically equivalent expression is:
@@ -76,9 +83,28 @@ const emitter = new Emitter({
         const cond = `(${L} ${condNode.op} ${R})`;
         return `((-1# * ${thenStr}) * ${cond} + ${elseStr} * (1# + ${cond}))`;
     },
+    // Array subscripts accept a numeric expression directly (QB64 rounds
+    // to the nearest integer), so no explicit cast is needed here the
+    // way most other targets need one -- but see the "index origin" note
+    // on array parameters below, which is the real risk for this target.
+    emitIndex: function (targetNode, atNode) {
+        return `${this.emitExpr(targetNode)}(${this.emitExpr(atNode)})`;
+    },
     formatFunction: (fn, body, letBindings = []) => {
         checkReservedNames([fn.name, ...fn.params, ...letBindings.map((b) => b.name)]);
-        const params = fn.params.map((p) => `${p} AS DOUBLE`).join(", ");
+        // Array param: bare `()` -- QB64's dynamic-array-parameter syntax,
+        // passed by reference, matching what spline_path.bi already does
+        // by hand (`seaWps() As E3D_Coord`). Deliberately NOT reading
+        // LBOUND/UBOUND anywhere in this emitter -- see
+        // docs/array-index-primitives.md's "Index origin is a real,
+        // unresolved risk" note: this project could not confirm LBOUND is
+        // reliable at this call boundary, so generated code assumes the
+        // caller passes an explicitly 0-based array
+        // (DIM arr(0 TO n-1) AS DOUBLE) regardless of any OPTION BASE in
+        // effect elsewhere in the caller's program. That's a documented
+        // calling-convention requirement, not something this emitter can
+        // verify or enforce.
+        const params = fn.params.map((p) => `${p}${fn.paramTypes?.[p] === "number[]" ? "()" : ""} AS DOUBLE`).join(", ");
         // NOT `Dim name# AS DOUBLE`: combining the # sigil with an AS
         // DOUBLE clause on the same DIM is a syntax error in QB64
         // ("DIM: Expected ,") -- confirmed against a real compiler. Every
@@ -103,7 +129,7 @@ const emitter = new Emitter({
     formatSuite: (fn, outputStrs, letBindings = []) => {
         const outputNames = Object.keys(outputStrs);
         checkReservedNames([fn.name, ...fn.params, ...outputNames, ...letBindings.map((b) => b.name)]);
-        const inParams = fn.params.map((p) => `${p} AS DOUBLE`);
+        const inParams = fn.params.map((p) => `${p}${fn.paramTypes?.[p] === "number[]" ? "()" : ""} AS DOUBLE`);
         const outParams = outputNames.map((n) => `${n} AS DOUBLE`);
         // NOT `Dim name# AS DOUBLE`: combining the # sigil with an AS
         // DOUBLE clause on the same DIM is a syntax error in QB64

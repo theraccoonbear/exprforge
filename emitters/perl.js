@@ -49,6 +49,26 @@ const emitter = new PerlEmitter({
         // directly. Zero-aware by construction (see Go's/Rust's sign()
         // history in this project for what happens when it isn't).
         sign: ([x]) => `(${x} > 0 ? 1.0 : (${x} < 0 ? -1.0 : 0.0))`,
+        // Perl's % on non-integer operands has enough real-world edge-
+        // case ambiguity (see perlop's own caveats) that this uses the
+        // same self-correcting double-application wrap as the definitely-
+        // sign-of-dividend languages, rather than trusting a specific
+        // convention from memory alone.
+        wrapIndex: ([i, m]) => `(((${i} % ${m}) + ${m}) % ${m})`,
+        clampIndex: ([i, lo, hi]) => `List::Util::max(${lo}, List::Util::min(${hi}, ${i}))`,
+    },
+    // Perl subs flatten every argument into one flat @_ list, so a real
+    // array positionally among other scalars would lose its boundary --
+    // an array-typed param is passed as an ARRAYREF (\@caller_array) by
+    // convention, same as any Perl sub taking an array needs to. No
+    // formatFunction change needed: `my ($p) = @_;` already captures a
+    // scalar value correctly whether that value is a plain number or a
+    // reference -- Perl's dynamic typing doesn't distinguish here. Only
+    // indexing needs to know: `$ref->[i]`, arrow-dereference syntax, not
+    // plain `$ref[i]` (which would index a DIFFERENT, unrelated package
+    // variable @ref).
+    emitIndex: function (targetNode, atNode) {
+        return `${this.emitExpr(targetNode)}->[int(${this.emitExpr(atNode)})]`;
     },
     // Perl's ?: is exactly base.js's default ternary -- no override needed.
     formatFunction: (fn, body, letBindings = []) => {

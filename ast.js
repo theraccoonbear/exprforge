@@ -12,6 +12,27 @@
 //   { type: "select", cond: CmpNode, then: Node, else: Node }
 //   { type: "outputs", fields: { [name: string]: Node } }
 //   { type: "field",   target: Node, field: string }
+//   { type: "index",   target: Node, at: Node }
+//
+// "index" is fixed-position array access (arr[i]) -- NOT iteration, NOT a
+// dynamic-length loop; see docs/array-index-primitives.md for the full
+// design rationale and why this stays inside the "expression tree, no
+// statements" model. `target` is expected to resolve to an array-typed
+// value (see the {name, params, body} shape's optional `paramTypes` field
+// below); indexing into anything else is caught at evaluate()/emit time,
+// not here -- same "defer semantic validation to the consumer" precedent
+// `call()`/`field()` already follow for names this layer can't itself
+// verify.
+//
+// A {name, params, body} function definition's `params` stays plain
+// string[] as always -- NOT restructured to carry type info inline, since
+// that would break every existing `fn.params.map(...)`/`.join(...)` call
+// site across this codebase for a feature only some functions use. An
+// array-typed parameter is instead declared via an OPTIONAL sibling field,
+// `paramTypes: { [paramName]: "number[]" }`, present only on functions
+// that actually have one -- absent (or omitted entirely) means "every
+// param is a plain scalar", the same as every function defined before
+// this existed.
 //
 // "field" is postfix "." access (e.g. b.rx) — parser sugar produced only
 // by expr.js/fn.js's grammar, and eliminated by macros.js's
@@ -184,6 +205,16 @@ function field(target, name) {
     return { type: "field", target, field: name };
 }
 
+// Fixed-position array access (arr[i]) — see the "index" node-shape
+// comment at the top of this file. `target` is typically v(paramName)
+// where paramName is declared array-typed via the function definition's
+// `paramTypes` field, but that's checked by evaluate()/each emitter, not
+// here — this builder just assembles the node, same "validate the parts
+// I own, defer the rest" split every other builder above follows.
+function idx(target, at) {
+    return { type: "index", target, at };
+}
+
 // The prefix macros.js's own gensym'd internal let-names always start
 // with (see substituteAndRename's "let" case there) — defined HERE, not
 // there, specifically so collectLets below can recognize a collision
@@ -228,6 +259,7 @@ function collectLets(node) {
             }
             return { ...n, fields };
         }
+        if (n.type === "index") return { ...n, target: walk(n.target), at: walk(n.at) };
         return n; // num, var
     }
 
@@ -287,6 +319,9 @@ function collectVarRefs(node, refs = new Set()) {
         collectVarRefs(node.body, refs);
     } else if (node.type === "outputs") {
         for (const fieldNode of Object.values(node.fields)) collectVarRefs(fieldNode, refs);
+    } else if (node.type === "index") {
+        collectVarRefs(node.target, refs);
+        collectVarRefs(node.at, refs);
     }
     // num: nothing to add.
     return refs;
@@ -345,6 +380,34 @@ function checkUnboundVars(fn) {
     assertSafeIdentifier(fn.name, "fn.name");
     for (const p of fn.params) assertSafeIdentifier(p, "fn.params");
 
+    // paramTypes is optional (see the "index" node-shape comment at the
+    // top of this file) -- validated here, the one place every real
+    // consumption path already runs unconditionally, same as every other
+    // check in this function. Every key must be an actual declared
+    // param (a typo'd key would otherwise silently do nothing at all,
+    // in every target, forever), and "number[]" is the only value
+    // supported so far -- see the design doc for why struct-typed array
+    // elements are explicitly out of scope for now.
+    if (fn.paramTypes !== undefined) {
+        if (typeof fn.paramTypes !== "object" || fn.paramTypes === null || Array.isArray(fn.paramTypes)) {
+            throw new Error(`checkUnboundVars: "${fn.name}".paramTypes must be a plain {paramName: type} object`);
+        }
+        for (const [name, type] of Object.entries(fn.paramTypes)) {
+            if (!fn.params.includes(name)) {
+                throw new Error(
+                    `checkUnboundVars: "${fn.name}".paramTypes has an entry for "${name}", which isn't one of ` +
+                    `this function's params (${fn.params.length ? fn.params.join(", ") : "none"})`,
+                );
+            }
+            if (type !== "number[]") {
+                throw new Error(
+                    `checkUnboundVars: "${fn.name}".paramTypes["${name}"] is "${type}" -- only "number[]" is ` +
+                    `supported (struct/tuple-typed array elements aren't; see docs/array-index-primitives.md)`,
+                );
+            }
+        }
+    }
+
     const { bindings, body } = collectLets(fn.body);
     const declared = new Set([...fn.params, ...bindings.map((b) => b.name)]);
 
@@ -364,7 +427,7 @@ function checkUnboundVars(fn) {
 }
 
 module.exports = {
-    num, v, bin, call, add, mul, sub, div, neg, letIn, letChain, cmp, select, outputs, field, collectLets,
+    num, v, bin, call, add, mul, sub, div, neg, letIn, letChain, cmp, select, outputs, field, idx, collectLets,
     checkUnboundVars,
     MACRO_GENSYM_PREFIX,
 };

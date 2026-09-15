@@ -34,6 +34,17 @@ const emitter = new Emitter({
         sign: ([x]) => `(if ${x} > 0.0 { 1.0f64 } else if ${x} < 0.0 { -1.0f64 } else { 0.0f64 })`,
         pow: method1("powf"), atan2: method1("atan2"), min: method1("min"),
         max: method1("max"), hypot: method1("hypot"),
+        // f64::rem_euclid is Rust's own stdlib method for exactly this --
+        // always non-negative for a positive divisor, no hand-built
+        // sign-correction needed. f64::clamp is likewise a direct stdlib
+        // match for clampIndex's semantics.
+        wrapIndex: ([i, m]) => `(${i}).rem_euclid(${m})`,
+        clampIndex: ([i, lo, hi]) => `(${i}).clamp(${lo}, ${hi})`,
+    },
+    // Rust slice indexing requires a usize index -- no implicit float
+    // conversion.
+    emitIndex: function (targetNode, atNode) {
+        return `${this.emitExpr(targetNode)}[(${this.emitExpr(atNode)}) as usize]`;
     },
     // Rust has no C-style ?: ternary; `if` is itself an expression instead
     // (`if cond { a } else { b }`), and it's just as short-circuiting.
@@ -43,7 +54,7 @@ const emitter = new Emitter({
         return `(if ${L} ${condNode.op} ${R} { ${thenStr} } else { ${elseStr} })`;
     },
     formatFunction: (fn, body, letBindings = []) => {
-        const params = fn.params.map((p) => `${p}: f64`).join(", ");
+        const params = fn.params.map((p) => `${p}: ${fn.paramTypes?.[p] === "number[]" ? "&[f64]" : "f64"}`).join(", ");
         const lets = letBindings.map(({ name, valueStr }) => `    let ${name}: f64 = ${valueStr};`).join("\n");
         const letsBlock = lets ? lets + "\n" : "";
         // Param/function names come from the AST author (may not be snake_case,
@@ -65,7 +76,7 @@ const emitter = new Emitter({
     // so this emits a small struct alongside the function and constructs it
     // directly — the idiomatic Rust shape for "several named values out."
     formatSuite: (fn, outputStrs, letBindings = []) => {
-        const params = fn.params.map((p) => `${p}: f64`).join(", ");
+        const params = fn.params.map((p) => `${p}: ${fn.paramTypes?.[p] === "number[]" ? "&[f64]" : "f64"}`).join(", ");
         const lets = letBindings.map(({ name, valueStr }) => `    let ${name}: f64 = ${valueStr};`).join("\n");
         const letsBlock = lets ? lets + "\n" : "";
         const outputNames = Object.keys(outputStrs);

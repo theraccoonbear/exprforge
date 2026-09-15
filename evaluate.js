@@ -38,6 +38,11 @@ const CALLS = {
     log2: Math.log2, log10: Math.log10, exp: Math.exp, floor: Math.floor,
     ceil: Math.ceil, round: Math.round, trunc: Math.trunc, sign: Math.sign,
     pow: Math.pow, atan2: Math.atan2, min: Math.min, max: Math.max, hypot: Math.hypot,
+    // See primitives.js's own comment -- ((i % m) + m) % m rather than a
+    // plain `i % m`, so a negative `i` still wraps into [0, m) instead of
+    // JS's sign-of-the-dividend `%` returning a negative result.
+    wrapIndex: (i, m) => ((i % m) + m) % m,
+    clampIndex: (i, lo, hi) => Math.max(lo, Math.min(hi, i)),
 };
 
 // Handles every node type EXCEPT "let"/"outputs" -- those are only ever
@@ -80,6 +85,17 @@ function evalNode(node, env, registry) {
             if (!cmpFn) throw new Error(`evaluate(): unknown cmp op "${node.cond.op}"`);
             const cond = cmpFn(evalNode(node.cond.left, env, registry), evalNode(node.cond.right, env, registry));
             return evalNode(cond ? node.then : node.else, env, registry);
+        }
+        case "index": {
+            const arr = evalNode(node.target, env, registry);
+            if (!Array.isArray(arr)) {
+                throw new Error(`evaluate(): "index" target did not resolve to an array (got ${typeof arr})`);
+            }
+            const at = evalNode(node.at, env, registry);
+            if (!Number.isInteger(at) || at < 0 || at >= arr.length) {
+                throw new Error(`evaluate(): array index ${at} out of bounds (length ${arr.length})`);
+            }
+            return arr[at];
         }
         default:
             throw new Error(

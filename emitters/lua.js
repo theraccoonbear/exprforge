@@ -58,6 +58,21 @@ const emitter = new Emitter({
         sign: ([x]) => `((${x} > 0) and 1.0 or ((${x} < 0) and -1.0 or 0.0))`,
         // No math.hypot in Lua's standard library at any version.
         hypot: ([a, b]) => `math.sqrt((${a}) * (${a}) + (${b}) * (${b}))`,
+        // Lua's % is documented in the reference manual as `a - floor(a/b)*b`
+        // -- floor-mod, same as Python's -- so no sign-correction wrapper
+        // is needed here either.
+        wrapIndex: ([i, m]) => `(${i} % ${m})`,
+        clampIndex: ([i, lo, hi]) => `math.max(${lo}, math.min(${hi}, ${i}))`,
+    },
+    // Lua tables are 1-indexed -- +1 translates this AST's 0-based index
+    // convention at the one point it actually matters (wrapIndex/
+    // clampIndex themselves stay 0-based and portable, see their own
+    // comment). No formatFunction change needed: Lua params carry no
+    // type annotation regardless, and a float key with an integer value
+    // normalizes to match the corresponding integer-keyed element
+    // (standard, documented Lua table behavior).
+    emitIndex: function (targetNode, atNode) {
+        return `${this.emitExpr(targetNode)}[${this.emitExpr(atNode)} + 1]`;
     },
     // Lua has no ?: ternary. `cond and a or b` is the standard idiom --
     // safe here for the same reason sign() above is: every value in this

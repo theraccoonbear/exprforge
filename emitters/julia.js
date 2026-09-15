@@ -35,6 +35,24 @@ const emitter = new Emitter({
         // other target's zero-aware convention already, so no need to
         // build this one by hand (unlike most other emitters here).
         sign: fn1("sign"),
+        // mod() is Julia's floor-mod function (documented: result has the
+        // same sign as the second argument) -- the right one for this,
+        // unlike Julia's `%`/rem() which follows the dividend's sign
+        // instead. clamp() is a direct built-in match for clampIndex.
+        // (Julia arrays are 1-indexed -- that's handled where an "index"
+        // node actually subscripts an array, not here; wrapIndex/
+        // clampIndex stay 0-based and portable like every other target.)
+        wrapIndex: fn2("mod"),
+        clampIndex: ([i, lo, hi]) => `clamp(${i}, ${lo}, ${hi})`,
+    },
+    // Julia arrays are 1-indexed -- +1 at the one point it actually
+    // matters (see wrapIndex's own comment). Indices must be Int, not
+    // Float64 (a float index is a MethodError) -- round(Int, ...) guards
+    // against floating imprecision the same way Scheme's does. No
+    // formatFunction change needed: Julia params carry no type
+    // annotation regardless.
+    emitIndex: function (targetNode, atNode) {
+        return `${this.emitExpr(targetNode)}[round(Int, ${this.emitExpr(atNode)}) + 1]`;
     },
     // Julia's ?: is exactly base.js's default ternary -- no override needed.
     formatFunction: (fn, body, letBindings = []) => {

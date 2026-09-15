@@ -39,6 +39,15 @@ class Emitter {
         this.emitSelectImpl = config.emitSelect
             ? config.emitSelect.bind(this)
             : this._defaultSelect.bind(this);
+        // No sane language-agnostic default exists (every target's array
+        // subscript syntax, and whether it needs an index-origin
+        // translation, differs -- see docs/array-index-primitives.md).
+        // null here means emitExpr's "index" case throws a clear
+        // "not supported for this target" error, same shape formatSuite
+        // already uses for multi-output.
+        this.emitIndexImpl = config.emitIndex
+            ? config.emitIndex.bind(this)
+            : null;
     }
 
     // Default ternary (cond ? a : b) — correct for JS, C, and Java, which
@@ -95,6 +104,12 @@ class Emitter {
                 // somewhere else (e.g. as a plain operand), which isn't
                 // supported: cmp isn't a general boolean expression.
                 throw new Error(`emitter for .${this.ext}: "cmp" is only valid inside a select() — got it elsewhere`);
+            }
+            case "index": {
+                if (!this.emitIndexImpl) {
+                    throw new Error(`emitter for .${this.ext}: array indexing not supported for this target yet`);
+                }
+                return this.emitIndexImpl(node.target, node.at);
             }
             default: {
                 throw new Error(`emitter for .${this.ext}: unknown node type "${node.type}"`);

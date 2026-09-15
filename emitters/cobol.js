@@ -535,6 +535,39 @@ const emitter = new CobolEmitter({
             const xNegOrZeroCase = pool.spill(`FUNCTION ef-cmp-lt(${x}, ${zero}, ${xNegCase}, ${xZeroCase})`);
             return `FUNCTION ef-cmp-gt(${x}, ${zero}, ${atanYX}, ${xNegOrZeroCase})`;
         },
+        // wrapIndex/clampIndex are plain scalar primitives (see
+        // docs/array-index-primitives.md) -- array PARAMETER support
+        // itself is deliberately deferred for this target (see that same
+        // doc's "Deferred, with a real reason" note on GnuCOBOL's
+        // compile-time-fixed OCCURS table size), but these two don't
+        // touch arrays at all, so there's no reason to withhold them.
+        //
+        // Spilled the same way pow/hypot/atan2 already are: FUNCTION MOD
+        // is a genuine GnuCOBOL intrinsic, but this file has ALREADY
+        // confirmed (see the file header) that nesting a call inside
+        // another call's argument is a real, silent-miscompute risk here
+        // -- rather than trust FUNCTION MOD's exact sign convention AND
+        // assume nesting it inside itself is safe (neither verified
+        // against a real compile for this specific shape), every
+        // intermediate result gets its own COMPUTE into a fresh temp
+        // first, same as everywhere else in this file that touches this
+        // risk.
+        wrapIndex: ([iRaw, mRaw]) => {
+            const pool = emitter._pool;
+            const i = pool.spill(iRaw);
+            const m = pool.spill(mRaw);
+            const firstMod = pool.spill(`FUNCTION MOD(${i}, ${m})`);
+            const shifted = pool.spill(`${firstMod} + ${m}`);
+            return `FUNCTION MOD(${shifted}, ${m})`;
+        },
+        clampIndex: ([iRaw, loRaw, hiRaw]) => {
+            const pool = emitter._pool;
+            const i = pool.spill(iRaw);
+            const lo = pool.spill(loRaw);
+            const hi = pool.spill(hiRaw);
+            const innerMin = pool.spill(`FUNCTION MIN(${hi}, ${i})`);
+            return `FUNCTION MAX(${lo}, ${innerMin})`;
+        },
     },
     // See the file header and TempPool above for why this spills into
     // temps instead of nesting inline: a user-defined FUNCTION-ID call

@@ -300,6 +300,12 @@ function substituteAndRename(node, subst, renames) {
             }
             return { ...node, fields };
         }
+        case "index":
+            return {
+                ...node,
+                target: substituteAndRename(node.target, subst, renames),
+                at: substituteAndRename(node.at, subst, renames),
+            };
         default:
             throw new Error(
                 `macros: internal error -- a "${node.type}" node reached substitution; expandMacros() should ` +
@@ -609,6 +615,8 @@ function expandExpr(node, ctx) {
             for (const [name, fieldValue] of Object.entries(node.fields)) fields[name] = expandExpr(fieldValue, ctx);
             return { ...node, fields };
         }
+        case "index":
+            return { ...node, target: expandExpr(node.target, ctx), at: expandExpr(node.at, ctx) };
         default:
             throw new Error(`expandMacros: cannot expand unknown node type "${node.type}"`);
     }
@@ -713,7 +721,14 @@ function expandMacros(fnOrNode, extraRegistry = null, registry = defaultRegistry
     }
     const ctx = { extraRegistry, aliases: new Map(), registry };
     if (isFnDefShape(fnOrNode)) {
-        return { name: fnOrNode.name, params: fnOrNode.params, body: expandBody(fnOrNode.body, ctx) };
+        // ...fnOrNode first, not just {name, params, body}: preserves
+        // paramTypes (see ast.js's "index" node-shape comment) and any
+        // other field a caller attaches to a function definition, rather
+        // than silently dropping anything this function doesn't
+        // explicitly know about. body is still always recomputed after
+        // the spread, since that's the one field this function's whole
+        // job is to replace.
+        return { ...fnOrNode, name: fnOrNode.name, params: fnOrNode.params, body: expandBody(fnOrNode.body, ctx) };
     }
     return expandBody(fnOrNode, ctx);
 }

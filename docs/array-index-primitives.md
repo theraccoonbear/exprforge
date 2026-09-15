@@ -170,6 +170,43 @@ arbitrary structs (`E3D_Coord` and friends) — struct-typed array elements are
 a separably harder problem and aren't needed for the motivating case (see
 Addition 2's point about returning indices, not points).
 
+**Index origin is a real, unresolved risk here, not just a style question**
+(raised directly: does this play nicely with `OPTION BASE`/explicit-bounds
+callers?). Unlike Fortran (below), QB64 gives the callee no way to redeclare
+an array parameter's bounds independent of how the caller actually
+dimensioned it — `arr()` inherits whatever bounds the real argument has.
+Generated code that assumes `arr(0)` is the first element is only correct
+if the caller's array genuinely starts at 0. Tried to confirm this
+empirically (whether `LBOUND(arr)` is reliable enough at this call boundary
+to self-correct via `arr(LBOUND(arr) + i)` instead of assuming 0) —
+couldn't get a QB64PE binary to run headlessly in this sandbox at all (even
+`PRINT "hello"` hangs on GL/display init here), so this is unverified, not
+confirmed either way. Given the existing uncertainty already noted above
+(`UBOUND`/`LBOUND` not guaranteed reliable at this exact call shape),
+the safe choice until someone can actually test this in a real windowed
+environment: **do not rely on `LBOUND` at all**. Document a hard caller
+contract instead, same pattern as "Bounds safety" below — generated QB64
+code requires the caller to pass an explicitly 0-based array
+(`DIM arr(0 TO n-1) AS DOUBLE`), regardless of any `OPTION BASE` in effect
+elsewhere in the caller's program. Passing a 1-based or custom-bound array
+produces silently wrong results; this needs to be a documented calling
+convention, not something ExprForge can transparently guarantee on QB64's
+behalf.
+
+**Fortran, by contrast, has a real escape hatch — confirmed, not assumed.**
+A dummy argument's array bounds can be explicitly redeclared in the
+callee's own signature, independent of how the caller's actual array was
+dimensioned (`real(8), dimension(0:n-1), intent(in) :: arr`) — Fortran's
+argument-association rules only require the total element count to match,
+never the bounds. Verified directly: a caller-side array declared
+`real(8) :: a(1:5)` (1-based), passed to a function whose dummy argument
+redeclares it `dimension(0:n-1)`, correctly read `arr(0)` as the caller's
+*first* element (confirmed with `gfortran`, not just reasoned from the
+standard). So Fortran needs no `+1` translation and no caller-side
+contract at all — it belongs in the same "native, 0-indexed, no
+translation" tier as the languages below, not the 1-indexed tier the
+Motivation section originally assumed before this was checked.
+
 **TypeScript.** Close to free: `formatFunction` in `emitters/typescript.js`
 already builds `${p}: number` per parameter; an array param just needs
 `${p}: number[]` for that one parameter. No length-parameter workaround
@@ -178,15 +215,50 @@ redundant explicit count parameter anyway for signature parity with the QB64
 emission of the same function, so callers don't need per-language-different
 call sites.
 
-**Other 16 emitters (c, cobol, csharp, exprsyntax, fortran, go, java, julia,
-lua, perl, php, python, rust, scheme, zig).** Should not be required to
-support this on day one. Precedent: `formatSuite` in `emitters/base.js`
-already throws a clear "not supported for this target" error
-(`if (!this.formatSuiteImpl) throw ...`) for emitters that don't implement
-multi-output. Array parameters should follow the same pattern — an emitter
-that hasn't implemented array-param lowering throws plainly at generation
-time rather than silently producing wrong code. This keeps the addition
-scoped to the two languages that actually need it right now.
+**Every other registered emitter (c, cobol, csharp, exprsyntax, fortran, go,
+java, julia, lua, perl, php, python, rust, scheme, zig).** Full support is
+the default expectation for any AST-level addition, not an opt-in stretch
+goal for "the languages that need it right now" — an emitter not
+implementing something a new primitive/node type needs is a gap to close,
+not a scope boundary to hide behind. Falling short of that needs a
+profound, specific, documented reason, the same bar this project already
+holds every other cross-language guarantee to (see e.g. `sign()`'s
+zero-handling history, or COBOL's own confirmed nested-FUNCTION-call bug
+below) — "didn't get to it yet" isn't one.
+
+Grouped by what each target actually needs:
+
+- **Native array type, 0-indexed, near-free** (js, ts, python, go, rust,
+  java, csharp, php, perl, scheme, zig, exprsyntax): an array param is
+  just that language's own array/slice/list type; `index` emits as that
+  language's native subscript syntax directly.
+- **Native array type, but 1-indexed** (julia, lua): same as above,
+  except `index`'s emission adds the `+1` translation at the one point
+  it actually matters — `wrapIndex`/`clampIndex` themselves stay 0-based
+  and portable everywhere; only the final subscript expression needs to
+  know its target's index origin.
+- **No self-describing array length; needs array + explicit count**
+  (c, qb64, fortran): same "array, explicit count" parameter lowering
+  QB64 already needed (see above) — C arrays decay to a bare pointer at
+  a function boundary with no length of their own, same underlying
+  limitation as QB64's `UBOUND`. Fortran lands here too, but for a better
+  reason than QB64/C: its dummy-argument bounds can be explicitly
+  redeclared 0-based independent of the caller's own array (confirmed
+  with a real `gfortran` compile, see below) — so it gets the count
+  parameter without QB64's unresolved index-origin risk or C's raw
+  pointer.
+- **Deferred, with a real reason** (cobol): GnuCOBOL's array type
+  (`OCCURS`) requires its element count fixed at compile time in the
+  01-level declaration — a structurally different model from every other
+  target here, where the count is an ordinary runtime parameter. Designing
+  that properly (and, per this project's own standing rule, confirming it
+  against a real `cobc` compile — see this file's extensive existing scar
+  tissue on GnuCOBOL-specific miscompiles) is real, separate work, not a
+  same-afternoon extension of the pattern above. Throws a clear
+  "not supported for this target yet" error (same shape `formatSuite`
+  already uses for an emitter that hasn't implemented multi-output) until
+  that design pass happens — tracked as follow-up work, not abandoned
+  scope.
 
 ## Bounds safety — explicitly not improved
 

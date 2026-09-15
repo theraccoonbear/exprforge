@@ -42,6 +42,19 @@ const emitter = new PhpEmitter({
         // (see Go's/Rust's sign() history in this project for what happens
         // when it isn't).
         sign: ([x]) => `(${x} > 0 ? 1.0 : (${x} < 0 ? -1.0 : 0.0))`,
+        // PHP's % converts both operands to int first (silently
+        // truncating) -- fmod() is the float-preserving equivalent,
+        // sign-of-dividend per its docs, so the double-application wrap
+        // still applies.
+        wrapIndex: ([i, m]) => `(fmod(fmod(${i}, ${m}) + (${m}), ${m}))`,
+        clampIndex: ([i, lo, hi]) => `max(${lo}, min(${hi}, ${i}))`,
+    },
+    // PHP arrays are dynamically typed (no formatFunction change needed
+    // for an array param) but implicitly converting a float array key
+    // emits a deprecation notice in modern PHP -- explicit (int) avoids
+    // that instead of relying on the implicit conversion.
+    emitIndex: function (targetNode, atNode) {
+        return `${this.emitExpr(targetNode)}[(int)(${this.emitExpr(atNode)})]`;
     },
     // PHP's ?: is exactly base.js's default ternary -- no override needed.
     formatFunction: (fn, body, letBindings = []) => {

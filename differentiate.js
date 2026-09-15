@@ -71,6 +71,19 @@ function differentiateRaw(node, varName) {
                 differentiateRaw(node.else, varName),
             );
 
+        // index (array element access, see docs/array-index-primitives.md)
+        // is deliberately not differentiable -- it SELECTS which scalar
+        // to use, it isn't itself a math operation with a derivative. This
+        // is a real case, not an accident of falling through to the
+        // generic default below: the motivating use case for "index"
+        // never needs to differentiate through one, and there's no
+        // meaningful d/dx of "which array element" to begin with.
+        case "index":
+            throw new Error(
+                `differentiate(): "index" (array element access) is not differentiable -- it selects which ` +
+                `scalar to use, not a math operation with a derivative`,
+            );
+
         default:
             throw new Error(
                 `differentiate(): unexpected node type "${node.type}" -- ` +
