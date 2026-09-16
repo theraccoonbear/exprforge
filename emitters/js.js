@@ -48,6 +48,11 @@ const emitter = new Emitter({
     // checking at all, so this is the one guard against a caller passing
     // a plain number where an array was declared.
     typeGuard: (p, fnName) => `if (!Array.isArray(${p})) throw new Error(${JSON.stringify(`${fnName}: "${p}" must be an array`)});`,
+    // Opt-in on top of typeGuard's own opt-in (see emitFunction's
+    // `fn.arrayLengths` doc comment in base.js) -- runs after the type
+    // guard above, so `${p}.length` is always safe to read here.
+    lengthGuard: (p, lenP, fnName) =>
+        `if (${p}.length !== ${lenP}) throw new Error(${JSON.stringify(`${fnName}: "${p}".length must equal "${lenP}"`)});`,
     formatFunction: (fn, body, letBindings = [], guardLines = []) => {
         const guards = guardLines.map((l) => `    ${l}`).join("\n");
         const guardsBlock = guards ? guards + "\n" : "";

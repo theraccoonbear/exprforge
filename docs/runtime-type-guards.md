@@ -1,8 +1,9 @@
 # Runtime type guards for array-typed parameters (`addTypeGuards`)
 
-Status: implemented. Follow-up from #33/#34 (array parameters + `wrapIndex`/
-`clampIndex`) and the comparison-operator/round() audit that followed it —
-filed as #35, implemented here, opt-in, no behavior change unless asked for.
+Status: implemented, including the array-length extension below. Follow-up
+from #33/#34 (array parameters + `wrapIndex`/`clampIndex`) and the
+comparison-operator/round() audit that followed it — filed as #35,
+implemented here, opt-in, no behavior change unless asked for.
 
 ## Motivation
 
@@ -101,14 +102,66 @@ Every one of the 8 targets confirmed directly against a real interpreter
 expected message, a correctly-typed call still returns the right result.
 See `test/runtime-type-guards.test.js`.
 
+## Array length (`fn.arrayLengths`)
+
+A type guard proves "this is an array," not "this is the RIGHT array" —
+by itself it says nothing about a passed array's length matching a
+separately-passed `n`/`m` bound parameter (see #33/#34's own "What this
+doesn't add", and the caveat this section used to end with). ExprForge
+can't verify that relationship on its own — an array parameter and a
+"this many elements" scalar parameter are two independently
+caller-supplied values, and nothing in the AST ties them together — but
+an author who KNOWS the relationship can now say so, and get a real
+runtime check for it, same opt-in spirit as `addTypeGuards` itself:
+
+```js
+const cyclicElemAst = {
+    name: "cyclicElem",
+    params: ["arr", "m", "i"],
+    paramTypes: { arr: "number[]" },
+    arrayLengths: { arr: "m" }, // "arr" is declared to have exactly "m" elements
+    body: idx(v("arr"), call("wrapIndex", v("i"), v("m"))),
+};
+
+emit(cyclicElemAst, "js", undefined, { addTypeGuards: true }).source;
+// function cyclicElem(arr, m, i) {
+//     if (!Array.isArray(arr)) throw new Error("cyclicElem: \"arr\" must be an array");
+//     if (arr.length !== m) throw new Error("cyclicElem: \"arr\".length must equal \"m\"");
+//     return arr[(((i % m) + m) % m)];
+// }
+```
+
+`arrayLengths` only ever emits anything when `addTypeGuards: true` is
+also passed — it's a second, independent opt-in layered on the first,
+not a new always-on behavior. A `lengthGuard` line only appears when
+BOTH `arrayLengths` declares the pairing for that parameter AND the
+named length parameter is a real parameter of the function; a
+typo'd/stale entry is silently a no-op, same "never a surprise" spirit
+as `addTypeGuards` itself, rather than throwing over what's still just
+documentation. Same 8-target availability as `typeGuard`, using each
+target's own length-of-array idiom, checked AFTER the type guard (so
+it's always safe to call): `.length` (JS/TS), `len()` (Python),
+`count()` (PHP), `#` (Lua), `scalar(@$arr)` (Perl — dereferencing the
+arrayref), `length()` (Julia), `(vector-length ...)` (Scheme).
+
+**This is deliberately not a complete fix** — a caller can still pass a
+mismatched array and a WRONG `m` that happens to agree with its actual
+(wrong) length, and every statically-typed target still has no
+portable, general way to query an array's real runtime length at all
+(a raw C pointer, a fixed Fortran `dimension`, a QB64 dynamic array
+whose `LBOUND`/`UBOUND` reliability at this call boundary this project
+already couldn't confirm — see `docs/array-index-primitives.md`), so
+this stays limited to the same 8 dynamic targets `addTypeGuards`
+already covers. It closes the specific, common failure mode (an
+author-declared bound genuinely drifting out of sync with the array
+actually passed) at zero cost when not used, not the general case.
+
+See `test/runtime-type-guards.test.js` for the verification (both the
+static-output tests and a real `new Function(...)` execution proving a
+length mismatch actually throws).
+
 ## What this doesn't solve
 
-- **Array length.** A guard proves "this is an array," not "this is the
-  RIGHT array" — nothing here checks a passed array's length against a
-  separately-passed `n`/`m` parameter (see #33/#34's own "What this
-  doesn't add"). That's a structural limitation of the whole
-  array-parameter design, not something a type guard could fix without a
-  length-carrying array type, a materially larger addition.
 - **Element type.** `Array.isArray([1, "two", null])` is still `true` in
   JS. These guards check array-*shape*, not that every element is
   actually a number — a deliberate scope limit, matching how nothing

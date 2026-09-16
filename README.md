@@ -941,7 +941,41 @@ array-typed parameter at all. See
 [`docs/runtime-type-guards.md`](./docs/runtime-type-guards.md) for the
 full per-language breakdown (Perl's arrayref convention, Scheme's
 expression-bodied-function wrapping, ...) and what this deliberately
-doesn't check (array length, element type).
+doesn't check (element type; array length has its own guard — next).
+
+**Array length is a real, structural gap** in the array-parameter design
+itself — a passed array's length and a separate `n`/`m` bound parameter
+are two independently caller-supplied values, and nothing in the AST
+ties them together (see "Array indexing" above). There's no way for
+ExprForge to catch a genuine mismatch on its own, but an author who
+*knows* the relationship can now say so and get a real check for it —
+`fn.arrayLengths: { arr: "m" }`, same opt-in layered on `addTypeGuards`:
+
+```js
+const cyclicElemAst = {
+    name: "cyclicElem", params: ["arr", "m", "i"],
+    paramTypes: { arr: "number[]" },
+    arrayLengths: { arr: "m" }, // "arr" is declared to have exactly "m" elements
+    body: idx(v("arr"), call("wrapIndex", v("i"), v("m"))),
+};
+
+emit(cyclicElemAst, "js", undefined, { addTypeGuards: true }).source;
+// function cyclicElem(arr, m, i) {
+//     if (!Array.isArray(arr)) throw new Error("cyclicElem: \"arr\" must be an array");
+//     if (arr.length !== m) throw new Error("cyclicElem: \"arr\".length must equal \"m\"");
+//     return arr[(((i % m) + m) % m)];
+// }
+```
+
+Not a complete fix — a caller can still pass a mismatched array *and* a
+wrong `m` that happens to agree with it, and it's limited to the same 8
+dynamic targets `addTypeGuards` already covers (no statically-typed
+target here has a portable, general way to query an array's real
+runtime length). It closes the common case — an author-declared bound
+genuinely drifting out of sync with what's actually passed — at zero
+cost when unused, not the general one. See
+[`docs/runtime-type-guards.md`](./docs/runtime-type-guards.md)'s own
+"Array length" section for the full per-language guard table.
 
 ## Infix expression syntax (`` expr` ` ``)
 

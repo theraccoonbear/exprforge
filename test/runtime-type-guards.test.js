@@ -105,3 +105,75 @@ test("a real wrong-type call actually throws, in the actual JS runtime (not just
     assert.throws(() => mod.exports.cyclicElem(5, 4, 5), /"arr" must be an array/);
     assert.strictEqual(mod.exports.cyclicElem([10, 20, 30, 40], 4, 5), 20);
 });
+
+// --- fn.arrayLengths (the array-length guard extension) -------------------
+//
+// A separate fixture (cyclicElemAst + arrayLengths, not a change to the
+// shared cyclicElemAst import itself) -- keeps every test above, and
+// every OTHER consumer of the plain cyclicElemAst sample (the README's
+// own addTypeGuards example, the playground), on the exact output they
+// already assert/show, unaffected by this additive opt-in.
+const cyclicElemWithLength = { ...cyclicElemAst, arrayLengths: { arr: "m" } };
+
+// Same per-target substring table as DYNAMIC_TARGETS above, but for the
+// length guard specifically -- see docs/runtime-type-guards.md's own
+// "Array length" table for why each one checks what it checks.
+const LENGTH_GUARD_TARGETS = {
+    js: "arr.length !== m",
+    ts: "arr.length !== m",
+    python: "len(arr) != m",
+    php: "count($arr) !== $m",
+    lua: "#arr ~= m",
+    perl: "scalar(@$arr) == $m",
+    julia: "length(arr) != m",
+    scheme: "(vector-length arr) m",
+};
+
+test("arrayLengths has no effect without addTypeGuards, even when declared", () => {
+    for (const lang of Object.keys(LENGTH_GUARD_TARGETS)) {
+        const withoutOpts = emitters[lang].emitFunction(cyclicElemWithLength);
+        const plainCyclicElem = emitters[lang].emitFunction(cyclicElemAst);
+        assert.strictEqual(withoutOpts, plainCyclicElem, `${lang}: arrayLengths alone (no addTypeGuards) should be a no-op`);
+    }
+});
+
+test("addTypeGuards + arrayLengths adds both the type guard AND the length guard, in order", () => {
+    for (const [lang, expectedLengthSubstring] of Object.entries(LENGTH_GUARD_TARGETS)) {
+        const source = emitters[lang].emitFunction(cyclicElemWithLength, undefined, { addTypeGuards: true });
+        const typeGuardSubstring = DYNAMIC_TARGETS[lang];
+        assert.ok(source.includes(typeGuardSubstring), `${lang}: should still include the type guard -- got:\n${source}`);
+        assert.ok(source.includes(expectedLengthSubstring), `${lang}: should include the length guard "${expectedLengthSubstring}" -- got:\n${source}`);
+        assert.ok(
+            source.indexOf(typeGuardSubstring) < source.indexOf(expectedLengthSubstring),
+            `${lang}: type guard should come before the length guard`,
+        );
+    }
+});
+
+test("addTypeGuards without arrayLengths declared doesn't add a length guard", () => {
+    for (const lang of Object.keys(LENGTH_GUARD_TARGETS)) {
+        const source = emitters[lang].emitFunction(cyclicElemAst, undefined, { addTypeGuards: true });
+        const expectedLengthSubstring = LENGTH_GUARD_TARGETS[lang];
+        assert.ok(!source.includes(expectedLengthSubstring), `${lang}: no arrayLengths declared, should have no length guard -- got:\n${source}`);
+    }
+});
+
+test("a stale/typo'd arrayLengths entry (names a non-existent parameter) is silently a no-op, not an error", () => {
+    const staleFixture = { ...cyclicElemAst, arrayLengths: { arr: "notARealParam" } };
+    for (const lang of Object.keys(LENGTH_GUARD_TARGETS)) {
+        const source = emitters[lang].emitFunction(staleFixture, undefined, { addTypeGuards: true });
+        const plainGuarded = emitters[lang].emitFunction(cyclicElemAst, undefined, { addTypeGuards: true });
+        assert.strictEqual(source, plainGuarded, `${lang}: a length param that isn't a real parameter should be ignored, not throw`);
+    }
+});
+
+test("real wrong-length call actually throws, in the actual JS runtime (not just string-checked)", () => {
+    const source = emitters.js.emitFunction(cyclicElemWithLength, undefined, { addTypeGuards: true });
+    const mod = { exports: {} };
+    // eslint-disable-next-line no-new-func -- see the type-only test above.
+    new Function("module", "exports", source)(mod, mod.exports);
+    // arr has 3 elements but m (the claimed length) says 4.
+    assert.throws(() => mod.exports.cyclicElem([10, 20, 30], 4, 5), /"arr"\.length must equal "m"/);
+    // Still works correctly when arr's real length actually matches m.
+    assert.strictEqual(mod.exports.cyclicElem([10, 20, 30, 40], 4, 5), 20);
+});

@@ -165,6 +165,13 @@ const emitter = new SchemeEmitter({
     // (never changing the output at all otherwise).
     typeGuard: (p, fnName) =>
         `(unless (vector? ${p}) (error ${JSON.stringify(`${fnName}: "${p}" must be a vector (array)`)}))`,
+    // Opt-in on top of typeGuard's own opt-in (see emitFunction's
+    // `fn.arrayLengths` doc comment in base.js) -- runs after the type
+    // guard above (both spliced into the same `(begin ...)`, see
+    // formatFunction/formatSuite below), so vector-length is always
+    // safe to call here.
+    lengthGuard: (p, lenP, fnName) =>
+        `(unless (= (vector-length ${p}) ${lenP}) (error ${JSON.stringify(`${fnName}: (vector-length "${p}") must equal "${lenP}"`)}))`,
     formatFunction: (fn, body, letBindings = [], guardLines = []) => {
         checkReservedNames([fn.name, ...fn.params, ...letBindings.map((b) => b.name)]);
         const params = fn.params.join(" ");

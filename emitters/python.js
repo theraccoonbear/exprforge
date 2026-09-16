@@ -101,6 +101,11 @@ const emitter = new Emitter({
     // guard template -- `if not isinstance(arr, list): raise ...`.
     typeGuard: (p, fnName) =>
         `if not isinstance(${p}, list): raise TypeError(${JSON.stringify(`${fnName}: "${p}" must be an array`)})`,
+    // Opt-in on top of typeGuard's own opt-in (see emitFunction's
+    // `fn.arrayLengths` doc comment in base.js) -- runs after the type
+    // guard above, so len(...) is always safe to call here.
+    lengthGuard: (p, lenP, fnName) =>
+        `if len(${p}) != ${lenP}: raise ValueError(${JSON.stringify(`${fnName}: len("${p}") must equal "${lenP}"`)})`,
     formatFunction: (fn, body, letBindings = [], guardLines = []) => {
         const params = fn.params.join(", ");
         const guards = guardLines.map((l) => `    ${l}`).join("\n");

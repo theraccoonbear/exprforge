@@ -45,6 +45,9 @@ const emitter = new Emitter({
     // or a value crossing a JSON/network boundary all bypass it
     // entirely, so this is a real runtime backstop, not a redundant one.
     typeGuard: (p, fnName) => `if (!Array.isArray(${p})) throw new Error(${JSON.stringify(`${fnName}: "${p}" must be an array`)});`,
+    // Same as js.js's own lengthGuard -- see its comment.
+    lengthGuard: (p, lenP, fnName) =>
+        `if (${p}.length !== ${lenP}) throw new Error(${JSON.stringify(`${fnName}: "${p}".length must equal "${lenP}"`)});`,
     formatFunction: (fn, body, letBindings = [], guardLines = []) => {
         const params = fn.params.map((p) => `${p}: ${fn.paramTypes?.[p] === "number[]" ? "number[]" : "number"}`).join(", ");
         const guards = guardLines.map((l) => `    ${l}`).join("\n");

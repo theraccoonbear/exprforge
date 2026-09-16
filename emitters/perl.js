@@ -109,6 +109,13 @@ const emitter = new PerlEmitter({
     // has ref() eq '' (empty string), never 'ARRAY'.
     typeGuard: (p, fnName) =>
         `unless (ref($${p}) eq 'ARRAY') { die ${JSON.stringify(`${fnName}: "${p}" must be an array reference`)}; }`,
+    // Opt-in on top of typeGuard's own opt-in (see emitFunction's
+    // `fn.arrayLengths` doc comment in base.js) -- runs after the type
+    // guard above, so dereferencing $p as an arrayref is always safe
+    // here. scalar(@$p) is Perl's own "count the elements of the array
+    // this reference points to" idiom.
+    lengthGuard: (p, lenP, fnName) =>
+        `unless (scalar(@$${p}) == $${lenP}) { die ${JSON.stringify(`${fnName}: scalar(@{"${p}"}) must equal "${lenP}"`)}; }`,
     formatFunction: (fn, body, letBindings = [], guardLines = []) => {
         const params = fn.params.length ? `    my (${fn.params.map((p) => `$${p}`).join(", ")}) = @_;\n` : "";
         const guards = guardLines.map((l) => `    ${l}`).join("\n");

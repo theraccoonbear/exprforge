@@ -79,6 +79,11 @@ const emitter = new Emitter({
     // template.
     typeGuard: (p, fnName) =>
         `if !(${p} isa AbstractVector); throw(ArgumentError(${JSON.stringify(`${fnName}: "${p}" must be an array`)})); end`,
+    // Opt-in on top of typeGuard's own opt-in (see emitFunction's
+    // `fn.arrayLengths` doc comment in base.js) -- runs after the type
+    // guard above, so length(...) is always safe to call here.
+    lengthGuard: (p, lenP, fnName) =>
+        `if length(${p}) != ${lenP}; throw(ArgumentError(${JSON.stringify(`${fnName}: length("${p}") must equal "${lenP}"`)})); end`,
     formatFunction: (fn, body, letBindings = [], guardLines = []) => {
         const params = fn.params.join(", ");
         const guards = guardLines.map((l) => `    ${l}`).join("\n");

@@ -120,6 +120,11 @@ const emitter = new Emitter({
     // array was expected would already fail loudly at the first
     // arithmetic on an element, just less clearly than this).
     typeGuard: (p, fnName) => `if type(${p}) ~= "table" then error(${JSON.stringify(`${fnName}: "${p}" must be a table (array)`)}) end`,
+    // Opt-in on top of typeGuard's own opt-in (see emitFunction's
+    // `fn.arrayLengths` doc comment in base.js) -- runs after the type
+    // guard above, so "#" (Lua's length operator) is always safe here.
+    lengthGuard: (p, lenP, fnName) =>
+        `if #${p} ~= ${lenP} then error(${JSON.stringify(`${fnName}: "#${p}" must equal "${lenP}"`)}) end`,
     formatFunction: (fn, body, letBindings = [], guardLines = []) => {
         const params = fn.params.join(", ");
         const guards = guardLines.map((l) => `    ${l}`).join("\n");

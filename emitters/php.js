@@ -70,6 +70,11 @@ const emitter = new PhpEmitter({
     // Opt-in only (see emitFunction's `addTypeGuards` and
     // docs/runtime-type-guards.md).
     typeGuard: (p, fnName) => `if (!is_array($${p})) { throw new TypeError(${JSON.stringify(`${fnName}: "${p}" must be an array`)}); }`,
+    // Opt-in on top of typeGuard's own opt-in (see emitFunction's
+    // `fn.arrayLengths` doc comment in base.js) -- runs after the type
+    // guard above, so count(...) is always safe to call here.
+    lengthGuard: (p, lenP, fnName) =>
+        `if (count($${p}) !== $${lenP}) { throw new TypeError(${JSON.stringify(`${fnName}: count("${p}") must equal "${lenP}"`)}); }`,
     formatFunction: (fn, body, letBindings = [], guardLines = []) => {
         const params = fn.params.map((p) => `$${p}`).join(", ");
         const guards = guardLines.map((l) => `    ${l}`).join("\n");
