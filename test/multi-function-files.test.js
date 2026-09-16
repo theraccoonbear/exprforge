@@ -31,7 +31,7 @@ const { execFileSync } = require("node:child_process");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
-const { v, call } = require("../ast.js");
+const { v, num, call, add, sub } = require("../ast.js");
 const emitters = require("../emitters/registry.js");
 
 function hasTool(cmd, args) {
@@ -114,10 +114,29 @@ test("multi-function file: QB64 -- concatenating 2 functions compiles and runs c
 // (PROCEDURE DIVISION USING ...) -- same convention as
 // test/conformance.test.js's own runCobol, a separate driver "mainharness"
 // program CALLs each by name.
+//
+// NOT the shared fn1/fn2 (sqrt/log) every other target's test above uses.
+// Confirmed directly against REAL CI (not local reproduction, which this
+// project already learned the hard way is unreliable for this exact
+// question -- see test/conformance.test.js's own comparisonOps/
+// domainSafety skipTargets comments): compiling two programs that each
+// use a decimal-heavy intrinsic (SQRT, LOG) together hits the same fatal
+// "unknown type name 'cob_decimal'" GnuCOBOL codegen bug already
+// documented and worked around elsewhere in this project -- NOT a
+// regression in the includeHelpers fix this test exists to verify, a
+// separate, pre-existing GnuCOBOL fragility this test accidentally
+// wandered into by picking sqrt/log as its example functions. Plain
+// arithmetic (+/-) never touches that codegen path at all, and still
+// fully exercises CMP_HELPER_SOURCE's own dedup (unconditionally
+// prepended to every COBOL function regardless of whether it uses
+// cmp()/select(), same as every other target's own helper block here) --
+// which is the actual thing this test needs to prove.
+const cobolFn1 = { name: "f1", params: ["x"], body: add(v("x"), num(1)) };
+const cobolFn2 = { name: "f2", params: ["x"], body: sub(v("x"), num(1)) };
 
 test("multi-function file: COBOL -- concatenating 2 programs compiles and runs correctly", { skip: !TOOLS.cobc && "cobc not available" }, () => {
-    const out1 = emitters.cobol.emitFunction(fn1, undefined, { includeHelpers: true });
-    const out2 = emitters.cobol.emitFunction(fn2, undefined, { includeHelpers: false });
+    const out1 = emitters.cobol.emitFunction(cobolFn1, undefined, { includeHelpers: true });
+    const out2 = emitters.cobol.emitFunction(cobolFn2, undefined, { includeHelpers: false });
     const dir = tmpDir("ef-multi-cobol-");
     const fnsPath = path.join(dir, "fns.cob");
     fs.writeFileSync(fnsPath, out1 + "\n" + out2);
@@ -143,8 +162,8 @@ test("multi-function file: COBOL -- concatenating 2 programs compiles and runs c
     const bin = path.join(dir, "bin");
     execFileSync("cobc", ["-x", "-free", "-o", bin, driverPath, fnsPath]);
     const lines = execFileSync(bin, []).toString().trim().split("\n");
-    assertClose(parseFloat(lines[0]), F1_EXPECT, "f1");
-    assertClose(parseFloat(lines[1]), F2_EXPECT, "f2");
+    assertClose(parseFloat(lines[0]), F1_ARG + 1, "f1");
+    assertClose(parseFloat(lines[1]), F2_ARG - 1, "f2");
     fs.rmSync(dir, { recursive: true, force: true });
 });
 
