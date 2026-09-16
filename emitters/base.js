@@ -48,6 +48,16 @@ class Emitter {
         this.emitIndexImpl = config.emitIndex
             ? config.emitIndex.bind(this)
             : null;
+        // Optional, opt-in-only (see emitFunction's `addTypeGuards`):
+        // (paramName, fnName) => one line of runtime-guard code asserting
+        // that array-typed parameter actually holds an array-shaped value
+        // at the call boundary. Only meaningful for targets with no
+        // compile-time enforcement of that -- present on the
+        // dynamically-typed emitters (js/ts/python/php/lua/perl/scheme/
+        // julia), absent (null) everywhere else, since every compiled
+        // target already gets this for free from its own compiler. See
+        // docs/runtime-type-guards.md.
+        this.typeGuardImpl = config.typeGuard || null;
     }
 
     // Default ternary (cond ? a : b) — correct for JS, C, and Java, which
@@ -123,7 +133,22 @@ class Emitter {
     // session instead. Stashed on `this` for emitExpr's "call" case to
     // read, same instance-state pattern emitters/cobol.js's own
     // `this._pool` already established.
-    emitFunction(fn, registry = undefined) {
+    //
+    // `opts.addTypeGuards` (default false): opt-in only, see
+    // docs/runtime-type-guards.md for the full rationale. When true AND
+    // this target declares a `typeGuard` template (see the constructor)
+    // AND `fn.paramTypes` actually has an array-typed entry, one runtime
+    // guard line per array-typed parameter is generated and spliced into
+    // the output by formatFunctionImpl/formatSuiteImpl (both receive it
+    // as a 4th argument, `guardLines: string[]`, defaulting to `[]` for
+    // every target that doesn't consume it -- an extra unused argument
+    // is harmless in JS, so the ~10 compiled-language emitters (which
+    // never declare `typeGuard` and so never receive a non-empty array
+    // here) don't need any change at all to stay correct). No effect
+    // whatsoever for a target with no `typeGuard` template (every
+    // compiled target already gets this from its own compiler) or a
+    // call with no array-typed parameter.
+    emitFunction(fn, registry = undefined, opts = {}) {
         this._registry = registry;
         // Resolves every macro call and field() access into plain
         // arithmetic first -- see macros.js's own header comment. Must
@@ -137,6 +162,12 @@ class Emitter {
         // (a typo'd/forgotten identifier used to silently succeed here,
         // for every target, with no error at all).
         checkUnboundVars(fn);
+        const guardLines =
+            opts.addTypeGuards && this.typeGuardImpl && fn.paramTypes
+                ? Object.keys(fn.paramTypes)
+                      .filter((p) => fn.paramTypes[p] === "number[]")
+                      .map((p) => this.typeGuardImpl(p, fn.name))
+                : [];
         const { bindings, body } = collectLets(fn.body);
         const letBindings = bindings.map(({ name, node }) => ({
             name,
@@ -150,10 +181,10 @@ class Emitter {
             for (const [name, node] of Object.entries(body.fields)) {
                 outputStrs[name] = this.emitExpr(node);
             }
-            return this.formatSuiteImpl(fn, outputStrs, letBindings);
+            return this.formatSuiteImpl(fn, outputStrs, letBindings, guardLines);
         }
         const bodyStr = this.emitExpr(body);
-        return this.formatFunctionImpl(fn, bodyStr, letBindings);
+        return this.formatFunctionImpl(fn, bodyStr, letBindings, guardLines);
     }
 }
 

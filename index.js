@@ -34,15 +34,23 @@ const { roundTieBoundaryAst } = require("./samples/round-tie-demo.js");
  * process-wide default when omitted -- pass a session's own (see
  * createSession() below) to resolve macros/externs registered in that
  * session instead; ordinary callers never need to pass it directly.
+ *
+ * `opts.addTypeGuards` (default false): opt-in runtime guards against an
+ * array-typed parameter being passed a non-array value, for targets with
+ * no compile-time enforcement of that -- see docs/runtime-type-guards.md
+ * for the full rationale and exactly which 8 targets this affects. No
+ * effect on a target with no array-typed parameter, or on a target this
+ * doesn't apply to (every statically-typed target already gets this for
+ * free from its own compiler).
  */
-function emit(fnDef, lang, registry = undefined) {
+function emit(fnDef, lang, registry = undefined, opts = undefined) {
     const emitter = emitters[lang];
     if (!emitter) {
         throw new Error(
             `emit(): no emitter registered for language "${lang}" -- known languages: ${Object.keys(emitters).sort().join(", ")}`,
         );
     }
-    return { ext: emitter.ext, source: emitter.emitFunction(fnDef, registry) };
+    return { ext: emitter.ext, source: emitter.emitFunction(fnDef, registry, opts) };
 }
 
 /**
@@ -56,9 +64,12 @@ function emit(fnDef, lang, registry = undefined) {
  * paying for) emitters you don't need.
  *
  * `registry` -- see emit()'s own doc comment above -- same meaning here,
- * applied to every language in `langs`.
+ * applied to every language in `langs`. `opts` -- see emit()'s own
+ * `addTypeGuards` doc comment -- same meaning here too, applied to every
+ * language in `langs` that supports it (silently ignored by any target
+ * that doesn't -- see docs/runtime-type-guards.md).
  */
-function emitMany(fnDef, langs = Object.keys(emitters), registry = undefined) {
+function emitMany(fnDef, langs = Object.keys(emitters), registry = undefined, opts = undefined) {
     const result = {};
     for (const lang of langs) {
         const emitter = emitters[lang];
@@ -67,7 +78,7 @@ function emitMany(fnDef, langs = Object.keys(emitters), registry = undefined) {
             continue;
         }
         try {
-            result[lang] = { ext: emitter.ext, source: emitter.emitFunction(fnDef, registry), error: null };
+            result[lang] = { ext: emitter.ext, source: emitter.emitFunction(fnDef, registry, opts), error: null };
         } catch (e) {
             result[lang] = { ext: emitter.ext, source: null, error: e instanceof Error ? e.message : String(e) };
         }
@@ -117,8 +128,8 @@ function createSession() {
         loadExtern: (name, def) => loadExtern(name, def, registry),
         expandMacros: (fnOrNode, extraRegistry = null) => expandMacros(fnOrNode, extraRegistry, registry),
         evaluate: (fn, args) => evaluate(fn, args, registry),
-        emit: (fnDef, lang) => emit(fnDef, lang, registry),
-        emitMany: (fnDef, langs = Object.keys(emitters)) => emitMany(fnDef, langs, registry),
+        emit: (fnDef, lang, opts) => emit(fnDef, lang, registry, opts),
+        emitMany: (fnDef, langs = Object.keys(emitters), opts) => emitMany(fnDef, langs, registry, opts),
         loadExpr: (path) => loadExpr(path, registry),
         loadExprSource: (source, label = "loadExprSource()") => loadExprSource(source, label, registry),
     };

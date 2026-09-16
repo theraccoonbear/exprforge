@@ -51,7 +51,14 @@ const emitter = new Emitter({
         sign: ([x]) => `SGN(${x})`,
         min: ([a, b]) => `_MIN(${a}, ${b})`,
         max: ([a, b]) => `_MAX(${a}, ${b})`,
-        round: ([x]) => `_ROUND(${x})`,
+        // _ROUND ties to EVEN ("banker's rounding" -- confirmed against a
+        // real compile: _ROUND(-0.5#) is 0, _ROUND(-1.5#) is -2), NOT
+        // this project's standardized round-half-AWAY-from-zero
+        // convention -- see js.js's own comment and the root README's
+        // "round() at exact .5 boundaries" section. SGN/ABS/INT are the
+        // same primitives this file's own sign:/abs:/floor: entries
+        // already use.
+        round: ([x]) => `(SGN(${x}) * INT(ABS(${x}) + 0.5))`,
         pow: ([base, exp]) => `(${base} ^ ${exp})`,
         asin: ([x]) => `ATN(${x} / SQR(-(${x}) * (${x}) + 1#))`,
         acos: ([x]) => `(${HALF_PI} - ATN(${x} / SQR(-(${x}) * (${x}) + 1#)))`,

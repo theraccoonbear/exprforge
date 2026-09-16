@@ -32,7 +32,12 @@ const emitter = new Emitter({
         pow: fn2("pow"), atan2: fn2("atan2"), min: fn2("min"), max: fn2("max"), hypot: fn2("hypot"),
         // Math has no log2; Java also lacks round-to-double and trunc directly.
         log2: ([x]) => `(Math.log(${x}) / Math.log(2.0))`,
-        round: ([x]) => `((double) Math.round(${x}))`,
+        // Math.round ties toward +Infinity, NOT this project's standardized
+        // round-half-AWAY-from-zero convention -- see js.js's own comment
+        // and the root README's "round() at exact .5 boundaries" section.
+        // Math.signum already returns double for a double argument, so no
+        // cast is needed here the way the plain Math.round path above did.
+        round: ([x]) => `(Math.signum(${x}) * Math.floor(Math.abs(${x}) + 0.5))`,
         trunc: ([x]) => `(double) (long) (${x})`,
         sign: fn1("signum"),
         wrapIndex: ([i, m]) => `(((${i} % ${m}) + ${m}) % ${m})`,

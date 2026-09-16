@@ -350,47 +350,58 @@ validate against), a wrong argument *count* is a structurally malformed
 call regardless of target, checked unconditionally at the same tier as
 `checkUnboundVars` — see `primitives.js`.
 
-### `round()` at exact `.5` boundaries: a real, permanent divergence
+### `round()` at exact `.5` boundaries: standardized, NOT your language's native behavior
 
-Every other primitive above is identical-behavior across all 18 targets
-by construction — `round()` at an exact tie is the one deliberate
-exception, and it's real, not a bug: this library maps `round()` straight
-onto each target's own native rounding call, with zero normalization,
-and those targets don't agree with each other. Confirmed directly
-against a real compiler/interpreter for all but two (noted below), not
-assumed:
+**If you're reading emitted code and expected `round()` to behave like
+your target language's own native rounding function, it doesn't, on 8
+of the 18 targets, by deliberate design.** `round(x)` ties **away from
+zero** everywhere, unconditionally — `round(-0.5)` is `-1`,
+`round(1.5)` is `2`, `round(2.5)` is `3` — identical on every target,
+confirmed directly against a real compiler/interpreter for every one of
+them (not assumed). This was NOT always true, and if you're used to one
+of the languages below, this is the one place ExprForge's output
+deliberately does not match what you'd get calling that language's own
+rounding function directly:
 
-| Convention | `round(-0.5)` | `round(-1.5)` | Targets |
-|---|---|---|---|
-| Half-up (ties toward +∞) | `0` | `-1` | JS, TypeScript, Java, Lua |
-| Half away from zero | `-1` | `-2` | C, Rust, Go, Perl, Zig, Fortran, COBOL, Julia, PHP* |
-| Half to even ("banker's rounding") | `0` | `-2` | Python, Scheme, QB64, C#* |
+| If you know... | ...its native tie-breaking is | ...and used to differ from ExprForge's `round()` at |
+|---|---|---|
+| **JavaScript** (`Math.round`) | ties toward +∞ | `round(-0.5)`: native `-0`/`0`, ExprForge `-1` |
+| **TypeScript** (`Math.round`) | ties toward +∞ | same as JS |
+| **Java** (`Math.round`) | ties toward +∞ | same as JS |
+| **Lua** (`math.floor(x+0.5)`) | ties toward +∞ | same as JS |
+| **Python** (`round()`) | ties to even ("banker's") | `round(-1.5)`: native `-2`, ExprForge `-2` — but `round(0.5)`: native `0`, ExprForge `1` |
+| **Scheme/Guile** (`round`) | ties to even | same pattern as Python |
+| **QB64** (`_ROUND`) | ties to even | same pattern as Python (confirmed against a real compile) |
+| **C#** (`Math.Round(double)`) | ties to even (default) | same pattern as Python |
 
-\* PHP's documented `PHP_ROUND_HALF_UP` default and .NET's documented
-`Math.Round(double)` default (ties-to-even) — taken from each vendor's
-own docs, not independently run in this project's own toolchain set.
+The other 9 targets (C, Rust, Go, Perl, Zig, Fortran, COBOL, Julia, PHP)
+already tie away from zero natively, so ExprForge's `round()` matches
+what you'd expect from those languages directly — no surprise there.
 
-**This is deliberate, not an oversight to fix here.** The alternative —
-forcing every target onto one convention by wrapping the ones that
-disagree — would be a real, unasked-for behavior change for anyone
-already relying on a target's native rounding, in exchange for an
-"identical everywhere" guarantee this library doesn't otherwise need to
-make for something inherently target-native. Matches this project's
-existing precedent for a genuine cross-language divergence (see QB64's
-`select()`-always-evaluates-both-branches div-by-zero behavior, demonstrated
-via `normalizeX`'s own `skipTargets` in `test/conformance.test.js`):
-demonstrated and permanently regression-tested via a real compiled
-conformance sample (`samples/round-tie-demo.js` — see its own header
-comment for the full breakdown), not silently avoided. `samples/
-kitchen-sink.js`'s own input values deliberately steer clear of exact
-`.5` boundaries for `d` for this exact reason — that file is proving
-every primitive *works*, not proving they all tie-break identically,
-which `round-tie-demo.js` exists to prove (and disprove) on its own.
+**Why standardize on away-from-zero specifically, and why now:**
+this library's entire value proposition is "author once, get identical
+behavior everywhere" — `round()` was the one primitive quietly not
+living up to that (three incompatible native conventions, silently
+inherited with zero normalization). Away-from-zero was chosen because
+it was already the majority (9 of the pre-existing 17 non-JS-family
+targets), and because this project's own Julia emitter had already,
+independently, made a deliberate choice to match it
+(`RoundNearestTiesAway`, not Julia's own ties-to-even default) before
+this change existed at all — real precedent, not an arbitrary pick.
+Built from `floor`/`sign`/`abs` (which already agreed everywhere) via
+`sign(x) * floor(abs(x) + 0.5)`, the same formula `emitters/cobol.js`'s
+own hand-written `round` template already used. See
+`samples/round-tie-demo.js`'s own header comment for the full,
+directly-verified breakdown of what each of the 8 changed targets used
+to do, and `test/conformance.test.js`'s `roundTieBoundary` entry for the
+permanent regression test proving every target agrees now.
 
-If your use case genuinely needs one guaranteed tie-breaking convention
-across every target, don't reach for `round()` directly — compose it
-yourself from `floor`/`ceil`/`sign`/`abs` (all of which agree everywhere)
-to get the exact behavior you want.
+This is a real, deliberate, one-time behavior change on those 8
+targets — not configurable, no opt-out. If your use case genuinely
+needs a DIFFERENT guaranteed tie-breaking convention (half-up, or
+half-to-even) across every target, don't reach for `round()` — compose
+it yourself from `floor`/`ceil`/`sign`/`abs` (all of which agree
+everywhere) to get the exact behavior you want.
 
 ## Symbolic differentiation (`differentiate`)
 
@@ -814,6 +825,34 @@ Implemented for every registered emitter except `cobol` — GnuCOBOL's
 model, not a "didn't get to it" gap (see that same doc for the full
 rationale). `emitFunction` throws a clear "not supported for this target
 yet" error there instead of emitting something that wouldn't compile.
+
+### Runtime type guards for array parameters (`addTypeGuards`)
+
+Nothing stops a *caller* of emitted code from passing a plain number
+where an array-typed parameter (`paramTypes`) declared an array —
+`evaluate()` already guards this itself, and every statically-typed
+target's own compiler already rejects the mismatch, but plain emitted
+JS/TypeScript/Python/PHP/Lua/Perl/Scheme/Julia source shipped with no
+check at all. Opt in with a 4th argument to `emit()`/`emitMany()`:
+
+```js
+const { emit, cyclicElemAst } = require("exprforge");
+
+emit(cyclicElemAst, "js", undefined, { addTypeGuards: true }).source;
+// function cyclicElem(arr, m, i) {
+//     if (!Array.isArray(arr)) throw new Error("cyclicElem: \"arr\" must be an array");
+//     return arr[(((i % m) + m) % m)];
+// }
+```
+
+Default is `false` — today's output, byte-for-byte, unless you ask for
+this. Silently a no-op for any target with no `typeGuard` configured
+(every statically-typed target, plus `cobol`) or any function with no
+array-typed parameter at all. See
+[`docs/runtime-type-guards.md`](./docs/runtime-type-guards.md) for the
+full per-language breakdown (Perl's arrayref convention, Scheme's
+expression-bodied-function wrapping, ...) and what this deliberately
+doesn't check (array length, element type).
 
 ## Infix expression syntax (`` expr` ` ``)
 

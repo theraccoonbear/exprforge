@@ -274,14 +274,21 @@ const SAMPLES = {
     // PHP/C#, documented) to use a DIFFERENT convention -- that's most
     // of them, and that's the actual point being proven here, not a
     // sign of something broken.
+    // Proves round() ties AWAY FROM ZERO identically on every target, no
+    // exceptions -- see samples/round-tie-demo.js's own header comment
+    // for the real, three-way divergence this fixes (this file used to
+    // need a long skipTargets list here; it doesn't anymore, and that's
+    // the actual point being proven now, not a loosened check). Reference
+    // is a hand-written away-from-zero implementation, deliberately NOT
+    // Math.round (which ties the other way, toward +Infinity, and would
+    // silently validate the WRONG convention here of all places).
     roundTieBoundary: {
         ast: roundTieBoundaryAst,
-        reference: (which) => [-0.5, -1.5, 0.5, 1.5].map(Math.round)[which],
+        reference: (which) => {
+            const x = [-0.5, -1.5, 0.5, 1.5][which];
+            return Math.sign(x) * Math.floor(Math.abs(x) + 0.5);
+        },
         inputs: [[0], [1], [2], [3]],
-        skipTargets: [
-            "C", "Go", "Rust", "Perl", "Zig", "Fortran", "COBOL", "Julia", "PHP", // away from zero
-            "Python", "Scheme", "QB64", "C#", // half to even
-        ],
     },
     // Array-typed parameters (arr[i], see docs/array-index-primitives.md)
     // compiled and executed against every real toolchain -- closes #36:

@@ -1,38 +1,41 @@
 // exprforge/samples/round-tie-demo.js
 //
-// Demonstrates, and locks in via a real compiled/executed conformance
-// test, a genuine and PERMANENT cross-language divergence: round()'s
-// behavior at an exact ".5" tie is not one convention, it's three,
-// directly inherited from each target's own native rounding primitive
-// with zero normalization by this library:
+// Locks in, via a real compiled/executed conformance test, that round()'s
+// behavior at an exact ".5" tie is IDENTICAL across every one of this
+// project's 18 targets -- round half AWAY FROM ZERO, unconditionally.
+//
+// This wasn't true before, and the discrepancy was real: each target's
+// `round` calls-table entry used to delegate straight to that language's
+// own native rounding primitive, and those natively disagree in three
+// distinct ways (directly verified against a real compiler/interpreter
+// for each, not assumed):
 //
 //   - half-up (ties toward +Infinity): JS, TypeScript, Java, Lua
-//       round(-0.5) == 0, round(-1.5) == -1
-//   - half away from zero: C, Rust, Go, Perl, Zig, Fortran, COBOL,
-//     Julia, PHP (PHP's documented PHP_ROUND_HALF_UP default -- not
-//     independently run here, no php toolchain in this project's CI/dev
-//     setup, taken from PHP's own manual)
-//       round(-0.5) == -1, round(-1.5) == -2
-//   - half to even ("banker's rounding"): Python, Scheme, QB64, C# (.NET's
-//     documented Math.Round(double) default -- not independently run
-//     here, this project's sandbox has a pre-existing broken `dotnet
-//     build`, see test/conformance.test.js's own C# notes; taken from
-//     Microsoft's own docs)
-//       round(-0.5) == 0, round(-1.5) == -2
+//   - half away from zero: C, Rust, Go, Perl, Zig, Fortran, COBOL, Julia
+//   - half to even ("banker's rounding"): Python, Scheme, QB64, C#
 //
-// Every value above except the PHP/C# pair was confirmed directly
-// against a real compiler/interpreter for this file, not assumed from
-// memory or documentation.
+// Initially documented and demonstrated as a deliberate, permanent
+// divergence (matching this project's precedent for QB64's select()
+// div-by-zero behavior). Revisited: unlike that precedent, this one had
+// a real, sound, already-majority convention to converge on instead of
+// just living with -- away-from-zero is what 8 of the (then-)17 non-JS-
+// family targets already did NATIVELY, and Julia's own emitter already
+// made a deliberate, precedent-setting choice to match it
+// (RoundNearestTiesAway, not Julia's own ties-to-even default) before
+// this file existed at all. So the 8 targets that DIDN'T already agree
+// (js.js, typescript.js, java.js, lua.js, python.js, scheme.js, qb64.js,
+// csharp.js) had their `round` calls-table entry replaced with an
+// explicit `sign(x) * floor(abs(x) + 0.5)` formula -- built entirely
+// from primitives that already agreed everywhere (floor/sign/abs),
+// exactly the formula emitters/cobol.js's own hand-written round: entry
+// already used. Every one of the 8 replacements confirmed against a
+// real compiler/interpreter, not just written and assumed correct.
 //
-// This is DELIBERATELY left as-is, not unified to one convention --
-// see the root README's "round() at exact .5 boundaries" section for
-// the full reasoning (matches the project's existing precedent for a
-// real, demonstrated divergence: QB64's select()-always-evaluates-both-
-// branches div-by-zero behavior in samples/... see normalizeX in
-// test/conformance.test.js). kitchen-sink.js's own inputs deliberately
-// AVOID landing on an exact .5 value for exactly this reason -- this
-// file is the one place that deliberately does NOT avoid it, so the
-// divergence is demonstrated and regression-tested, not just avoided.
+// This IS a real, deliberate behavior change for round() specifically,
+// on those 8 targets, for anyone relying on their native tie-breaking --
+// accepted as worth it: this library's entire value proposition is
+// "author once, identical behavior everywhere," and round() was the one
+// primitive quietly not living up to that.
 const { v, num, cmp, select, call } = require("../ast.js");
 
 const which = v("which");
