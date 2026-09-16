@@ -14,6 +14,7 @@ const { splineFrameAsts } = require("./samples/spline-frame.js");
 const { kitchenSinkAst } = require("./samples/kitchen-sink.js");
 const { mathDemoAst } = require("./samples/math-demo.js");
 const { macroDemoAst } = require("./samples/macro-demo.js");
+const { cyclicElemAst, clampedElemAst } = require("./samples/array-index-demo.js");
 
 /**
  * Run ONE emitter against one AST function definition. Returns
@@ -173,6 +174,13 @@ module.exports = {
     // fn`...`), not the plain-JS-function tier mathDemoAst already
     // covers). See samples/macro-demo.js.
     macroDemoAst,
+    // Array-typed parameters + wrapIndex/clampIndex, reading through an
+    // idx() node -- see docs/array-index-primitives.md and
+    // samples/array-index-demo.js. Not wired into test/conformance.test.js
+    // yet (its runners assume scalar-only positional arguments -- see
+    // that doc's own "Not done here" section).
+    cyclicElemAst,
+    clampedElemAst,
     samples: {
         catmullRom: catmullRomAst,
         fibonacci: fibonacciAst,
@@ -180,6 +188,8 @@ module.exports = {
         kitchenSink: kitchenSinkAst,
         mathDemo: mathDemoAst,
         macroDemo: macroDemoAst,
+        cyclicElem: cyclicElemAst,
+        clampedElem: clampedElemAst,
     },
     // Per-language emitter instances, keyed by name (js, qb64, c, java, go, rust).
     emitters,

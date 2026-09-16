@@ -320,8 +320,20 @@ package individually, or together as `samples`):
   tier, proving its internal gensym'd let-renaming produces valid
   identifiers on every real target, not just `evaluate()` (which can't
   see codegen at all — see "Macros and externs").
+- `samples/array-index-demo.js` — `cyclicElem`/`clampedElem`, the smallest
+  real functions that read through an array-typed parameter via `arr[i]`
+  and `wrapIndex`/`clampIndex` (see "Array indexing" below). Not run by
+  `npm run build` or wired into `test/conformance.test.js` — the former
+  loops every registered emitter unconditionally, including `cobol`,
+  which deliberately throws for an array parameter (see below); the
+  latter's runners assume scalar-only positional arguments, a real,
+  separate piece of follow-up work (see
+  `docs/array-index-primitives.md`'s "Not done here" section).
 
-`npm run build` emits all of them, for every target language, into `out/`.
+`npm run build` emits the samples above it in this list, for every target
+language, into `out/` (see `build.js` for exactly which ones — a couple of
+the conformance-only fixtures above aren't included either, for the same
+"not everything here is meant to be a build artifact" reason).
 
 ## Supported Math functions
 
@@ -697,6 +709,61 @@ See [`docs/planned-additions.md`](./docs/planned-additions.md) for the
 full design rationale, including why the naive "guard division with
 select" pattern is wrong.
 
+## Array indexing (`index`, `wrapIndex`/`clampIndex`)
+
+One more node type, plus two new scalar primitives — still inside the
+same "expression tree, no statements" model above, not a step toward
+general array support:
+
+- **`index(target, at)`** (builder: `idx(arrayVar, indexExpr)`) — reads
+  one element out of an array-typed parameter at a computed offset.
+  `target` must resolve to a parameter declared `number[]` (see "Full-
+  program syntax" below for the annotation syntax); `at` can be any
+  expression — a literal, an identifier, a call, even another `index`
+  (`matrix[i][j]`) — not just a bare number.
+- **`wrapIndex(i, m)`** == `((i % m) + m) % m` — wraps `i` cyclically
+  into `[0, m)` (closed paths, ring buffers).
+- **`clampIndex(i, lo, hi)`** == `max(lo, min(hi, i))` — clamps `i` into
+  `[lo, hi]` instead (open paths, bounded lookups).
+
+```js
+const { fn, evaluate, emit } = require("exprforge");
+
+const cyclicElem = fn`
+    cyclicElem(arr: number[], m, i):
+      return arr[wrapIndex(i, m)];
+`;
+
+evaluate(cyclicElem, [[10, 20, 30, 40], 4, 5]); // 20 -- i=5 wraps to index 1
+emit(cyclicElem, "rust").source;
+```
+
+This exists for exactly one recurring shape of real bug: picking a
+handful of statically-known offsets out of an array (e.g. the 4
+Catmull-Rom control points around a spline segment), wrapping at a
+closed path's seam or clamping at an open path's ends — logic that used
+to be hand-written once per target language, and drifted. See
+[`docs/array-index-primitives.md`](./docs/array-index-primitives.md) for
+the full motivation (a real cross-language bug this traced back to) and
+`samples/array-index-demo.js` for a worked example.
+
+**What this doesn't add**: no way to *construct* or *return* an array —
+only a parameter can be array-typed; `outputs()`'s fields are still
+scalar-only, and there's no array literal syntax. No loops, no `map`/
+`reduce`/`fold` over an array's whole length — every index is a
+specific, authored expression (see "What this doesn't buy you" above),
+never a runtime-bounded iteration. Array length is always caller-
+supplied (an explicit parameter, `m`/`n` above) — it's never
+introspected from the array itself; see
+`docs/array-index-primitives.md`'s "Emitter implications" for what each
+target actually receives as an array parameter.
+
+Implemented for every registered emitter except `cobol` — GnuCOBOL's
+`OCCURS` table size is fixed at compile time, a structurally different
+model, not a "didn't get to it" gap (see that same doc for the full
+rationale). `emitFunction` throws a clear "not supported for this target
+yet" error there instead of emitting something that wouldn't compile.
+
 ## Infix expression syntax (`` expr` ` ``)
 
 `add(mul(v("a"), v("b")), num(1))` is exactly what gets built, but it's
@@ -723,6 +790,7 @@ expr`(-b + sqrt(b^2 - 4*a*c)) / (2*a)`
 | `name(args...)` | `call("name", ...args)` — not checked against the 22 known functions at parse time, same deferred-to-emission-time error every hand-built `call()` already gets |
 | bare `name` | `v("name")` |
 | `name.field` | `field(v("name"), "field")` — only meaningful when `name` is bound to a multi-output macro result (see "Macros and externs"); binds tighter than `^`, chainable (`a.b.c`) |
+| `name[index]` | `idx(v("name"), indexExpr)` — see "Array indexing" above; `name` must be an array-typed parameter. Binds as tight as `.`, and freely combines/chains with it either order (`arr[i].rx`, `b.arr[i]`, `matrix[i][j]`) |
 | `cond ? then : else` | `select(cmp(left, op, right), then, else)` — the **only** place a comparison (`> < >= <= == !=`) is valid, matching `cmp()`'s own documented constraint that it's never a general boolean expression. A bare `a > b` with no `?` is a parse-time error, not a deferred one. Chains naturally: `a>0 ? 1 : b>0 ? 2 : 3`. |
 | `${...}` | Splices in an existing AST node as-is, or a plain JS number (auto-wrapped via `num()`). Anything else throws immediately. Plain strings aren't interpolatable — a bare identifier in the template text already means "variable", with no `${}` needed. |
 | `# ...` | An end-of-line comment — runs to the next newline, produces no tokens. Works across `${...}` interpolation boundaries too: a value interpolated inside an open comment is silently dropped, never validated (not even for what would otherwise be an invalid interpolation). |
@@ -811,7 +879,8 @@ does:
 
 ```
 program        := signature? stmt* returnStmt
-signature      := IDENT "(" (IDENT ("," IDENT)*)? ")" ":"
+signature      := IDENT "(" (param ("," param)*)? ")" ":"
+param          := IDENT (":" "number" "[" "]")?
 stmt           := "let" IDENT "=" expression ";"
 returnStmt     := "return" expression ";"
                 | "return" "{" field ("," field)* "}" ";"
@@ -824,10 +893,18 @@ additive       := multiplicative ( ("+"|"-") multiplicative )*
 multiplicative := unary ( ("*"|"/") unary )*
 unary          := "-" unary | power
 power          := postfix ( "^" unary )?
-postfix        := primary ( "." IDENT )*
+postfix        := primary ( "." IDENT | "[" expression "]" )*
 primary        := NUMBER | IDENT ("(" args ")")? | "(" expression ")" | HOLE
 args           := expression ("," expression)*
 ```
+
+`param`'s `:` is a different thing entirely from `field`'s — a
+parameter's `: number[]` is the only type annotation this grammar has
+(everything else is implicitly a scalar); `field`'s `: expression` is
+the ordinary `return { name: expr }` shorthand, unrelated to types.
+Omitting a param's annotation (just `IDENT`, as every parameter always
+worked before this existed) means an ordinary scalar, so every `fn`
+template written before array indexing existed still parses identically.
 
 `` expr`...` `` is exactly `expression` on its own — one formula, no
 `let`/`return`. `` fn`...` `` is `program` — `expression`'s entire

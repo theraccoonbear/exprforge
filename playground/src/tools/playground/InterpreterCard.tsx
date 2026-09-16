@@ -16,7 +16,14 @@ interface InterpreterCardProps {
 export function InterpreterCard({ def }: InterpreterCardProps) {
     const [values, setValues] = useState<Record<string, string>>({});
 
-    const args = useMemo(() => def.params.map((p) => Number(values[p] ?? 0)), [def.params, values]);
+    const args = useMemo(
+        () =>
+            def.params.map((p) => {
+                const raw = values[p] ?? "";
+                return def.paramTypes?.[p] === "number[]" ? parseArrayInput(raw) : Number(raw || 0);
+            }),
+        [def.params, def.paramTypes, values],
+    );
 
     const result = useMemo(() => {
         try {
@@ -30,18 +37,21 @@ export function InterpreterCard({ def }: InterpreterCardProps) {
         <div className="interpreter-panel">
             <span className="interpreter-panel-label">Try it</span>
             <div className="interpreter-panel-inputs">
-                {def.params.map((p) => (
-                    <label key={p} className="interpreter-input">
-                        <span>{p}</span>
-                        <input
-                            type="number"
-                            inputMode="decimal"
-                            value={values[p] ?? ""}
-                            placeholder="0"
-                            onChange={(e) => setValues((prev) => ({ ...prev, [p]: e.target.value }))}
-                        />
-                    </label>
-                ))}
+                {def.params.map((p) => {
+                    const isArray = def.paramTypes?.[p] === "number[]";
+                    return (
+                        <label key={p} className="interpreter-input">
+                            <span>{p}</span>
+                            <input
+                                type={isArray ? "text" : "number"}
+                                inputMode={isArray ? "text" : "decimal"}
+                                value={values[p] ?? ""}
+                                placeholder={isArray ? "10, 20, 30" : "0"}
+                                onChange={(e) => setValues((prev) => ({ ...prev, [p]: e.target.value }))}
+                            />
+                        </label>
+                    );
+                })}
             </div>
             <span className="interpreter-panel-arrow" aria-hidden="true">
                 →
@@ -49,6 +59,21 @@ export function InterpreterCard({ def }: InterpreterCardProps) {
             <ResultDisplay error={result.error} value={result.value} />
         </div>
     );
+}
+
+// Array-typed param input is comma-separated numbers ("10, 20, 30") --
+// the simplest text shape that round-trips through a single <input>
+// without a dedicated multi-field widget. Empty/whitespace-only input
+// becomes an empty array, not [NaN] -- evaluate() then throws its own
+// clear "array index ... out of bounds" error for that (same
+// error-display path as any other bad input here), instead of a
+// confusing NaN silently propagating through the index expression.
+function parseArrayInput(raw: string): number[] {
+    return raw
+        .split(",")
+        .map((s) => s.trim())
+        .filter((s) => s.length > 0)
+        .map(Number);
 }
 
 function ResultDisplay({ error, value }: { error: string | null; value: number | Record<string, number> | null }) {
