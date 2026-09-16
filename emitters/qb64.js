@@ -27,6 +27,73 @@ function checkReservedNames(names) {
     }
 }
 
+// Classic BASIC SQR/LOG/^ don't return NaN for an out-of-domain argument
+// the way every other target's math library does -- they HALT THE PROGRAM
+// with "Illegal function call" and, in any non-interactive context (a
+// real compiled game/tool, or this project's own test harness), hang
+// forever on an interactive "Continue?" prompt. Confirmed directly
+// against a real compile+run, not assumed: SQR(-4#), LOG(0#), LOG(-1#),
+// and (-8#) ^ (1#/3#) all crash this way; (-8#) ^ 2# (an INTEGER
+// exponent on a negative base) does not -- only a genuinely fractional
+// exponent on a negative base is unsafe. QB64's own newer _ASIN/_ACOS
+// don't have this problem (confirmed: they return NaN cleanly), but this
+// emitter's asin/acos were never built from those -- they're an ATN+SQR
+// identity (see the calls table below), so they inherited SQR's crash
+// for |x| > 1 the whole time, independently of anything to do with
+// _ASIN/_ACOS at all.
+//
+// select()'s own arithmetic-emulation trick (see emitSelect below)
+// CAN'T guard this: it computes both "branches" as values unconditionally
+// before combining them arithmetically, so a select() around a crashing
+// SQR call would still evaluate that SQR call and still crash -- the
+// exact same reason this project's docs already warn select() can't
+// guard division by zero (see ast.js's own select() comment). A real
+// QB64 IF/THEN/ELSE *statement*, unlike that expression-level trick,
+// does genuinely short-circuit -- confirmed directly -- so these are
+// real FUNCTIONs with a real IF inside, not expression tricks.
+//
+// ef_zero is always a fresh local DOUBLE VARIABLE, never a literal 0 --
+// dividing two DOUBLE variables both holding exactly 0 is confirmed to
+// produce NaN cleanly (no crash); QB64's compile-time constant-folder
+// might treat a literal 0/0 differently (this project doesn't rely on
+// that at all, for exactly this reason).
+//
+// Always emitted, unconditionally, regardless of whether this
+// particular function actually uses sqrt/log/pow/asin/acos -- same
+// "every helper always present" convention emitters/cobol.js's own
+// ef-cmp-* helpers already established for this project.
+const SAFE_MATH_HELPERS =
+    `FUNCTION ef_safe_sqr# (x AS DOUBLE)\n` +
+    `    DIM ef_zero AS DOUBLE\n` +
+    `    IF x < 0# THEN\n` +
+    `        ef_zero = 0#\n` +
+    `        ef_safe_sqr# = ef_zero / ef_zero\n` +
+    `    ELSE\n` +
+    `        ef_safe_sqr# = SQR(x)\n` +
+    `    END IF\n` +
+    `END FUNCTION\n\n` +
+    `FUNCTION ef_safe_log# (x AS DOUBLE)\n` +
+    `    DIM ef_zero AS DOUBLE\n` +
+    `    IF x < 0# THEN\n` +
+    `        ef_zero = 0#\n` +
+    `        ef_safe_log# = ef_zero / ef_zero\n` +
+    `    ELSEIF x = 0# THEN\n` +
+    `        ef_zero = 0#\n` +
+    `        ef_safe_log# = -1# / ef_zero\n` +
+    `    ELSE\n` +
+    `        ef_safe_log# = LOG(x)\n` +
+    `    END IF\n` +
+    `END FUNCTION\n\n` +
+    `FUNCTION ef_safe_pow# (ef_base AS DOUBLE, ef_expo AS DOUBLE)\n` +
+    `    DIM ef_zero AS DOUBLE\n` +
+    `    IF ef_base < 0# AND ef_expo <> INT(ef_expo) THEN\n` +
+    `        ef_zero = 0#\n` +
+    `        ef_safe_pow# = ef_zero / ef_zero\n` +
+    `    ELSE\n` +
+    `        ef_safe_pow# = ef_base ^ ef_expo\n` +
+    `    END IF\n` +
+    `END FUNCTION\n\n`;
+
 const emitter = new Emitter({
     ext: "bas",
     // JS renders very small/large magnitudes in exponential notation
@@ -40,14 +107,18 @@ const emitter = new Emitter({
         return /e/i.test(s) ? s.replace(/e/i, "D") : `${s}#`;
     },
     calls: {
-        sqrt: ([x]) => `SQR(${x})`,
+        // See SAFE_MATH_HELPERS' own comment above for exactly why these
+        // three (plus asin/acos and log2/log10 below, which are built
+        // from sqrt/log) route through a helper FUNCTION instead of the
+        // classic keyword directly.
+        sqrt: ([x]) => `ef_safe_sqr#(${x})`,
         abs: ([x]) => `ABS(${x})`,
         sin: ([x]) => `SIN(${x})`,
         cos: ([x]) => `COS(${x})`,
         tan: ([x]) => `TAN(${x})`,
         atan: ([x]) => `ATN(${x})`,
         exp: ([x]) => `EXP(${x})`,
-        log: ([x]) => `LOG(${x})`,
+        log: ([x]) => `ef_safe_log#(${x})`,
         sign: ([x]) => `SGN(${x})`,
         min: ([a, b]) => `_MIN(${a}, ${b})`,
         max: ([a, b]) => `_MAX(${a}, ${b})`,
@@ -59,12 +130,15 @@ const emitter = new Emitter({
         // same primitives this file's own sign:/abs:/floor: entries
         // already use.
         round: ([x]) => `(SGN(${x}) * INT(ABS(${x}) + 0.5))`,
-        pow: ([base, exp]) => `(${base} ^ ${exp})`,
-        asin: ([x]) => `ATN(${x} / SQR(-(${x}) * (${x}) + 1#))`,
-        acos: ([x]) => `(${HALF_PI} - ATN(${x} / SQR(-(${x}) * (${x}) + 1#)))`,
+        pow: ([base, exp]) => `ef_safe_pow#(${base}, ${exp})`,
+        asin: ([x]) => `ATN(${x} / ef_safe_sqr#(-(${x}) * (${x}) + 1#))`,
+        acos: ([x]) => `(${HALF_PI} - ATN(${x} / ef_safe_sqr#(-(${x}) * (${x}) + 1#)))`,
         atan2: ([y, x]) => `_ATAN2(${y}, ${x})`,
-        log2: ([x]) => `(LOG(${x}) / LOG(2#))`,
-        log10: ([x]) => `(LOG(${x}) / LOG(10#))`,
+        // The divisor (LOG(2#)/LOG(10#)) is a fixed positive constant,
+        // always safe -- only the numerator (the actual argument) needs
+        // the domain guard.
+        log2: ([x]) => `(ef_safe_log#(${x}) / LOG(2#))`,
+        log10: ([x]) => `(ef_safe_log#(${x}) / LOG(10#))`,
         floor: ([x]) => `INT(${x})`,
         ceil: ([x]) => `(-INT(-(${x})))`,
         trunc: ([x]) => `(SGN(${x}) * INT(ABS(${x})))`,
@@ -136,6 +210,7 @@ const emitter = new Emitter({
             .join("\n");
         const letsBlock = lets ? lets + "\n" : "";
         return `' AUTO-GENERATED by ExprForge -- do not hand-edit.\n` +
+               SAFE_MATH_HELPERS +
                `FUNCTION ${fn.name}# (${params})\n` +
                letsBlock +
                `    ${fn.name}# = ${body}\n` +
@@ -163,6 +238,7 @@ const emitter = new Emitter({
         const letsBlock = lets ? lets + "\n" : "";
         const assigns = outputNames.map((n) => `    ${n} = ${outputStrs[n]}`).join("\n");
         return `' AUTO-GENERATED by ExprForge -- do not hand-edit.\n` +
+               SAFE_MATH_HELPERS +
                `SUB ${fn.name} (${[...inParams, ...outParams].join(", ")})\n` +
                letsBlock +
                `${assigns}\n` +

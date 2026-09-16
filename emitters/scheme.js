@@ -75,15 +75,40 @@ const emitter = new SchemeEmitter({
         return /[.e]/i.test(s) ? s : `${s}.0`;
     },
     calls: {
-        sqrt: fn1("sqrt"), abs: fn1("abs"), sin: fn1("sin"), cos: fn1("cos"), tan: fn1("tan"),
-        asin: fn1("asin"), acos: fn1("acos"), atan: fn1("atan"), exp: fn1("exp"), log: fn1("log"),
-        // expt is Scheme's exponentiation procedure -- there's no infix **.
-        pow: fn2("expt"),
+        // R7RS/Guile's own sqrt/log/asin/acos/expt DON'T throw and DON'T
+        // return NaN for an out-of-domain real argument -- confirmed
+        // directly, and genuinely more dangerous than either: Scheme's
+        // numeric tower silently PROMOTES to a COMPLEX number instead
+        // (e.g. (sqrt -1.0) => 0.0+1.0i), a totally different result
+        // shape than every other target here. `if` is a real
+        // short-circuiting special form (confirmed: unlike select()'s
+        // own arithmetic-emulation targets, e.g. QB64 -- see
+        // emitters/qb64.js's own SAFE_MATH_HELPERS comment for that
+        // side of this same fix), so a guard is a plain conditional, no
+        // helper procedure needed. (/ 0.0 0.0), (/ 1.0 0.0), and
+        // (/ -1.0 0.0) are confirmed-safe, non-crashing ways to
+        // synthesize a real NaN/+inf.0/-inf.0 in Scheme.
+        sqrt: ([x]) => `(if (>= ${x} 0.0) (sqrt ${x}) (/ 0.0 0.0))`,
+        abs: fn1("abs"), sin: fn1("sin"), cos: fn1("cos"), tan: fn1("tan"),
+        asin: ([x]) => `(if (and (>= ${x} -1.0) (<= ${x} 1.0)) (asin ${x}) (/ 0.0 0.0))`,
+        acos: ([x]) => `(if (and (>= ${x} -1.0) (<= ${x} 1.0)) (acos ${x}) (/ 0.0 0.0))`,
+        atan: fn1("atan"), exp: fn1("exp"),
+        log: ([x]) => `(if (> ${x} 0.0) (log ${x}) (if (= ${x} 0.0) (/ -1.0 0.0) (/ 0.0 0.0)))`,
+        // expt is Scheme's exponentiation procedure -- there's no infix
+        // **. Same complex-promotion problem as sqrt/log/asin/acos above
+        // for a negative base with a non-integer exponent (confirmed:
+        // (expt -8.0 (/ 1.0 3.0)) => 1.0+1.732...i) -- guarded the same
+        // way, `truncate` (a standard R7RS procedure) checks "is this
+        // already a whole number".
+        pow: ([base, exp]) =>
+            `(if (and (< ${base} 0.0) (not (= ${exp} (truncate ${exp})))) (/ 0.0 0.0) (expt ${base} ${exp}))`,
         // R7RS's 2-argument atan IS atan2 -- no separate name for it.
         atan2: fn2("atan"),
-        // No log2/log10 procedure in R7RS or Guile's core -- derive both.
-        log2: ([x]) => `(/ (log ${x}) (log 2.0))`,
-        log10: ([x]) => `(/ (log ${x}) (log 10.0))`,
+        // No log2/log10 procedure in R7RS or Guile's core -- derive both
+        // from the now-guarded log: entry above, not the raw procedure,
+        // so they inherit the same domain safety for free.
+        log2: ([x]) => `(/ (if (> ${x} 0.0) (log ${x}) (if (= ${x} 0.0) (/ -1.0 0.0) (/ 0.0 0.0))) (log 2.0))`,
+        log10: ([x]) => `(/ (if (> ${x} 0.0) (log ${x}) (if (= ${x} 0.0) (/ -1.0 0.0) (/ 0.0 0.0))) (log 10.0))`,
         floor: fn1("floor"), ceil: fn1("ceiling"),
         // Guile's round is round-half-to-even (banker's rounding), not the
         // round-half-away-from-zero most other targets here use -- same

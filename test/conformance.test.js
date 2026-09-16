@@ -46,6 +46,9 @@ const {
     nestedSelectAst,
     numberExtremesAst,
     roundTieBoundaryAst,
+    domainSafetyAst,
+    arraySuiteAst,
+    arrayMacroDemoAst,
     cyclicElemAst,
     clampedElemAst,
     emitters,
@@ -344,9 +347,43 @@ const SAMPLES = {
         ],
         skipTargets: ["COBOL"],
     },
+    // Array param threaded through a macro call (see
+    // samples/array-macro-demo.js's own header comment) -- proves this
+    // compiles/runs correctly on every real target, not just
+    // evaluate()/expandMacros() in-process.
+    arrayMacroDemo: {
+        ast: arrayMacroDemoAst,
+        reference: (arr, m, i) => arr[((i % m) + m) % m] + 1,
+        inputs: [
+            [[10, 20, 30, 40], 4, 5], // wraps past the end
+            [[10, 20, 30, 40], 4, -1], // wraps past the start
+        ],
+        skipTargets: ["COBOL"],
+    },
 };
 
+// Real, previously-open gap: `Math.abs(NaN - NaN)` is `NaN`, and
+// `NaN <= tol` is `false` -- so two genuinely-matching NaN results (or
+// two matching same-signed Infinity results, where subtracting them
+// also gives NaN) used to FAIL this assertion even when both sides were
+// actually correct. That's why no sample here has ever deliberately
+// produced NaN/Infinity as an expected reference value: this couldn't
+// have proven it correct even when it was. Special-cased below instead
+// of just hoped never to matter.
 function assertClose(actual, expected, msg) {
+    if (Number.isNaN(expected) || Number.isNaN(actual)) {
+        assert.ok(
+            Number.isNaN(expected) && Number.isNaN(actual),
+            `${msg}: got ${actual}, expected ${expected} -- NaN only matches NaN, not a near-miss`,
+        );
+        return;
+    }
+    if (!Number.isFinite(expected) || !Number.isFinite(actual)) {
+        // Infinity has no "close enough" -- +Infinity and -Infinity are
+        // not approximately equal to each other, or to any finite value.
+        assert.strictEqual(actual, expected, `${msg}: got ${actual}, expected ${expected}`);
+        return;
+    }
     const tol = 1e-9 * Math.max(1, Math.abs(expected));
     assert.ok(
         Math.abs(actual - expected) <= tol,
@@ -496,7 +533,7 @@ function runC(ast, inputs) {
     fs.writeFileSync(path.join(dir, "main.c"), harness);
     const bin = path.join(dir, "bin");
     execFileSync("gcc", [path.join(dir, "main.c"), "-o", bin, "-lm"]);
-    const results = inputs.map((args) => Number(execFileSync(bin, args.map(String)).toString()));
+    const results = inputs.map((args) => parseNumericOutput(execFileSync(bin, args.map(String)).toString()));
     fs.rmSync(dir, { recursive: true, force: true });
     return results;
 }
@@ -540,7 +577,7 @@ function runGo(ast, inputs) {
     fs.writeFileSync(path.join(dir, "main.go"), mainSrc);
     const bin = path.join(dir, "bin");
     execFileSync("go", ["build", "-o", bin, "."], { cwd: dir });
-    const results = inputs.map((args) => Number(execFileSync(bin, args.map(String)).toString()));
+    const results = inputs.map((args) => parseNumericOutput(execFileSync(bin, args.map(String)).toString()));
     fs.rmSync(dir, { recursive: true, force: true });
     return results;
 }
@@ -584,7 +621,7 @@ function runRust(ast, inputs) {
     fs.writeFileSync(srcPath, mainSrc);
     const bin = path.join(dir, "bin");
     execFileSync("rustc", ["-O", srcPath, "-o", bin]);
-    const results = inputs.map((args) => Number(execFileSync(bin, args.map(String)).toString()));
+    const results = inputs.map((args) => parseNumericOutput(execFileSync(bin, args.map(String)).toString()));
     fs.rmSync(dir, { recursive: true, force: true });
     return results;
 }
@@ -624,7 +661,7 @@ function runJava(ast, inputs) {
     fs.writeFileSync(path.join(dir, "Main.java"), mainSrc);
     execFileSync("javac", ["-d", dir, path.join(dir, `${className}.java`), path.join(dir, "Main.java")]);
     const results = inputs.map((args) =>
-        Number(execFileSync("java", ["-cp", dir, "Main", ...args.map(String)]).toString()),
+        parseNumericOutput(execFileSync("java", ["-cp", dir, "Main", ...args.map(String)]).toString()),
     );
     fs.rmSync(dir, { recursive: true, force: true });
     return results;
@@ -668,7 +705,11 @@ function runTS(ast, inputs) {
 // that and silently gives NaN, so this is needed on every value QB64
 // prints, not just ones near the E/D-notation-vs-fixed threshold.
 function qb64ToNumber(str) {
-    return Number(str.replace(/D([+-]?\d+)/i, "E$1"));
+    // QB64 prints "-NAN"/"NAN" for NaN and "inf"/"-inf" for Infinity
+    // (confirmed against a real compile) -- parseNumericOutput handles
+    // both, same as every other target's own spelling; only a genuine
+    // finite value ever needs the D-exponent rewrite below at all.
+    return parseNumericOutput(str.replace(/D([+-]?\d+)/i, "E$1"));
 }
 
 // Array-typed params: DIM'd with EXPLICIT fixed bounds (0 TO 255), not a
@@ -772,11 +813,37 @@ function suiteOutputNames(ast) {
     return Object.keys(body.fields);
 }
 
+// Every target's own printf/print/repr spells NaN/Infinity as "nan"/
+// "inf"/"-inf" (various capitalizations) -- NOT JS's own "NaN"/
+// "Infinity"/"-Infinity" spelling, which is the ONLY thing plain
+// Number() actually understands. Real gap, not a hypothetical one:
+// Number("-inf") is NaN, not -Infinity -- so a target that's genuinely,
+// correctly returning -Infinity (see samples/domain-safety-demo.js) used
+// to get silently MISREAD as NaN right here, before ever reaching
+// assertClose's own comparison. Used everywhere subprocess text output
+// gets turned into a JS number, in place of a bare Number(...) call.
+function parseNumericOutput(str) {
+    const s = str.trim();
+    // Scheme/Guile spells these "+inf.0"/"-inf.0"/"+nan.0" -- a
+    // mandatory sign AND a trailing ".0" neither of the other targets'
+    // spellings have (confirmed directly: the first version of this
+    // regex, without the optional "(\.0)?", still misread Guile's own
+    // correct -Infinity as NaN -- caught by actually running this
+    // against every real toolchain, not just the host-available ones).
+    if (/^[+-]?(inf|infinity)(\.0)?$/i.test(s)) {
+        return s.startsWith("-") ? -Infinity : Infinity;
+    }
+    if (/^[+-]?nan(\.0)?$/i.test(s)) {
+        return NaN;
+    }
+    return Number(s);
+}
+
 function parseSuiteOutput(stdout, outputNames) {
     const lines = stdout.toString().trim().split("\n");
     const record = {};
     outputNames.forEach((name, i) => {
-        record[name] = Number(lines[i]);
+        record[name] = parseNumericOutput(lines[i]);
     });
     return record;
 }
@@ -927,7 +994,7 @@ function runCSharp(ast, inputs) {
     const outDir = path.join(dir, "out");
     execFileSync("dotnet", ["build", "-c", "Release", "-o", outDir], { cwd: dir });
     const dll = path.join(outDir, "app.dll");
-    const results = inputs.map((args) => Number(execFileSync("dotnet", [dll, ...args.map(String)]).toString().trim()));
+    const results = inputs.map((args) => parseNumericOutput(execFileSync("dotnet", [dll, ...args.map(String)]).toString().trim()));
     fs.rmSync(dir, { recursive: true, force: true });
     return results;
 }
@@ -979,7 +1046,7 @@ function runPython(ast, inputs) {
     const harness = `${source}\nimport sys\n${parses}\nprint(repr(${ast.name}(${callArgs})))\n`;
     const srcPath = path.join(dir, "main.py");
     fs.writeFileSync(srcPath, harness);
-    const results = inputs.map((args) => Number(execFileSync("python3", [srcPath, ...args.map(String)]).toString().trim()));
+    const results = inputs.map((args) => parseNumericOutput(execFileSync("python3", [srcPath, ...args.map(String)]).toString().trim()));
     fs.rmSync(dir, { recursive: true, force: true });
     return results;
 }
@@ -1030,7 +1097,7 @@ function runLua(ast, inputs) {
     const harness = `${source}\n${parses}\nprint(string.format("%.17g", ${ast.name}(${callArgs})))\n`;
     const srcPath = path.join(dir, "main.lua");
     fs.writeFileSync(srcPath, harness);
-    const results = inputs.map((args) => Number(execFileSync("lua", [srcPath, ...args.map(String)]).toString().trim()));
+    const results = inputs.map((args) => parseNumericOutput(execFileSync("lua", [srcPath, ...args.map(String)]).toString().trim()));
     fs.rmSync(dir, { recursive: true, force: true });
     return results;
 }
@@ -1079,7 +1146,7 @@ function runPerl(ast, inputs) {
     const harness = `${source}\n${parses}\nprintf("%.17g\\n", ${ast.name}(${callArgs}));\n`;
     const srcPath = path.join(dir, "main.pl");
     fs.writeFileSync(srcPath, harness);
-    const results = inputs.map((args) => Number(execFileSync("perl", [srcPath, ...args.map(String)]).toString().trim()));
+    const results = inputs.map((args) => parseNumericOutput(execFileSync("perl", [srcPath, ...args.map(String)]).toString().trim()));
     fs.rmSync(dir, { recursive: true, force: true });
     return results;
 }
@@ -1127,7 +1194,7 @@ function runPhp(ast, inputs) {
     const harness = `${source}\n${parses}\nprintf("%.17g\\n", ${ast.name}(${callArgs}));\n`;
     const srcPath = path.join(dir, "main.php");
     fs.writeFileSync(srcPath, harness);
-    const results = inputs.map((args) => Number(execFileSync("php", [srcPath, ...args.map(String)]).toString().trim()));
+    const results = inputs.map((args) => parseNumericOutput(execFileSync("php", [srcPath, ...args.map(String)]).toString().trim()));
     fs.rmSync(dir, { recursive: true, force: true });
     return results;
 }
@@ -1177,7 +1244,7 @@ function runJulia(ast, inputs) {
     const harness = `${source}\n${parses}\nprintln(${ast.name}(${callArgs}))\n`;
     const srcPath = path.join(dir, "main.jl");
     fs.writeFileSync(srcPath, harness);
-    const results = inputs.map((args) => Number(execFileSync("julia", [srcPath, ...args.map(String)]).toString().trim()));
+    const results = inputs.map((args) => parseNumericOutput(execFileSync("julia", [srcPath, ...args.map(String)]).toString().trim()));
     fs.rmSync(dir, { recursive: true, force: true });
     return results;
 }
@@ -1230,7 +1297,7 @@ function runScheme(ast, inputs) {
     const srcPath = path.join(dir, "main.scm");
     fs.writeFileSync(srcPath, harness);
     const results = inputs.map((args) =>
-        Number(execFileSync(GUILE_BIN, ["--no-auto-compile", srcPath, ...args.map(String)]).toString().trim()),
+        parseNumericOutput(execFileSync(GUILE_BIN, ["--no-auto-compile", srcPath, ...args.map(String)]).toString().trim()),
     );
     fs.rmSync(dir, { recursive: true, force: true });
     return results;
@@ -1353,7 +1420,7 @@ function runFortran(ast, inputs) {
     fs.writeFileSync(path.join(dir, "main.f90"), harness);
     const bin = path.join(dir, "bin");
     execFileSync("gfortran", ["-O2", "-o", bin, path.join(dir, "main.f90"), path.join(dir, "fn.f90")]);
-    const results = inputs.map((args) => Number(execFileSync(bin, args.map(String)).toString()));
+    const results = inputs.map((args) => parseNumericOutput(execFileSync(bin, args.map(String)).toString()));
     fs.rmSync(dir, { recursive: true, force: true });
     return results;
 }
@@ -1437,7 +1504,7 @@ function runZig(ast, inputs) {
     fs.writeFileSync(path.join(dir, "main.zig"), harness);
     const bin = path.join(dir, "bin");
     execFileSync("zig", ["build-exe", path.join(dir, "main.zig"), "-O", "ReleaseFast", `-femit-bin=${bin}`], { cwd: dir });
-    const results = inputs.map((args) => Number(execFileSync(bin, args.map(String)).toString().trim()));
+    const results = inputs.map((args) => parseNumericOutput(execFileSync(bin, args.map(String)).toString().trim()));
     fs.rmSync(dir, { recursive: true, force: true });
     return results;
 }
@@ -1527,7 +1594,7 @@ function runCobol(ast, inputs) {
     fs.writeFileSync(srcPath, harness);
     const bin = path.join(dir, "bin");
     execFileSync("cobc", ["-x", "-free", "-o", bin, srcPath, path.join(dir, "fn.cob")]);
-    const results = inputs.map((args) => Number(execFileSync(bin, args.map(String)).toString().trim()));
+    const results = inputs.map((args) => parseNumericOutput(execFileSync(bin, args.map(String)).toString().trim()));
     fs.rmSync(dir, { recursive: true, force: true });
     return results;
 }
@@ -1735,6 +1802,56 @@ registerSuiteConformance("comparisonOps", {
     // specific question) on both gnucobol3 and gnucobol4 identically.
     // See nestedSelect's own comment for the full pattern and what a
     // real fix would require.
+    skipTargets: ["COBOL"],
+});
+
+// Proves sqrt/log/asin/acos/pow/log2/log10 return NaN/Infinity for an
+// out-of-domain argument identically on every target -- see
+// samples/domain-safety-demo.js's own header comment for the full,
+// directly-verified breakdown of what each target used to do instead
+// (QB64: crashed/hung; Python: raised; Perl: raised for sqrt/log/log2;
+// Scheme: silently became a COMPLEX number) and how each was fixed.
+registerSuiteConformance("domainSafety", {
+    ast: domainSafetyAst,
+    inputs: [
+        [0.5], // fully in-domain -- real values, sanity-checks the fix
+        // didn't change anything for the case that was already correct
+        [-1], // sqrt/log/pow/log2/log10 -> NaN/-Infinity; asin(-1)/
+        // acos(-1) are still in-domain (valid at the boundary)
+        [2], // asin/acos -> NaN; everything else in-domain
+        [0], // log/log2/log10 -> -Infinity; sqrt/asin/acos/pow in-domain
+    ],
+    // GnuCOBOL's intrinsic FUNCTION SQRT/LOG/ASIN/ACOS (and pow's own
+    // spillPow helper) all silently return 0 -- not NaN, not a crash,
+    // not an error -- for an out-of-domain argument, confirmed directly
+    // against a real compile+run. A SIXTH distinct real divergence this
+    // audit found (see domain-safety-demo.js), deliberately NOT
+    // guard-fixed the way QB64/Python/Perl/Scheme were: this project
+    // already found and confirmed (see nestedSelect/comparisonOps'
+    // own skipTargets above, same file) that GnuCOBOL's codegen has a
+    // real, fatal "unknown type name 'cob_decimal'" bug triggered by
+    // piling up multiple decimal-arithmetic-heavy IF-guarded helper
+    // FUNCTION-IDs in one compilation unit -- exactly the shape a
+    // domain-guard fix for 5 different primitives would need. Adding
+    // that risked reintroducing the exact crash already worked around
+    // elsewhere in this same file, for a target whose math intrinsics
+    // are already documented elsewhere as not fully reliable. Skipped,
+    // not silently ignored.
+    skipTargets: ["COBOL"],
+});
+
+// Array-typed parameter used inside a multi-output outputs() suite (see
+// samples/array-suite-demo.js's own header comment) -- the array-param
+// harness work (#36) and the suite/multi-output harness machinery
+// existed independently before this; this is the one place they're
+// actually exercised TOGETHER, against real toolchains.
+registerSuiteConformance("arraySuite", {
+    ast: arraySuiteAst,
+    inputs: [
+        [[10, 20, 30, 40], 4, 5], // wraps past the end
+        [[10, 20, 30, 40], 4, -1], // wraps past the start
+        [[10, 20, 30, 40], 4, 2], // no wrap needed
+    ],
     skipTargets: ["COBOL"],
 });
 

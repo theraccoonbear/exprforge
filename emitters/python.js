@@ -23,10 +23,29 @@ const emitter = new Emitter({
     // operand types, unlike C#'s int/int trap.
     formatNumber: (v) => String(v),
     calls: {
-        sqrt: fn1("sqrt"), abs: ([x]) => `abs(${x})`, sin: fn1("sin"), cos: fn1("cos"), tan: fn1("tan"),
-        asin: fn1("asin"), acos: fn1("acos"), atan: fn1("atan"), atan2: fn2("atan2"),
-        log: fn1("log"), log2: fn1("log2"), log10: fn1("log10"), exp: fn1("exp"),
-        pow: fn2("pow"), min: ([a, b]) => `min(${a}, ${b})`, max: ([a, b]) => `max(${a}, ${b})`,
+        // Python's math.sqrt/log/log2/log10/asin/acos/pow all RAISE
+        // ValueError for an out-of-domain argument -- confirmed directly,
+        // not assumed -- unlike every other target here (JS/C/Rust/Go/
+        // Java/Lua/PHP/Zig/C#), which return NaN/Infinity cleanly. Python's
+        // own ternary (`a if cond else b`) is short-circuiting (confirmed
+        // separately this session -- it's what already made normalizeX's
+        // QB64-only divergence possible in the first place), so a simple
+        // inline conditional expression is enough here, unlike QB64's
+        // arithmetic-only select() which needed real helper FUNCTIONs
+        // instead (see emitters/qb64.js's own SAFE_MATH_HELPERS comment
+        // for the full story this fix is the Python half of).
+        sqrt: ([x]) => `(math.sqrt(${x}) if ${x} >= 0 else float('nan'))`,
+        abs: ([x]) => `abs(${x})`, sin: fn1("sin"), cos: fn1("cos"), tan: fn1("tan"),
+        asin: ([x]) => `(math.asin(${x}) if -1 <= ${x} <= 1 else float('nan'))`,
+        acos: ([x]) => `(math.acos(${x}) if -1 <= ${x} <= 1 else float('nan'))`,
+        atan: fn1("atan"), atan2: fn2("atan2"),
+        log: ([x]) => `(math.log(${x}) if ${x} > 0 else (float('-inf') if ${x} == 0 else float('nan')))`,
+        log2: ([x]) => `(math.log2(${x}) if ${x} > 0 else (float('-inf') if ${x} == 0 else float('nan')))`,
+        log10: ([x]) => `(math.log10(${x}) if ${x} > 0 else (float('-inf') if ${x} == 0 else float('nan')))`,
+        exp: fn1("exp"),
+        pow: ([base, exp]) =>
+            `(math.pow(${base}, ${exp}) if not (${base} < 0 and ${exp} != int(${exp})) else float('nan'))`,
+        min: ([a, b]) => `min(${a}, ${b})`, max: ([a, b]) => `max(${a}, ${b})`,
         hypot: fn2("hypot"),
         // math.floor/ceil/trunc and builtin round() all return int in
         // Python 3, not float -- wrap to stay float64 throughout, matching

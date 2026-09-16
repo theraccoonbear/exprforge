@@ -17,10 +17,27 @@ const emitter = new Emitter({
     calls: {
         // All 22 are Julia Base functions -- no import, no derivation, no
         // wrapping needed for any of them, unlike every other target here.
-        sqrt: fn1("sqrt"), abs: fn1("abs"), sin: fn1("sin"), cos: fn1("cos"), tan: fn1("tan"),
-        asin: fn1("asin"), acos: fn1("acos"), atan: fn1("atan"), atan2: fn2("atan"),
-        log: fn1("log"), log2: fn1("log2"), log10: fn1("log10"), exp: fn1("exp"),
-        pow: ([x, y]) => `(${x} ^ ${y})`,
+        // Julia's own sqrt/log/log2/log10/asin/acos/^ all RAISE
+        // DomainError for an out-of-domain real argument (confirmed
+        // directly -- except log(0), which returns -Inf natively, no
+        // guard needed there) -- unlike every other target here (JS/C/
+        // Rust/Go/Java/Lua/PHP/Zig/C#), which return NaN/Infinity
+        // cleanly. Julia's own ternary (`cond ? a : b`) is
+        // short-circuiting (standard, same family as every C-like
+        // ternary), and Julia has real NaN/Inf constants built in --
+        // no synthesis trick needed the way QB64/Perl/Scheme's fixes
+        // needed one (see emitters/qb64.js's own SAFE_MATH_HELPERS
+        // comment for that side of this same fix).
+        sqrt: ([x]) => `(${x} >= 0 ? sqrt(${x}) : NaN)`,
+        abs: fn1("abs"), sin: fn1("sin"), cos: fn1("cos"), tan: fn1("tan"),
+        asin: ([x]) => `(-1 <= ${x} <= 1 ? asin(${x}) : NaN)`,
+        acos: ([x]) => `(-1 <= ${x} <= 1 ? acos(${x}) : NaN)`,
+        atan: fn1("atan"), atan2: fn2("atan"),
+        log: ([x]) => `(${x} > 0 ? log(${x}) : (${x} == 0 ? -Inf : NaN))`,
+        log2: ([x]) => `(${x} > 0 ? log2(${x}) : (${x} == 0 ? -Inf : NaN))`,
+        log10: ([x]) => `(${x} > 0 ? log10(${x}) : (${x} == 0 ? -Inf : NaN))`,
+        exp: fn1("exp"),
+        pow: ([x, y]) => `(${x} < 0 && ${y} != trunc(${y}) ? NaN : ${x} ^ ${y})`,
         floor: fn1("floor"), ceil: fn1("ceil"), trunc: fn1("trunc"),
         min: fn2("min"), max: fn2("max"), hypot: fn2("hypot"),
         // Julia's round() defaults to round-half-to-even (banker's

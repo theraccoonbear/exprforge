@@ -403,6 +403,54 @@ half-to-even) across every target, don't reach for `round()` — compose
 it yourself from `floor`/`ceil`/`sign`/`abs` (all of which agree
 everywhere) to get the exact behavior you want.
 
+### Domain errors (`sqrt`/`log`/`log2`/`log10`/`asin`/`acos`/`pow`): also unified
+
+An out-of-domain argument (`sqrt` of a negative number, `log` of a
+non-positive number, `asin`/`acos` outside `[-1, 1]`, `pow` with a
+negative base and a non-integer exponent) now returns `NaN`/`Infinity`
+identically on every target — confirmed directly, not assumed, that
+this WASN'T true before, and the divergence wasn't just "a different
+number":
+
+- **QB64**: the classic `SQR`/`LOG`/`^` don't return NaN at all — they
+  **halt the program** ("Illegal function call") and, in any
+  non-interactive context (a real compiled game/tool, or a test
+  harness), hang forever on an interactive "Continue?" prompt. A crash,
+  not a wrong answer.
+- **Python**: `math.sqrt`/`log`/`log2`/`log10`/`asin`/`acos`/`pow` all
+  **raise `ValueError`**.
+- **Perl**: the builtin `sqrt`/`log` (and `log2`, built from `log`)
+  **raise a fatal error** ("Can't take sqrt of -1") — `asin`/`acos`
+  (via `POSIX`) and `pow` (via `**`) were already fine.
+- **Scheme/Guile**: the most dangerous one found — `sqrt`/`log`/`asin`/
+  `acos`/`expt` don't crash or return NaN, they silently **promote to a
+  complex number** (`(sqrt -1.0)` ⇒ `0.0+1.0i`) — a completely different
+  result shape than every other target.
+- **GnuCOBOL**: silently returns **`0`** — not NaN, not a crash, just a
+  wrong number. Deliberately left as-is rather than guard-fixed: this
+  project already found and worked around a real GnuCOBOL codegen bug
+  (a fatal `cob_decimal` compiler error) triggered by piling up
+  decimal-arithmetic-heavy `IF`-guarded helper functions in one
+  compilation unit — exactly the shape a fix for 5 different primitives
+  would need, and not worth risking reintroducing that crash for a
+  target whose math intrinsics are already documented elsewhere as not
+  fully reliable.
+- Every other target (JS, TypeScript, C, Rust, Go, Java, Lua, PHP, Zig,
+  C#) was already correct — clean IEEE754 NaN/Infinity, never throws.
+
+Fortran is a narrow, deliberate exception: `gfortran` refuses to
+*compile* an out-of-domain expression made entirely of literal
+constants (e.g. authoring `sqrt(-4)` directly) — confirmed that the
+identical value through a runtime variable compiles and returns NaN
+correctly. Loud and immediate (a compile error, not a silent wrong
+answer or a hang) and avoidable by construction, unlike everything
+above — not fixed.
+
+See `samples/domain-safety-demo.js`'s own header comment for the full,
+directly-verified breakdown and exactly how each fix works, and
+`test/conformance.test.js`'s `domainSafety` entry for the permanent
+regression test.
+
 ## Symbolic differentiation (`differentiate`)
 
 ```js

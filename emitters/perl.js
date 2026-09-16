@@ -29,19 +29,40 @@ const emitter = new PerlEmitter({
     formatNumber: (v) => String(v),
     calls: {
         // Core builtins -- no module needed.
-        sqrt: fn1("sqrt"), abs: fn1("abs"), sin: fn1("sin"), cos: fn1("cos"),
-        exp: fn1("exp"), log: fn1("log"), atan2: ([a, b]) => `atan2(${a}, ${b})`,
+        // Perl's OWN builtin sqrt/log (unlike asin/acos below, which go
+        // through POSIX, and pow/`**`) RAISE a fatal error for an
+        // out-of-domain argument -- confirmed directly: "Can't take sqrt
+        // of -1", "Can't take log of 0" -- even POSIX::sqrt/POSIX::log
+        // hit the identical error (confirmed: they're not a separate
+        // direct libm call, just the same builtin under another name).
+        // Perl's ternary IS short-circuiting (standard C-like ?:), so a
+        // simple inline guard is enough -- "9**9**9 - 9**9**9" and
+        // "9**9**9" are confirmed-safe, non-crashing ways to synthesize a
+        // real NaN/Infinity in Perl (Inf - Inf and Inf respectively; the
+        // NaN one confirmed to correctly fail self-equality, i.e. a real
+        // IEEE NaN, not a string).
+        sqrt: ([x]) => `(${x} >= 0 ? sqrt(${x}) : 9**9**9 - 9**9**9)`,
+        abs: fn1("abs"), sin: fn1("sin"), cos: fn1("cos"),
+        exp: fn1("exp"),
+        log: ([x]) => `(${x} > 0 ? log(${x}) : (${x} == 0 ? -(9**9**9) : 9**9**9 - 9**9**9))`,
+        atan2: ([a, b]) => `atan2(${a}, ${b})`,
         pow: ([x, y]) => `(${x} ** ${y})`,
         // Everything else Perl core doesn't have is in the POSIX module --
         // called fully-qualified (POSIX::name) rather than imported, so
         // there's no import list to keep in sync with this table and no
         // risk of a POSIX symbol shadowing a core builtin of the same name.
         tan: posix1("tan"), asin: posix1("asin"), acos: posix1("acos"), atan: posix1("atan"),
-        log10: posix1("log10"), floor: posix1("floor"), ceil: posix1("ceil"),
+        // NOT posix1("log10") -- confirmed POSIX::log10 hits the exact
+        // same "Can't take log of ..." fatal error as the bare builtin
+        // (see the log: entry above for the full story); same safe-log
+        // ternary as the numerator here, divided by a fixed safe
+        // constant.
+        log10: ([x]) => `((${x} > 0 ? log(${x}) : (${x} == 0 ? -(9**9**9) : 9**9**9 - 9**9**9)) / log(10))`,
+        floor: posix1("floor"), ceil: posix1("ceil"),
         round: posix1("round"), trunc: posix1("trunc"),
         hypot: ([a, b]) => `POSIX::hypot(${a}, ${b})`,
         // No log2 anywhere in core or POSIX -- derive it.
-        log2: ([x]) => `(log(${x}) / log(2))`,
+        log2: ([x]) => `((${x} > 0 ? log(${x}) : (${x} == 0 ? -(9**9**9) : 9**9**9 - 9**9**9)) / log(2))`,
         // List::Util, same fully-qualified convention as POSIX above.
         min: ([a, b]) => `List::Util::min(${a}, ${b})`,
         max: ([a, b]) => `List::Util::max(${a}, ${b})`,

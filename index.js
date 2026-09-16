@@ -19,6 +19,9 @@ const { comparisonOpsAst } = require("./samples/comparison-ops-demo.js");
 const { nestedSelectAst } = require("./samples/nested-select-demo.js");
 const { numberExtremesAst } = require("./samples/number-extremes-demo.js");
 const { roundTieBoundaryAst } = require("./samples/round-tie-demo.js");
+const { domainSafetyAst } = require("./samples/domain-safety-demo.js");
+const { arraySuiteAst } = require("./samples/array-suite-demo.js");
+const { arrayMacroDemoAst } = require("./samples/array-macro-demo.js");
 
 /**
  * Run ONE emitter against one AST function definition. Returns
@@ -206,6 +209,9 @@ module.exports = {
     nestedSelectAst,
     numberExtremesAst,
     roundTieBoundaryAst,
+    domainSafetyAst,
+    arraySuiteAst,
+    arrayMacroDemoAst,
     samples: {
         catmullRom: catmullRomAst,
         fibonacci: fibonacciAst,
@@ -219,6 +225,9 @@ module.exports = {
         nestedSelect: nestedSelectAst,
         numberExtremes: numberExtremesAst,
         roundTieBoundary: roundTieBoundaryAst,
+        domainSafety: domainSafetyAst,
+        arraySuite: arraySuiteAst,
+        arrayMacroDemo: arrayMacroDemoAst,
     },
     // Per-language emitter instances, keyed by name (js, qb64, c, java, go, rust).
     emitters,
