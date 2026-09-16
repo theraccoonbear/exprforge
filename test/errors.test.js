@@ -71,6 +71,35 @@ test("two let bindings sharing a name throw across sibling subtrees, not just di
     assert.throws(() => emitters.js.emitFunction(fn), /duplicate let binding name "a"/);
 });
 
+// Real, confirmed landmine (found auditing for more instances of the
+// multi-function-file bug class): a let-binding named the same as one of
+// its own function's parameters (`f(x): let x = x + 1; return x;`)
+// compiles to a DIFFERENT, wrong result depending on target -- confirmed
+// directly, not hypothetical: JS/TypeScript's `const x = (x + 1)` hits
+// the temporal dead zone and THROWS at runtime ("Cannot access 'x'
+// before initialization"); C's `double x = x + 1;` instead silently
+// reads the newly-declared (uninitialized) `x`, not the parameter --
+// undefined behavior, no error at all. Rejected uniformly at
+// checkUnboundVars, before any target gets a chance to diverge.
+test("a let binding sharing a name with its own function's parameter throws, for every emitter", () => {
+    const fn = { name: "f", params: ["x"], body: letIn("x", add(v("x"), num(1)), v("x")) };
+    for (const [lang, emitter] of Object.entries(emitters)) {
+        assert.throws(
+            () => emitter.emitFunction(fn),
+            /has a "let x = \.\.\." binding with the same name as its own parameter "x"/,
+            `expected ${lang} to throw for a let binding shadowing a parameter`,
+        );
+    }
+});
+
+test("a let binding sharing a name with a DIFFERENT function's parameter (not its own) is fine", () => {
+    // Sanity check on the check itself: this must only reject a let
+    // colliding with THIS function's own params, not any name that
+    // happens to be a parameter somewhere else in the program.
+    const fn = { name: "f", params: ["y"], body: letIn("x", add(v("y"), num(1)), v("x")) };
+    assert.doesNotThrow(() => emitters.js.emitFunction(fn));
+});
+
 test("emitting a suite through an emitter with no formatSuite configured throws clearly", () => {
     const bareEmitter = new Emitter({
         ext: "bare",
