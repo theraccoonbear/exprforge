@@ -19,6 +19,17 @@ const PRIMITIVE_ARITY = {
     log: 1, log2: 1, log10: 1, exp: 1, floor: 1, ceil: 1, round: 1,
     trunc: 1, sign: 1,
     pow: 2, atan2: 2, min: 2, max: 2, hypot: 2,
+    // wrapIndex/clampIndex: pure scalar-in/scalar-out (see
+    // docs/array-index-primitives.md) -- mechanically identical to every
+    // other 2/3-arg primitive above, nothing array-specific about the
+    // primitives themselves. wrapIndex(i, m) is cyclic index wrapping
+    // (closed paths); clampIndex(i, lo, hi) is boundary clamping (open
+    // paths). wrapIndex needs `%` specifically, not floor/mul/sub
+    // decomposition -- see the design doc for why modulo's differing
+    // sign convention across targets (Python follows the divisor;
+    // C/JS/QB64 follow the dividend) makes this worth a primitive rather
+    // than expecting each emitter to compose one from bin() nodes.
+    wrapIndex: 2, clampIndex: 3,
 };
 
 module.exports = { PRIMITIVE_ARITY };

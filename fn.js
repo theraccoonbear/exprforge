@@ -11,7 +11,8 @@
 // builders (letChain, outputs), never a new node shape:
 //
 //   program    := signature? stmt* returnStmt
-//   signature  := IDENT "(" (IDENT ("," IDENT)*)? ")" ":"
+//   signature  := IDENT "(" (param ("," param)*)? ")" ":"
+//   param      := IDENT (":" "number" "[" "]")?
 //   stmt       := "let" IDENT "=" expression ";"
 //   returnStmt := "return" expression ";"
 //               | "return" "{" field ("," field)* "}" ";"
@@ -21,6 +22,17 @@
 // means return { rx: rx, ry: ry, rz: rz };) -- same convention JS object
 // literals use for a property whose value is a same-named variable, and
 // fields can freely mix shorthand and explicit form in one return.
+//
+// A parameter's ":" is a DIFFERENT thing entirely, not the same syntax
+// reused: "wps: number[]" declares wps as array-typed (see ast.js's
+// paramTypes and docs/array-index-primitives.md) -- the only type
+// annotation this grammar has, since every OTHER value in this DSL is
+// already implicitly a plain scalar number. Omitting it (just "wps",
+// like every parameter before this existed) still means "ordinary
+// scalar", so every fn`...` template written before this feature existed
+// still parses identically. "number[]" is the only type keyword accepted
+// -- struct/tuple-typed array elements are out of scope (see the design
+// doc's own "What this does not solve").
 //
 // "let"/"return" are recognized contextually -- an IDENT token whose
 // value happens to be "let"/"return" at statement-start position. They
@@ -97,6 +109,27 @@ function expectIdent(parser, context) {
     }
     parser.next();
     return t.value;
+}
+
+// One "param" per the grammar comment above: IDENT, optionally followed
+// by ": number[]" to declare it array-typed. Pushes the bare name onto
+// `params` unconditionally (paramTypes stays the single source of truth
+// for which ones are array-typed, same "absent means ordinary scalar"
+// convention ast.js's own paramTypes comment documents), and only sets
+// `paramTypes[name]` when the annotation is actually present.
+function parseParam(parser, params, paramTypes) {
+    const name = expectIdent(parser, "as a parameter name in a signature");
+    params.push(name);
+    if (!parser.isOp(":")) return;
+    parser.next(); // consume ":"
+    const t = parser.peek();
+    if (t.type !== "IDENT" || t.value !== "number") {
+        parser.error(`expected "number[]" as a parameter type (got "${t.value ?? t.type}") -- "number[]" is the only parameter type this grammar has`);
+    }
+    parser.next(); // consume "number"
+    parser.expectOp("[");
+    parser.expectOp("]");
+    paramTypes[name] = "number[]";
 }
 
 function parseLetStatement(parser) {
@@ -194,16 +227,17 @@ function parseSignature(parser, { requireExportKeyword = false } = {}) {
     const name = expectIdent(parser, "as the function name starting a signature");
     parser.expectOp("(");
     const params = [];
+    const paramTypes = {};
     if (!parser.isOp(")")) {
-        params.push(expectIdent(parser, "as a parameter name in a signature"));
+        parseParam(parser, params, paramTypes);
         while (parser.isOp(",")) {
             parser.next();
-            params.push(expectIdent(parser, "as a parameter name in a signature"));
+            parseParam(parser, params, paramTypes);
         }
     }
     parser.expectOp(")");
     parser.expectOp(":");
-    return { name, params, exported };
+    return { name, params, paramTypes, exported };
 }
 
 function parseProgram(parser, { requireExportKeyword = false } = {}) {
@@ -228,6 +262,13 @@ function parseProgram(parser, { requireExportKeyword = false } = {}) {
 
     if (!signature) return result;
     const def = { name: signature.name, params: signature.params, body: result };
+    // Only attached when at least one param actually got a "number[]"
+    // annotation -- an empty {} would be harmless (ast.js's own
+    // checkUnboundVars treats it the same as undefined), but omitting it
+    // entirely keeps a scalar-only fn`...` template's result byte-for-
+    // byte identical to before this feature existed, same reasoning as
+    // `exported` below.
+    if (Object.keys(signature.paramTypes).length > 0) def.paramTypes = signature.paramTypes;
     // `exported` is only ever meaningful to load-expr.js's own loop (the
     // one caller that runs in requireExportKeyword mode) -- omitted
     // entirely from fn()'s own return shape below, so a plain fn`...`

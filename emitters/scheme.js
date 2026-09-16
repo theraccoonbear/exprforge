@@ -22,7 +22,8 @@ const SCHEME_RESERVED = new Set([
     "and", "or", "not", "begin", "set!", "quote", "quasiquote", "unquote", "do",
     "delay", "values", "call-with-values", "else", "define-record-type",
     "sqrt", "abs", "sin", "cos", "tan", "asin", "acos", "atan", "exp", "log",
-    "expt", "floor", "ceiling", "round", "truncate", "min", "max",
+    "expt", "floor", "ceiling", "round", "truncate", "min", "max", "modulo",
+    "vector-ref", "vector-length",
 ]);
 
 function checkReservedNames(names) {
@@ -98,6 +99,20 @@ const emitter = new SchemeEmitter({
         // construction (see Go's/Rust's sign() history in this project for
         // what happens when it isn't).
         sign: ([x]) => `(if (> ${x} 0.0) 1.0 (if (< ${x} 0.0) -1.0 0.0))`,
+        // modulo is traditional Scheme's floor-mod procedure (result
+        // takes the sign of the divisor), distinct from remainder
+        // (dividend's sign) -- the right one here, no correction needed.
+        wrapIndex: fn2("modulo"),
+        clampIndex: ([i, lo, hi]) => `(max ${lo} (min ${hi} ${i}))`,
+    },
+    // vector-ref requires an exact non-negative integer index -- every
+    // number in this AST is inexact by construction (see formatNumber
+    // above), so the index needs an explicit exact-integer conversion
+    // first. round (not truncate) guards against floating imprecision
+    // landing just under an intended integer value. No formatFunction
+    // change needed: Scheme params carry no type annotation regardless.
+    emitIndex: function (targetNode, atNode) {
+        return `(vector-ref ${this.emitExpr(targetNode)} (inexact->exact (round ${this.emitExpr(atNode)})))`;
     },
     // Scheme's `if` already IS an expression (no separate statement form),
     // so this is the most direct emitSelect override of any target here --

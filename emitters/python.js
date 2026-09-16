@@ -39,6 +39,17 @@ const emitter = new Emitter({
         // by construction (see Go's/Rust's sign() history in this project
         // for what happens when it isn't).
         sign: ([x]) => `(1.0 if ${x} > 0 else (-1.0 if ${x} < 0 else 0.0))`,
+        // Python's % is documented, unambiguous floor-mod (result takes
+        // the sign of the divisor) -- unlike most other targets here, no
+        // sign-correction wrapper is needed.
+        wrapIndex: ([i, m]) => `(${i} % ${m})`,
+        clampIndex: ([i, lo, hi]) => `max(${lo}, min(${hi}, ${i}))`,
+    },
+    // Python list subscripts must be int, not float -- a float index
+    // raises TypeError at runtime. No formatFunction change needed:
+    // Python params here carry no type annotation regardless.
+    emitIndex: function (targetNode, atNode) {
+        return `${this.emitExpr(targetNode)}[int(${this.emitExpr(atNode)})]`;
     },
     // Python has no ?: ternary; `a if cond else b` is its conditional
     // expression instead, and it's just as short-circuiting.

@@ -92,6 +92,19 @@ catmullRom(p0, p1, p2, p3, t):
 `,
     },
     {
+        id: "cyclicElem",
+        label: "Cyclic array index (wrapIndex)",
+        source: `# Reads one element out of an array, wrapping around its ends --
+# the motivating shape behind exprforge's "Array indexing" feature
+# (see the root README): picking spline control points near the
+# seam of a closed path without running off the array's bounds.
+# Try it below with arr = "10, 20, 30, 40" and i = 5 -- wraps to
+# index 1 (20), not an out-of-bounds error.
+cyclicElem(arr: number[], m, i):
+  return arr[wrapIndex(i, m)];
+`,
+    },
+    {
         id: "sigmoid",
         label: "Sigmoid (logistic function)",
         source: `sigmoid(x):

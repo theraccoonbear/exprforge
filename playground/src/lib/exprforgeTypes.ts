@@ -8,7 +8,10 @@ import type { FnDef, EmitResult, BatchEmitResult, Emitter } from "exprforge";
 
 export interface ExprForgeModuleShape {
     fn(strings: readonly string[], ...values: unknown[]): unknown;
-    evaluate(def: FnDef, args: number[]): number | Record<string, number>;
+    // Each element is a plain number, except for a param declared
+    // array-typed via def.paramTypes -- see exprforge.d.ts's own comment
+    // on evaluate() for what that means.
+    evaluate(def: FnDef, args: (number | number[])[]): number | Record<string, number>;
     emit(def: FnDef, lang: string): EmitResult;
     emitMany(def: FnDef, langs?: string[]): Record<string, BatchEmitResult>;
     emitAll(def: FnDef): Record<string, BatchEmitResult>;

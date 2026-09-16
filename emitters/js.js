@@ -18,6 +18,21 @@ const emitter = new Emitter({
         log2: fn1("log2"), log10: fn1("log10"), exp: fn1("exp"), floor: fn1("floor"),
         ceil: fn1("ceil"), round: fn1("round"), trunc: fn1("trunc"), sign: fn1("sign"),
         pow: fn2("pow"), atan2: fn2("atan2"), min: fn2("min"), max: fn2("max"), hypot: fn2("hypot"),
+        // See primitives.js's own comment -- the double-application
+        // ((i % m) + m) % m is self-correcting regardless of which sign
+        // convention `%` follows, so it's used uniformly across every
+        // target here rather than trusting each language's own convention
+        // from memory alone.
+        wrapIndex: ([i, m]) => `(((${i} % ${m}) + ${m}) % ${m})`,
+        clampIndex: ([i, lo, hi]) => `Math.max(${lo}, Math.min(${hi}, ${i}))`,
+    },
+    // No cast needed: JS's bracket notation converts a numeric key to a
+    // string (String(2.0) === "2"), which matches a real array element's
+    // own string-keyed property name -- confirmed reliable, not just
+    // assumed. Array params need no type annotation either (JS has none),
+    // so no formatFunction/formatSuite change was needed for this at all.
+    emitIndex: function (targetNode, atNode) {
+        return `${this.emitExpr(targetNode)}[${this.emitExpr(atNode)}]`;
     },
     formatFunction: (fn, body, letBindings = []) => {
         const lets = letBindings.map(({ name, valueStr }) => `    const ${name} = ${valueStr};`).join("\n");

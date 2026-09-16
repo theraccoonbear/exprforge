@@ -23,6 +23,19 @@ const emitter = new Emitter({
         // C's/Java's sign, which both special-case zero). Found by the
         // kitchen-sink conformance test at exactly x - y == 0.
         sign: ([x]) => `func() float64 { if ${x} > 0.0 { return 1.0 }; if ${x} < 0.0 { return -1.0 }; return 0.0 }()`,
+        // Go's `%` doesn't work on float64 at all (compile error) --
+        // math.Mod is the float-capable equivalent (sign-of-dividend per
+        // its own docs), so the double-application wrap still applies.
+        // "math." substring is already what formatFunction's mathImport
+        // detection greps for, so no separate import-detection change
+        // needed here.
+        wrapIndex: ([i, m]) => `(math.Mod(math.Mod(${i}, ${m}) + (${m}), ${m}))`,
+        clampIndex: ([i, lo, hi]) => `math.Max(${lo}, math.Min(${hi}, ${i}))`,
+    },
+    // Go slice indexing requires an integer index type -- no implicit
+    // float64-to-int conversion.
+    emitIndex: function (targetNode, atNode) {
+        return `${this.emitExpr(targetNode)}[int(${this.emitExpr(atNode)})]`;
     },
     // Go has no ternary operator at all (a deliberate language design
     // choice) and `if` is a statement, not an expression — so there's no
@@ -36,7 +49,7 @@ const emitter = new Emitter({
         return `func() float64 { if ${L} ${condNode.op} ${R} { return ${thenStr} }; return ${elseStr} }()`;
     },
     formatFunction: (fn, body, letBindings = []) => {
-        const params = fn.params.map((p) => `${p} float64`).join(", ");
+        const params = fn.params.map((p) => `${p} ${fn.paramTypes?.[p] === "number[]" ? "[]float64" : "float64"}`).join(", ");
         const lets = letBindings.map(({ name, valueStr }) => `\tvar ${name} float64 = ${valueStr}`).join("\n");
         // A let-chain can bind more names than any one function's body
         // reads (e.g. a shared chain computes ux/uy/uz for three sibling
@@ -69,7 +82,7 @@ const emitter = new Emitter({
     // of collision regardless of what any AST author names things; a
     // leading doc comment documents the order instead.
     formatSuite: (fn, outputStrs, letBindings = []) => {
-        const params = fn.params.map((p) => `${p} float64`).join(", ");
+        const params = fn.params.map((p) => `${p} ${fn.paramTypes?.[p] === "number[]" ? "[]float64" : "float64"}`).join(", ");
         const lets = letBindings.map(({ name, valueStr }) => `\tvar ${name} float64 = ${valueStr}`).join("\n");
         const guards = letBindings.map(({ name }) => `\t_ = ${name}`).join("\n");
         const letsBlock = lets ? lets + "\n" + guards + "\n" : "";

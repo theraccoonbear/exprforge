@@ -12,6 +12,27 @@
 //   { type: "select", cond: CmpNode, then: Node, else: Node }
 //   { type: "outputs", fields: { [name: string]: Node } }
 //   { type: "field",   target: Node, field: string }
+//   { type: "index",   target: Node, at: Node }
+//
+// "index" is fixed-position array access (arr[i]) -- NOT iteration, NOT a
+// dynamic-length loop; see docs/array-index-primitives.md for the full
+// design rationale and why this stays inside the "expression tree, no
+// statements" model. `target` is expected to resolve to an array-typed
+// value (see the {name, params, body} shape's optional `paramTypes` field
+// below); indexing into anything else is caught at evaluate()/emit time,
+// not here -- same "defer semantic validation to the consumer" precedent
+// `call()`/`field()` already follow for names this layer can't itself
+// verify.
+//
+// A {name, params, body} function definition's `params` stays plain
+// string[] as always -- NOT restructured to carry type info inline, since
+// that would break every existing `fn.params.map(...)`/`.join(...)` call
+// site across this codebase for a feature only some functions use. An
+// array-typed parameter is instead declared via an OPTIONAL sibling field,
+// `paramTypes: { [paramName]: "number[]" }`, present only on functions
+// that actually have one -- absent (or omitted entirely) means "every
+// param is a plain scalar", the same as every function defined before
+// this existed.
 //
 // "field" is postfix "." access (e.g. b.rx) — parser sugar produced only
 // by expr.js/fn.js's grammar, and eliminated by macros.js's
@@ -184,6 +205,16 @@ function field(target, name) {
     return { type: "field", target, field: name };
 }
 
+// Fixed-position array access (arr[i]) — see the "index" node-shape
+// comment at the top of this file. `target` is typically v(paramName)
+// where paramName is declared array-typed via the function definition's
+// `paramTypes` field, but that's checked by evaluate()/each emitter, not
+// here — this builder just assembles the node, same "validate the parts
+// I own, defer the rest" split every other builder above follows.
+function idx(target, at) {
+    return { type: "index", target, at };
+}
+
 // The prefix macros.js's own gensym'd internal let-names always start
 // with (see substituteAndRename's "let" case there) — defined HERE, not
 // there, specifically so collectLets below can recognize a collision
@@ -228,6 +259,7 @@ function collectLets(node) {
             }
             return { ...n, fields };
         }
+        if (n.type === "index") return { ...n, target: walk(n.target), at: walk(n.at) };
         return n; // num, var
     }
 
@@ -287,6 +319,9 @@ function collectVarRefs(node, refs = new Set()) {
         collectVarRefs(node.body, refs);
     } else if (node.type === "outputs") {
         for (const fieldNode of Object.values(node.fields)) collectVarRefs(fieldNode, refs);
+    } else if (node.type === "index") {
+        collectVarRefs(node.target, refs);
+        collectVarRefs(node.at, refs);
     }
     // num: nothing to add.
     return refs;
@@ -322,6 +357,100 @@ function collectVarRefs(node, refs = new Set()) {
 // every real consumption path (evaluate(), every emitter's
 // emitFunction(), cobol.js's own override) already runs unconditionally,
 // so it's the natural single checkpoint for this too.
+// Verifies no array-typed parameter (see paramTypes) is ever used as a
+// bare value -- valid ONLY as the target of an "index" node (arr[i]),
+// never handed to a bin/call/cmp/select/outputs field, or used as the
+// index expression itself, directly. There's no array literal and no
+// array-typed return anywhere in this grammar (see the "index"
+// node-shape comment at the top of this file), so any OTHER appearance
+// of an array-typed name is necessarily a bug -- and a genuinely
+// dangerous one to leave uncaught here: `return arr;`/`outputs({x: arr})`
+// silently "work" on evaluate()/js/python (nothing there minds a JS
+// array flowing through untyped) and then fail to even COMPILE on every
+// statically-typed target, discovered only per-language, as an opaque
+// host-compiler error -- exactly the failure mode this whole feature
+// exists to prevent for everything else (see
+// docs/array-index-primitives.md). Caught once, here, at the same single
+// checkpoint every other structural check in checkUnboundVars already
+// runs at, with one clear message, instead of N different opaque ones.
+//
+// Because `at` (the index expression) is walked through this exact same
+// general check rather than being exempted, indexing with anything
+// array-typed -- `arr[arr]`, `arr[otherArr]` -- is rejected too, for the
+// same reason: an index has to be a number, and an array-typed name is
+// never a number on its own, wherever it appears. And because an
+// "index" node's own `target` is required to be exactly a bare
+// array-typed `var` (see the "index" case below), chained indexing --
+// `matrix[i][j]`, or indexing the result of a call/arithmetic expression
+// (`sqrt(x)[i]`, `(a + b)[i]`) -- is rejected too: none of those can
+// ever BE array-typed in the first place (no multi-dimensional array
+// type, no function/primitive that returns one), so "index into it
+// again" is caught before it ever reaches evaluate()'s runtime check or
+// an emitted target's own compiler.
+//
+// Mirrors collectVarRefs' own node-type walk above (identical tree
+// shape; "let" is already stripped out by collectLets by the time this
+// runs, so there's no "let" case needed here either).
+function assertNoBareArrayUse(node, arrayTypedNames, fnName) {
+    if (node.type === "var") {
+        if (arrayTypedNames.has(node.name)) {
+            throw new Error(
+                `checkUnboundVars: "${fnName}" uses array-typed parameter "${node.name}" as a plain value -- ` +
+                `an array-typed parameter is only valid as the target of "${node.name}[i]" indexing; there's no ` +
+                `array literal or array-typed return in this grammar (see docs/array-index-primitives.md)`,
+            );
+        }
+    } else if (node.type === "bin") {
+        assertNoBareArrayUse(node.left, arrayTypedNames, fnName);
+        assertNoBareArrayUse(node.right, arrayTypedNames, fnName);
+    } else if (node.type === "call") {
+        for (const a of node.args) assertNoBareArrayUse(a, arrayTypedNames, fnName);
+    } else if (node.type === "cmp") {
+        assertNoBareArrayUse(node.left, arrayTypedNames, fnName);
+        assertNoBareArrayUse(node.right, arrayTypedNames, fnName);
+    } else if (node.type === "select") {
+        assertNoBareArrayUse(node.cond, arrayTypedNames, fnName);
+        assertNoBareArrayUse(node.then, arrayTypedNames, fnName);
+        assertNoBareArrayUse(node.else, arrayTypedNames, fnName);
+    } else if (node.type === "outputs") {
+        for (const fieldNode of Object.values(node.fields)) assertNoBareArrayUse(fieldNode, arrayTypedNames, fnName);
+    } else if (node.type === "index") {
+        // The only way to produce an array-shaped value anywhere in this
+        // grammar is a bare reference to an array-typed parameter (or a
+        // "let" that's a pure alias of one, tracked into arrayTypedNames
+        // by checkUnboundVars below) -- there's no array literal, no
+        // function/macro/primitive that returns one, and no
+        // multi-dimensional array type. So target.type must be exactly
+        // "var", full stop: anything else (a call, an arithmetic
+        // expression, a field access, or ANOTHER index -- e.g. chained
+        // "matrix[i][j]", whose result is one scalar element, not a
+        // second array to index into) is categorically invalid, and
+        // rejected here directly rather than walked into -- there's
+        // nothing further down any of those to find that would make the
+        // outer indexing itself valid.
+        if (node.target.type !== "var") {
+            throw new Error(
+                `checkUnboundVars: "${fnName}" indexes into a "${node.target.type}" expression -- an index ` +
+                `target must be a bare array-typed parameter (or a "let" binding that's a direct alias of one); ` +
+                `nothing else in this grammar (a call, an arithmetic expression, another index, ...) can ever ` +
+                `produce an array-typed value to index into (see docs/array-index-primitives.md)`,
+            );
+        }
+        if (!arrayTypedNames.has(node.target.name)) {
+            throw new Error(
+                `checkUnboundVars: "${fnName}" indexes into "${node.target.name}", which isn't declared ` +
+                `array-typed (fn.paramTypes) -- only an array-typed parameter (or a "let" binding that's a ` +
+                `direct alias of one) can be indexed with "[...]"`,
+            );
+        }
+        // `at` is walked through the exact same general check, not
+        // exempted -- see this function's own header comment for why
+        // that's what closes arr[arr]/arr[otherArr] too, for free.
+        assertNoBareArrayUse(node.at, arrayTypedNames, fnName);
+    }
+    // num: nothing to check.
+}
+
 function checkUnboundVars(fn) {
     // checkUnboundVars is called both internally (every real consumption
     // path runs it after expandMacros, see macros.js's own comment on
@@ -345,6 +474,34 @@ function checkUnboundVars(fn) {
     assertSafeIdentifier(fn.name, "fn.name");
     for (const p of fn.params) assertSafeIdentifier(p, "fn.params");
 
+    // paramTypes is optional (see the "index" node-shape comment at the
+    // top of this file) -- validated here, the one place every real
+    // consumption path already runs unconditionally, same as every other
+    // check in this function. Every key must be an actual declared
+    // param (a typo'd key would otherwise silently do nothing at all,
+    // in every target, forever), and "number[]" is the only value
+    // supported so far -- see the design doc for why struct-typed array
+    // elements are explicitly out of scope for now.
+    if (fn.paramTypes !== undefined) {
+        if (typeof fn.paramTypes !== "object" || fn.paramTypes === null || Array.isArray(fn.paramTypes)) {
+            throw new Error(`checkUnboundVars: "${fn.name}".paramTypes must be a plain {paramName: type} object`);
+        }
+        for (const [name, type] of Object.entries(fn.paramTypes)) {
+            if (!fn.params.includes(name)) {
+                throw new Error(
+                    `checkUnboundVars: "${fn.name}".paramTypes has an entry for "${name}", which isn't one of ` +
+                    `this function's params (${fn.params.length ? fn.params.join(", ") : "none"})`,
+                );
+            }
+            if (type !== "number[]") {
+                throw new Error(
+                    `checkUnboundVars: "${fn.name}".paramTypes["${name}"] is "${type}" -- only "number[]" is ` +
+                    `supported (struct/tuple-typed array elements aren't; see docs/array-index-primitives.md)`,
+                );
+            }
+        }
+    }
+
     const { bindings, body } = collectLets(fn.body);
     const declared = new Set([...fn.params, ...bindings.map((b) => b.name)]);
 
@@ -361,10 +518,38 @@ function checkUnboundVars(fn) {
             );
         }
     }
+
+    // Array-typed-parameter misuse check -- see assertNoBareArrayUse's own
+    // comment for exactly what this catches and why it lives here.
+    // Walked in the same order bindings actually execute (collectLets
+    // already guarantees that ordering), growing arrayTypedNames as it
+    // goes: a "let" that's a pure rename of an array param (`let a =
+    // arr;`) is validated against the set BEFORE being added to it, then
+    // becomes array-typed itself for everything checked after -- so a
+    // leak hiding behind a rename (`let a = arr; return a;`) still gets
+    // caught once the final body is checked against the grown set,
+    // exactly like leaking the original name directly would be.
+    const arrayTypedNames = new Set(Object.keys(fn.paramTypes || {}));
+    for (const { name, node } of bindings) {
+        // A pure alias (`let a = arr;`, value is EXACTLY a bare
+        // reference to an already-array-typed name) is the one case
+        // that must NOT go through the general check below -- the value
+        // node IS a bare array-typed var by definition here, which is
+        // exactly what that check exists to reject everywhere else.
+        // Anything else (arr used inside a larger expression, e.g.
+        // `let a = arr + 1;`) still goes through it normally, and still
+        // throws.
+        if (node.type === "var" && arrayTypedNames.has(node.name)) {
+            arrayTypedNames.add(name);
+        } else {
+            assertNoBareArrayUse(node, arrayTypedNames, fn.name);
+        }
+    }
+    assertNoBareArrayUse(body, arrayTypedNames, fn.name);
 }
 
 module.exports = {
-    num, v, bin, call, add, mul, sub, div, neg, letIn, letChain, cmp, select, outputs, field, collectLets,
+    num, v, bin, call, add, mul, sub, div, neg, letIn, letChain, cmp, select, outputs, field, idx, collectLets,
     checkUnboundVars,
     MACRO_GENSYM_PREFIX,
 };

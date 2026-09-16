@@ -13,7 +13,7 @@
 const test = require("node:test");
 const assert = require("node:assert");
 const {
-    num, v, add, sub, mul, div, call, letIn, letChain, outputs, cmp, select, collectLets,
+    num, v, add, sub, mul, div, call, letIn, letChain, outputs, cmp, select, collectLets, idx,
 } = require("../ast.js");
 const { fn } = require("../fn.js");
 const { expr } = require("../expr.js");
@@ -173,6 +173,56 @@ test("a signature with params produces {name, params, body} directly", () => {
     assert.deepStrictEqual(
         result.body,
         letIn("mag", call("sqrt", add(call("pow", v("x"), num(2)), call("pow", v("y"), num(2)))), div(v("x"), v("mag"))),
+    );
+});
+
+test("a \"name: number[]\" param produces {params, paramTypes} with an array-typed entry", () => {
+    const result = fn`
+        firstElem(arr: number[], n):
+        return arr[0];
+    `;
+    assert.strictEqual(result.name, "firstElem");
+    assert.deepStrictEqual(result.params, ["arr", "n"]);
+    assert.deepStrictEqual(result.paramTypes, { arr: "number[]" });
+    assert.deepStrictEqual(result.body, idx(v("arr"), num(0)));
+});
+
+test("a scalar-only signature has no paramTypes field at all, not an empty {}", () => {
+    const result = fn`
+        area(w, h):
+        return w * h;
+    `;
+    assert.strictEqual("paramTypes" in result, false);
+});
+
+test("array-typed params can be mixed with scalar ones in any position", () => {
+    const result = fn`
+        f(a, wps: number[], b):
+        return a + b;
+    `;
+    assert.deepStrictEqual(result.params, ["a", "wps", "b"]);
+    assert.deepStrictEqual(result.paramTypes, { wps: "number[]" });
+});
+
+test("multiple array-typed params in one signature", () => {
+    const result = fn`
+        f(a: number[], b: number[]):
+        return a[0] + b[0];
+    `;
+    assert.deepStrictEqual(result.paramTypes, { a: "number[]", b: "number[]" });
+});
+
+test("a param type other than \"number[]\" throws a clear error", () => {
+    assert.throws(
+        () => fn`f(x: string): return x;`,
+        /"number\[\]" is the only parameter type this grammar has/,
+    );
+});
+
+test("\"number\" without trailing \"[]\" throws (no bare scalar type annotation exists)", () => {
+    assert.throws(
+        () => fn`f(x: number): return x;`,
+        /expected "\[/,
     );
 });
 

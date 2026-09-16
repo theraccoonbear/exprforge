@@ -115,3 +115,14 @@ toolchain and skip (not fail) when a toolchain is absent.
 - `expandMacros()` runs before everything (evaluate, emit, checkUnboundVars)
 - No new dependencies unless absolutely necessary
 - No comments in generated code
+- **Every AST-level addition (a new primitive, a new node type) supports
+  every registered emitter target by default -- full coverage is the
+  starting bar, not an opt-in stretch goal for "whichever languages need it
+  right now."** Falling short for one target needs a profound, specific,
+  documented reason (a real structural mismatch, like GnuCOBOL's
+  compile-time-fixed `OCCURS` array size -- see
+  `docs/array-index-primitives.md`), not "didn't get to it yet" or "only
+  two languages asked for this." Where a target genuinely can't support
+  something yet, throw a clear "not supported for this target" error at
+  generation time (same pattern `formatSuite` already uses) and treat it as
+  tracked follow-up work, not settled scope.

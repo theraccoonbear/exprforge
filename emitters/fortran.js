@@ -66,6 +66,27 @@ function wrapLine(line, maxWidth = 100) {
     return wrapped.join("\n");
 }
 
+// Array-typed params (see ast.js's paramTypes) get their own declaration
+// line with `dimension(0:*)` -- an assumed-size, EXPLICITLY 0-based dummy
+// array. Verified directly against a real compile (gfortran) that this
+// reads the caller's first element as index 0 regardless of how the
+// caller's own array was actually dimensioned (1-based, custom bounds,
+// whatever) -- Fortran's argument-association rules only require the
+// caller's array to have enough elements, never matching bounds. No
+// count parameter needs to be referenced in the bounds expression at all
+// (`*` needs no size), unlike a fixed-shape `dimension(0:n-1)` would.
+// Scalar params stay grouped in one `real(8), intent(in) :: a, b, c` line
+// exactly as before; array params get their own line per param, since
+// each needs the `dimension` attribute the scalar line doesn't.
+function paramDecls(params, paramTypes) {
+    const scalars = params.filter((p) => paramTypes?.[p] !== "number[]");
+    const arrays = params.filter((p) => paramTypes?.[p] === "number[]");
+    const lines = [];
+    if (scalars.length) lines.push(wrapLine(`    real(8), intent(in) :: ${scalars.join(", ")}`));
+    for (const p of arrays) lines.push(wrapLine(`    real(8), dimension(0:*), intent(in) :: ${p}`));
+    return lines.length ? lines.join("\n") + "\n" : "";
+}
+
 const emitter = new Emitter({
     ext: "f90",
     // Fortran's D exponent marker (not E) forces a literal to be
@@ -109,6 +130,18 @@ const emitter = new Emitter({
         // trust its language's native sign function at exactly zero (see
         // Go's/Rust's sign() history in this project).
         sign: ([x]) => `MERGE(1.0D0, MERGE(-1.0D0, 0.0D0, (${x}) < 0.0D0), (${x}) > 0.0D0)`,
+        // MODULO (not MOD -- that one follows the dividend's sign, like
+        // C) is the Fortran standard's floor-mod intrinsic, result takes
+        // the sign of the second argument -- the right one for this.
+        // (Fortran arrays are 1-indexed by default -- handled where an
+        // "index" node actually subscripts one, not here.)
+        wrapIndex: fn2("MODULO"),
+        clampIndex: ([i, lo, hi]) => `MAX(${lo}, MIN(${hi}, ${i}))`,
+    },
+    // Fortran array subscripts require INTEGER type -- REAL(8) isn't
+    // accepted, unlike QB64's numeric-expression subscripts.
+    emitIndex: function (targetNode, atNode) {
+        return `${this.emitExpr(targetNode)}(INT(${this.emitExpr(atNode)}))`;
     },
     // Fortran has no ternary operator, but MERGE(TSOURCE, FSOURCE, MASK) is
     // exactly an expression-level conditional value-select -- confirmed
@@ -125,7 +158,7 @@ const emitter = new Emitter({
     formatFunction: (fn, body, letBindings = []) => {
         checkReservedNames([fn.name, ...fn.params, ...letBindings.map((b) => b.name)]);
         const params = fn.params.join(", ");
-        const paramDecl = fn.params.length ? wrapLine(`    real(8), intent(in) :: ${fn.params.join(", ")}`) + "\n" : "";
+        const paramDecl = paramDecls(fn.params, fn.paramTypes);
         const letDecl = letBindings.length
             ? wrapLine(`    real(8) :: ${letBindings.map((b) => b.name).join(", ")}`) + "\n"
             : "";
@@ -147,7 +180,7 @@ const emitter = new Emitter({
         const outputNames = Object.keys(outputStrs);
         checkReservedNames([fn.name, ...fn.params, ...outputNames, ...letBindings.map((b) => b.name)]);
         const allParams = [...fn.params, ...outputNames].join(", ");
-        const paramDecl = fn.params.length ? wrapLine(`    real(8), intent(in) :: ${fn.params.join(", ")}`) + "\n" : "";
+        const paramDecl = paramDecls(fn.params, fn.paramTypes);
         const outDecl = wrapLine(`    real(8), intent(out) :: ${outputNames.join(", ")}`) + "\n";
         const letDecl = letBindings.length
             ? wrapLine(`    real(8) :: ${letBindings.map((b) => b.name).join(", ")}`) + "\n"

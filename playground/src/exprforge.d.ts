@@ -29,6 +29,12 @@ declare module "exprforge" {
     export interface FnDef {
         name: string;
         params: string[];
+        // Optional -- present only when at least one param is array-typed
+        // ("number[]"), same "absent means every param is a plain scalar"
+        // convention the real library's ast.js documents. "number[]" is
+        // the only value this grammar has (see the root README's "Array
+        // indexing" section).
+        paramTypes?: Record<string, "number[]">;
         body: Node;
     }
 
@@ -59,7 +65,11 @@ declare module "exprforge" {
     // bare Node when the source has no "name(params):" signature line,
     // or a full FnDef when it does -- see fn.js's own header comment.
     export function fn(strings: readonly string[], ...values: unknown[]): Node | FnDef;
-    export function evaluate(def: FnDef, args: number[]): number | Record<string, number>;
+    // Each element is a plain number, EXCEPT for a param declared
+    // array-typed via def.paramTypes -- that one positional slot is a
+    // real number[] instead (see the root README's "Array indexing"
+    // section). Position, not name, decides which -- same as def.params.
+    export function evaluate(def: FnDef, args: (number | number[])[]): number | Record<string, number>;
     // One target, explicit -- throws if `lang` is unknown or if that one
     // emitter fails for this def (nothing to isolate a single target's
     // own error from).
