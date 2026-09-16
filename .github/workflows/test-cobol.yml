@@ -19,20 +19,17 @@ jobs:
       - run: npm ci
       # gnucobol4 (Ubuntu's default `gnucobol` candidate too) is an
       # early-dev snapshot ("cobc (GnuCOBOL) 4.0-early-dev.0", built 2024
-      # from a 2020 package) -- confirmed in a REAL CI run on this repo to
-      # have a real compiler bug: comparisonOps/nestedSelect (see
-      # test/conformance.test.js) fail with "unknown type name
-      # 'cob_decimal'" -- a fatal error in cobc's OWN generated C code,
-      # not this project's emitted .cob source, which is otherwise
-      # unremarkable (confirmed: a bare single select() reproduces
-      # something similar in a local Ubuntu 24.04 container, though that
-      # local container turned out NOT to reliably match this exact CI
-      # environment -- see the PR discussion this change came out of for
-      # the full trail). gnucobol3 (3.1.2) is a real, non-early-dev stable
-      # release, also directly installable on ubuntu-latest -- switching
-      # to it is the right call on its own merits regardless of the exact
-      # trigger; this workflow's own next real run is the actual proof,
-      # not a local reproduction.
+      # from a 2020 package), not a real stable release -- gnucobol3
+      # (3.1.2) is, and is also directly installable here. Confirmed via
+      # a real CI run that this switch is a safe, non-regressive hygiene
+      # improvement (421 tests, 419 pass either way) -- but NOT a fix for
+      # comparisonOps/nestedSelect (test/conformance.test.js), which fail
+      # identically on both versions with "unknown type name
+      # 'cob_decimal'" in cobc's own generated C. That's a real,
+      # separate, still-open GnuCOBOL codegen limitation -- see those two
+      # samples' own skipTargets: ["COBOL"] comments for the actual
+      # pattern (confirmed via real CI runs, not local reproduction,
+      # which proved unreliable for this specific question).
       - name: Install GnuCOBOL
         run: |
           sudo apt-get update -qq
