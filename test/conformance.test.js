@@ -42,6 +42,18 @@ const {
     kitchenSinkAst,
     mathDemoAst,
     macroDemoAst,
+    comparisonOpsAst,
+    nestedSelectAst,
+    numberExtremesAst,
+    roundTieBoundaryAst,
+    domainSafetyAst,
+    arraySuiteAst,
+    arrayMacroDemoAst,
+    mathEdgeCasesAst,
+    differentiateDemoAst,
+    zeroParamDemoAst,
+    cyclicElemAst,
+    clampedElemAst,
     emitters,
 } = require("../index.js");
 const { evaluate } = require("../evaluate.js");
@@ -227,9 +239,194 @@ const SAMPLES = {
             [10, -10, -10, 10],
         ],
     },
+    // Chained/nested select() (a ternary-of-ternary) against every real
+    // target -- see samples/nested-select-demo.js's own header comment
+    // for why this specifically, not previously exercised by any other
+    // real-compiled sample.
+    nestedSelect: {
+        ast: nestedSelectAst,
+        reference: (a, b) => (a > 0 ? 1 : b > 0 ? 2 : b < 0 ? 3 : 4),
+        inputs: [
+            [1, 0], // outer true branch -- inner never evaluated logically,
+            // but select() always evaluates both sides regardless (see
+            // ast.js), so this still exercises every emitter's own
+            // recursive-select emission, just not its RUNTIME result.
+            [-1, 5], // outer false, first inner branch true
+            [-1, -5], // outer false, second inner branch true
+            [-1, 0], // outer false, innermost fallback (b == 0)
+        ],
+        // Genuine GnuCOBOL codegen limitation, not an ExprForge bug --
+        // confirmed via 4 real CI runs on this repo, not local guessing
+        // (a local reproduction attempt turned out to be unreliable --
+        // see this repo's PR history for the full trail, including a
+        // gnucobol3-vs-gnucobol4 dead end). The real, CI-confirmed
+        // pattern: normalizeX/exprSyntaxDemo (each use exactly ONE
+        // distinct comparison operator, ">") pass; this sample (uses TWO,
+        // ">" and "<", each its own emitters/cobol.js FUNCTION-ID helper
+        // -- ef-cmp-gt/ef-cmp-lt) fails with "unknown type name
+        // 'cob_decimal'", a fatal error in cobc's OWN generated C, on
+        // BOTH gnucobol3 (a real stable release) and gnucobol4 (an
+        // early-dev snapshot) identically. Calling more than one
+        // DISTINCT ef-cmp-* helper in one PROCEDURE DIVISION is the best
+        // current explanation, not yet proven by a full bisection -- see
+        // comparisonOps' own skipTargets below for the same pattern at
+        // its most extreme (all 6 operators). Fixing this for real would
+        // mean reworking cobol.js's one-FUNCTION-ID-per-operator
+        // architecture -- real, separate, riskier follow-up work on a
+        // carefully-tuned emitter, not attempted here. Same reasoning as
+        // normalizeX's own QB64 skip: a real, external, confirmed
+        // limitation, not silently ignored.
+        skipTargets: ["COBOL"],
+    },
+    // Extreme-magnitude numeric literals against every real target -- see
+    // samples/number-extremes-demo.js's own header comment for two real
+    // things this found (a genuine c/rust/go/java formatNumber bug, now
+    // fixed, plus a confirmed QB64 upstream limitation at magnitudes far
+    // beyond this) and why 1e25, not the original 1e250, is what's
+    // actually locked in as a permanent regression test here.
+    numberExtremes: {
+        ast: numberExtremesAst,
+        reference: (x) => x + 1e25 + 1e-25,
+        inputs: [[3], [-7.5], [0]],
+    },
+    // A real, PERMANENT divergence, not a bug -- see
+    // samples/round-tie-demo.js's own header comment for the full,
+    // directly-verified breakdown (three distinct tie-breaking
+    // conventions across this project's 18 targets) and the root
+    // README's "round() at exact .5 boundaries" section for why this is
+    // documented and demonstrated rather than unified. Reference is
+    // JS's own Math.round (half-up, ties toward +Infinity) -- the same
+    // "JS is the baseline every compiled target is compared against"
+    // role it already plays everywhere else in this file (see
+    // loadJsFn). skipTargets lists every target confirmed (or, for
+    // PHP/C#, documented) to use a DIFFERENT convention -- that's most
+    // of them, and that's the actual point being proven here, not a
+    // sign of something broken.
+    // Proves round() ties AWAY FROM ZERO identically on every target, no
+    // exceptions -- see samples/round-tie-demo.js's own header comment
+    // for the real, three-way divergence this fixes (this file used to
+    // need a long skipTargets list here; it doesn't anymore, and that's
+    // the actual point being proven now, not a loosened check). Reference
+    // is a hand-written away-from-zero implementation, deliberately NOT
+    // Math.round (which ties the other way, toward +Infinity, and would
+    // silently validate the WRONG convention here of all places).
+    roundTieBoundary: {
+        ast: roundTieBoundaryAst,
+        reference: (which) => {
+            const x = [-0.5, -1.5, 0.5, 1.5][which];
+            return Math.sign(x) * Math.floor(Math.abs(x) + 0.5);
+        },
+        inputs: [[0], [1], [2], [3]],
+    },
+    // Array-typed parameters (arr[i], see docs/array-index-primitives.md)
+    // compiled and executed against every real toolchain -- closes #36:
+    // this feature was previously verified by hand once during
+    // development, never wired into permanent, automatic conformance
+    // coverage. COBOL is excluded because it doesn't support array
+    // parameters at all (a structural OCCURS-table-size limitation, not
+    // a gap -- see docs/array-index-primitives.md); every runX/runSuiteX
+    // harness here now has real, per-language array-argument parsing
+    // (comma-joined CLI string -> a native array/vector/slice), each
+    // confirmed against a real compiler/interpreter during development,
+    // not assumed from the scalar-only pattern they used to share.
+    cyclicElem: {
+        ast: cyclicElemAst,
+        reference: (arr, m, i) => arr[((i % m) + m) % m],
+        inputs: [
+            [[10, 20, 30, 40], 4, 5], // wraps past the end
+            [[10, 20, 30, 40], 4, -1], // wraps past the start (negative)
+            [[10, 20, 30, 40], 4, 2], // no wrap needed
+            [[5], 1, 3], // single-element array
+            // Exact-boundary and multi-wrap cases -- previously untested
+            // (every case above wraps by exactly one step past an end,
+            // never lands exactly ON the boundary or wraps more than
+            // once): i == m exactly (not m+1) must wrap all the way
+            // around to index 0, and i == -m exactly likewise.
+            [[10, 20, 30, 40], 4, 4], // i == m exactly -> index 0
+            [[10, 20, 30, 40], 4, -4], // i == -m exactly -> index 0
+            [[10, 20, 30, 40], 4, 11], // multi-wrap forward (wraps twice + 3)
+            [[10, 20, 30, 40], 4, -9], // multi-wrap backward
+        ],
+        skipTargets: ["COBOL"],
+    },
+    clampedElem: {
+        ast: clampedElemAst,
+        reference: (arr, n, i) => arr[Math.max(0, Math.min(n - 1, i))],
+        inputs: [
+            [[10, 20, 30, 40], 4, 5], // clamps past the end
+            [[10, 20, 30, 40], 4, -1], // clamps past the start
+            [[10, 20, 30, 40], 4, 2], // no clamp needed
+            // Exact-boundary cases -- previously untested (every case
+            // above is either strictly outside or strictly inside the
+            // range, never landing exactly ON a boundary, where a
+            // fencepost/off-by-one in the clamp itself would show up as
+            // a no-op that should have been one, or vice versa).
+            [[10, 20, 30, 40], 4, 0], // i == lo exactly -> no-op, index 0
+            [[10, 20, 30, 40], 4, 3], // i == hi exactly (n-1) -> no-op, index 3
+        ],
+        skipTargets: ["COBOL"],
+    },
+    // Array param threaded through a macro call (see
+    // samples/array-macro-demo.js's own header comment) -- proves this
+    // compiles/runs correctly on every real target, not just
+    // evaluate()/expandMacros() in-process.
+    arrayMacroDemo: {
+        ast: arrayMacroDemoAst,
+        reference: (arr, m, i) => arr[((i % m) + m) % m] + 1,
+        inputs: [
+            [[10, 20, 30, 40], 4, 5], // wraps past the end
+            [[10, 20, 30, 40], 4, -1], // wraps past the start
+        ],
+        skipTargets: ["COBOL"],
+    },
+    // Proves differentiate()'s OUTPUT compiles and runs correctly on
+    // every real target -- see samples/differentiate-demo.js's own
+    // header comment for the gap this closes (previously verified only
+    // via numericalDerivative()'s central-difference check against
+    // evaluate()/JS, never through a real compiler). The reference here
+    // is the hand-derived closed-form d/dx(x^2 * sin(x)), independent of
+    // differentiate.js's own rule implementations -- same "two
+    // independent checks" shape as every other sample in this file.
+    differentiateDemo: {
+        ast: differentiateDemoAst,
+        reference: (x) => 2 * x * Math.sin(x) + x * x * Math.cos(x),
+        inputs: [[0.5], [1.0], [2.0], [-1.5], [3.14159]],
+    },
+    // Proves a zero-parameter function compiles and runs correctly on
+    // every real target -- see samples/zero-param-demo.js's own header
+    // comment for exactly what this boundary value could plausibly
+    // break that every other sample here, with >=1 parameter, never
+    // exercised. Single input row: an empty argument tuple -- there's
+    // nothing else to vary.
+    zeroParamDemo: {
+        ast: zeroParamDemoAst,
+        reference: () => Math.sqrt(16) + Math.sign(-3),
+        inputs: [[]],
+    },
 };
 
+// Real, previously-open gap: `Math.abs(NaN - NaN)` is `NaN`, and
+// `NaN <= tol` is `false` -- so two genuinely-matching NaN results (or
+// two matching same-signed Infinity results, where subtracting them
+// also gives NaN) used to FAIL this assertion even when both sides were
+// actually correct. That's why no sample here has ever deliberately
+// produced NaN/Infinity as an expected reference value: this couldn't
+// have proven it correct even when it was. Special-cased below instead
+// of just hoped never to matter.
 function assertClose(actual, expected, msg) {
+    if (Number.isNaN(expected) || Number.isNaN(actual)) {
+        assert.ok(
+            Number.isNaN(expected) && Number.isNaN(actual),
+            `${msg}: got ${actual}, expected ${expected} -- NaN only matches NaN, not a near-miss`,
+        );
+        return;
+    }
+    if (!Number.isFinite(expected) || !Number.isFinite(actual)) {
+        // Infinity has no "close enough" -- +Infinity and -Infinity are
+        // not approximately equal to each other, or to any finite value.
+        assert.strictEqual(actual, expected, `${msg}: got ${actual}, expected ${expected}`);
+        return;
+    }
     const tol = 1e-9 * Math.max(1, Math.abs(expected));
     assert.ok(
         Math.abs(actual - expected) <= tol,
@@ -345,25 +542,67 @@ function runEval(ast, inputs) {
 }
 
 // --- C -----------------------------------------------------------------
+//
+// Array-typed params (see ast.js's paramTypes): the CLI-arg side needs no
+// change at all -- String([10, 20, 30]) is already "10,20,30" for free
+// (see args.map(String) below, unchanged from the scalar-only original).
+// Only the per-language HARNESS text generated here needs a real parsing
+// snippet for that one param instead of a bare atof() -- fixed-size
+// buffer (256 elements), strtok() splits on "," in place. c.js's own
+// array-param signature is a bare `double arr[]` (see its formatFunction),
+// so the call site just passes the array name unchanged, same as a
+// scalar -- no address-of/cast needed.
+function cParamDecls(ast) {
+    return ast.params
+        .map((p, i) => {
+            if (ast.paramTypes?.[p] === "number[]") {
+                return `double ${p}[256]; int ${p}_n = 0; { char *ef_tok = strtok(argv[${i + 1}], ","); ` +
+                    `while (ef_tok) { ${p}[${p}_n++] = atof(ef_tok); ef_tok = strtok(NULL, ","); } }`;
+            }
+            return `double ${p} = atof(argv[${i + 1}]);`;
+        })
+        .join(" ");
+}
 
 function runC(ast, inputs) {
     const source = emitters.c.emitFunction(ast);
     const dir = tmpDir("ef-c-");
     fs.writeFileSync(path.join(dir, "fn.c"), source);
-    const decls = ast.params.map((p, i) => `double ${p} = atof(argv[${i + 1}]);`).join(" ");
+    const decls = cParamDecls(ast);
     const callArgs = ast.params.join(", ");
     const harness =
-        `#include <stdio.h>\n#include <stdlib.h>\n#include "fn.c"\n` +
+        `#include <stdio.h>\n#include <stdlib.h>\n#include <string.h>\n#include "fn.c"\n` +
         `int main(int argc, char **argv) {\n    ${decls}\n    printf("%.17f", ${ast.name}(${callArgs}));\n    return 0;\n}\n`;
     fs.writeFileSync(path.join(dir, "main.c"), harness);
     const bin = path.join(dir, "bin");
     execFileSync("gcc", [path.join(dir, "main.c"), "-o", bin, "-lm"]);
-    const results = inputs.map((args) => Number(execFileSync(bin, args.map(String)).toString()));
+    const results = inputs.map((args) => parseNumericOutput(execFileSync(bin, args.map(String)).toString()));
     fs.rmSync(dir, { recursive: true, force: true });
     return results;
 }
 
 // --- Go ------------------------------------------------------------------
+
+// Array-typed params: comma-joined CLI string -> []float64 via
+// strings.Split + strconv.ParseFloat. go.js's own array-param signature
+// is `[]float64` (see its formatFunction), matching what this builds
+// exactly -- the call site passes the slice unchanged, same as a scalar.
+function goParamParses(ast) {
+    return ast.params
+        .map((p, i) => {
+            if (ast.paramTypes?.[p] === "number[]") {
+                return `\t${p}_parts := strings.Split(os.Args[${i + 1}], ",")\n` +
+                    `\t${p} := make([]float64, len(${p}_parts))\n` +
+                    `\tfor _i, _s := range ${p}_parts {\n\t\t${p}[_i], _ = strconv.ParseFloat(_s, 64)\n\t}`;
+            }
+            return `\t${p}, _ := strconv.ParseFloat(os.Args[${i + 1}], 64)`;
+        })
+        .join("\n");
+}
+
+function goUsesArray(ast) {
+    return ast.params.some((p) => ast.paramTypes?.[p] === "number[]");
+}
 
 function runGo(ast, inputs) {
     const source = emitters.go.emitFunction(ast);
@@ -371,32 +610,56 @@ function runGo(ast, inputs) {
     const usesMath = funcDecl.includes("math.");
     const dir = tmpDir("ef-go-");
     execFileSync("go", ["mod", "init", "ef"], { cwd: dir });
-    const parses = ast.params
-        .map((p, i) => `\t${p}, _ := strconv.ParseFloat(os.Args[${i + 1}], 64)`)
-        .join("\n");
+    const parses = goParamParses(ast);
     const callArgs = ast.params.join(", ");
+    // "os" and "strconv" are only ever referenced inside goParamParses'
+    // own output -- both become "imported and not used" (a real Go
+    // compile error, confirmed directly, not a warning) for a
+    // zero-parameter function, where `parses` is empty. Every sample
+    // before zeroParamDemo had >=1 parameter, so this import list never
+    // hit the empty case before.
+    const hasParams = ast.params.length > 0;
     const mainSrc =
         `package main\n\n` +
-        `import (\n\t"fmt"\n${usesMath ? `\t"math"\n` : ""}\t"os"\n\t"strconv"\n)\n\n` +
+        `import (\n\t"fmt"\n${usesMath ? `\t"math"\n` : ""}${hasParams ? `\t"os"\n` : ""}${goUsesArray(ast) ? `\t"strings"\n` : ""}${hasParams ? `\t"strconv"\n` : ""})\n\n` +
         `${funcDecl}\n` +
         `func main() {\n${parses}\n\tfmt.Printf("%.17f", ${capitalize(ast.name)}(${callArgs}))\n}\n`;
     fs.writeFileSync(path.join(dir, "main.go"), mainSrc);
     const bin = path.join(dir, "bin");
     execFileSync("go", ["build", "-o", bin, "."], { cwd: dir });
-    const results = inputs.map((args) => Number(execFileSync(bin, args.map(String)).toString()));
+    const results = inputs.map((args) => parseNumericOutput(execFileSync(bin, args.map(String)).toString()));
     fs.rmSync(dir, { recursive: true, force: true });
     return results;
 }
 
 // --- Rust ------------------------------------------------------------------
 
+// Array-typed params: comma-joined CLI string -> Vec<f64>. rust.js's own
+// array-param signature is `&[f64]` (a slice reference, see its
+// formatFunction) -- Vec<f64> does NOT implicitly coerce to that at a
+// call site (needs an explicit `&`), so rustCallArgs (unlike every other
+// language's callArgs, which is just ast.params.join(", ")) prefixes
+// exactly the array-typed params with "&".
+function rustParamParses(ast) {
+    return ast.params
+        .map((p, i) => {
+            if (ast.paramTypes?.[p] === "number[]") {
+                return `    let ${p}: Vec<f64> = args[${i + 1}].split(',').map(|s| s.parse().unwrap()).collect();`;
+            }
+            return `    let ${p}: f64 = args[${i + 1}].parse().unwrap();`;
+        })
+        .join("\n");
+}
+
+function rustCallArgs(ast) {
+    return ast.params.map((p) => (ast.paramTypes?.[p] === "number[]" ? `&${p}` : p)).join(", ");
+}
+
 function runRust(ast, inputs) {
     const source = emitters.rust.emitFunction(ast);
     const dir = tmpDir("ef-rs-");
-    const parses = ast.params
-        .map((p, i) => `    let ${p}: f64 = args[${i + 1}].parse().unwrap();`)
-        .join("\n");
-    const callArgs = ast.params.join(", ");
+    const parses = rustParamParses(ast);
+    const callArgs = rustCallArgs(ast);
     const mainSrc =
         `${source}\n` +
         `fn main() {\n` +
@@ -408,21 +671,35 @@ function runRust(ast, inputs) {
     fs.writeFileSync(srcPath, mainSrc);
     const bin = path.join(dir, "bin");
     execFileSync("rustc", ["-O", srcPath, "-o", bin]);
-    const results = inputs.map((args) => Number(execFileSync(bin, args.map(String)).toString()));
+    const results = inputs.map((args) => parseNumericOutput(execFileSync(bin, args.map(String)).toString()));
     fs.rmSync(dir, { recursive: true, force: true });
     return results;
 }
 
 // --- Java --------------------------------------------------------------
 
+// Array-typed params: comma-joined CLI string -> double[] via String.split
+// + Double.parseDouble. java.js's own array-param signature is `double[]`
+// (see its formatFunction), matching this exactly.
+function javaParamParses(ast) {
+    return ast.params
+        .map((p, i) => {
+            if (ast.paramTypes?.[p] === "number[]") {
+                return `        String[] ${p}Parts = args[${i}].split(",");\n` +
+                    `        double[] ${p} = new double[${p}Parts.length];\n` +
+                    `        for (int _i = 0; _i < ${p}Parts.length; _i++) ${p}[_i] = Double.parseDouble(${p}Parts[_i]);`;
+            }
+            return `        double ${p} = Double.parseDouble(args[${i}]);`;
+        })
+        .join("\n");
+}
+
 function runJava(ast, inputs) {
     const source = emitters.java.emitFunction(ast);
     const className = capitalize(ast.name);
     const dir = tmpDir("ef-java-");
     fs.writeFileSync(path.join(dir, `${className}.java`), source);
-    const parses = ast.params
-        .map((p, i) => `        double ${p} = Double.parseDouble(args[${i}]);`)
-        .join("\n");
+    const parses = javaParamParses(ast);
     const callArgs = ast.params.join(", ");
     const mainSrc =
         `public class Main {\n` +
@@ -434,7 +711,7 @@ function runJava(ast, inputs) {
     fs.writeFileSync(path.join(dir, "Main.java"), mainSrc);
     execFileSync("javac", ["-d", dir, path.join(dir, `${className}.java`), path.join(dir, "Main.java")]);
     const results = inputs.map((args) =>
-        Number(execFileSync("java", ["-cp", dir, "Main", ...args.map(String)]).toString()),
+        parseNumericOutput(execFileSync("java", ["-cp", dir, "Main", ...args.map(String)]).toString()),
     );
     fs.rmSync(dir, { recursive: true, force: true });
     return results;
@@ -478,18 +755,70 @@ function runTS(ast, inputs) {
 // that and silently gives NaN, so this is needed on every value QB64
 // prints, not just ones near the E/D-notation-vs-fixed threshold.
 function qb64ToNumber(str) {
-    return Number(str.replace(/D([+-]?\d+)/i, "E$1"));
+    // QB64 prints "-NAN"/"NAN" for NaN and "inf"/"-inf" for Infinity
+    // (confirmed against a real compile) -- parseNumericOutput handles
+    // both, same as every other target's own spelling; only a genuine
+    // finite value ever needs the D-exponent rewrite below at all.
+    return parseNumericOutput(str.replace(/D([+-]?\d+)/i, "E$1"));
+}
+
+// Array-typed params: DIM'd with EXPLICIT fixed bounds (0 TO 255), not a
+// dynamic `DIM arr() AS DOUBLE` + REDIM -- confirmed against a real
+// compile that a dynamic array here fails with "Incorrect array type
+// passed to function" (QB64 wants the specific array-declaration shape
+// the docs already specify as the caller contract -- see
+// docs/array-index-primitives.md's "Index origin is a real, unresolved
+// risk" section: an explicitly 0-based array is required regardless of
+// OPTION BASE). No built-in split, so a manual INSTR/MID$/VAL loop parses
+// the comma-joined CLI string one element at a time. At the CALL site
+// (not the DIM), an array-typed argument needs bare parens -- "arr()",
+// not "arr" -- matching qb64.js's own arr() parameter declaration
+// convention; qb64CallArgs exists for exactly this (unlike every other
+// language here, whose call args are always just ast.params.join(", ")).
+function qb64ArgReads(ast) {
+    return ast.params
+        .map((p, i) => {
+            if (ast.paramTypes?.[p] === "number[]") {
+                return `DIM ${p}(0 TO 255) AS DOUBLE\n` +
+                    `DIM ${p}_raw AS STRING : ${p}_raw = COMMAND$(${i + 1})\n` +
+                    `DIM ${p}_pos AS INTEGER : ${p}_pos = 1\n` +
+                    `DIM ${p}_comma AS INTEGER\n` +
+                    `DIM ${p}_n AS INTEGER : ${p}_n = 0\n` +
+                    `DO WHILE ${p}_pos <= LEN(${p}_raw)\n` +
+                    `    ${p}_comma = INSTR(${p}_pos, ${p}_raw, ",")\n` +
+                    `    IF ${p}_comma = 0 THEN\n` +
+                    `        ${p}(${p}_n) = VAL(MID$(${p}_raw, ${p}_pos))\n` +
+                    `        ${p}_pos = LEN(${p}_raw) + 1\n` +
+                    `    ELSE\n` +
+                    `        ${p}(${p}_n) = VAL(MID$(${p}_raw, ${p}_pos, ${p}_comma - ${p}_pos))\n` +
+                    `        ${p}_pos = ${p}_comma + 1\n` +
+                    `    END IF\n` +
+                    `    ${p}_n = ${p}_n + 1\n` +
+                    `LOOP`;
+            }
+            return `DIM ${p} AS DOUBLE : ${p} = VAL(COMMAND$(${i + 1}))`;
+        })
+        .join("\n");
+}
+
+function qb64CallArgs(ast) {
+    return ast.params.map((p) => (ast.paramTypes?.[p] === "number[]" ? `${p}()` : p)).join(", ");
 }
 
 function runQB64(ast, inputs) {
     const source = emitters.qb64.emitFunction(ast);
     const dir = tmpDir("ef-qb64-");
-    const argReads = ast.params
-        .map((p, i) => `DIM ${p} AS DOUBLE : ${p} = VAL(COMMAND$(${i + 1}))`)
-        .join("\n");
-    const callArgs = ast.params.join(", ");
+    const argReads = qb64ArgReads(ast);
+    const callArgs = qb64CallArgs(ast);
+    // NOT unconditionally `name#(${callArgs})`: confirmed directly
+    // against a real compile that QB64 rejects a zero-argument call
+    // written with empty parens ("name#()", "Expected (...)") -- a
+    // zero-param FUNCTION must be called bare ("name#", no parens at
+    // all). Every sample before zeroParamDemo had >=1 parameter, so
+    // this call site never hit the empty case before.
+    const callExpr = callArgs ? `${ast.name}#(${callArgs})` : `${ast.name}#`;
     const harness =
-        `$CONSOLE:ONLY\n${source}\n${argReads}\nPRINT ${ast.name}#(${callArgs})\nSYSTEM\n`;
+        `$CONSOLE:ONLY\n${source}\n${argReads}\nPRINT ${callExpr}\nSYSTEM\n`;
     const srcPath = path.join(dir, "main.bas");
     fs.writeFileSync(srcPath, harness);
     const bin = path.join(dir, "bin");
@@ -502,15 +831,20 @@ function runQB64(ast, inputs) {
 function runSuiteQB64(ast, inputs, outputNames) {
     const source = emitters.qb64.emitFunction(ast);
     const dir = tmpDir("ef-qb64-");
-    const argReads = ast.params
-        .map((p, i) => `DIM ${p} AS DOUBLE : ${p} = VAL(COMMAND$(${i + 1}))`)
-        .join("\n");
-    const callArgs = ast.params.join(", ");
+    const argReads = qb64ArgReads(ast);
+    const callArgs = qb64CallArgs(ast);
     const outDecl = `DIM ${outputNames.join(" AS DOUBLE, ")} AS DOUBLE`;
     const prints = outputNames.map((n) => `PRINT ${n}`).join("\n");
+    // Same reasoning as runQB64's own callExpr above -- a leading comma
+    // ("CALL name(, out1, out2)") if callArgs were ever empty would be
+    // just as broken as the bare-parens case there. No zero-param SUITE
+    // sample exists yet to force this in practice (a suite needs >=1
+    // output field, never 0 params AND 0 args together here), but this
+    // stays correct if one ever does.
+    const allCallArgs = [callArgs, outputNames.join(", ")].filter(Boolean).join(", ");
     const harness =
         `$CONSOLE:ONLY\n${source}\n${argReads}\n${outDecl}\n` +
-        `CALL ${ast.name}(${callArgs}, ${outputNames.join(", ")})\n${prints}\nSYSTEM\n`;
+        `CALL ${ast.name}(${allCallArgs})\n${prints}\nSYSTEM\n`;
     const srcPath = path.join(dir, "main.bas");
     fs.writeFileSync(srcPath, harness);
     const bin = path.join(dir, "bin");
@@ -543,11 +877,37 @@ function suiteOutputNames(ast) {
     return Object.keys(body.fields);
 }
 
+// Every target's own printf/print/repr spells NaN/Infinity as "nan"/
+// "inf"/"-inf" (various capitalizations) -- NOT JS's own "NaN"/
+// "Infinity"/"-Infinity" spelling, which is the ONLY thing plain
+// Number() actually understands. Real gap, not a hypothetical one:
+// Number("-inf") is NaN, not -Infinity -- so a target that's genuinely,
+// correctly returning -Infinity (see samples/domain-safety-demo.js) used
+// to get silently MISREAD as NaN right here, before ever reaching
+// assertClose's own comparison. Used everywhere subprocess text output
+// gets turned into a JS number, in place of a bare Number(...) call.
+function parseNumericOutput(str) {
+    const s = str.trim();
+    // Scheme/Guile spells these "+inf.0"/"-inf.0"/"+nan.0" -- a
+    // mandatory sign AND a trailing ".0" neither of the other targets'
+    // spellings have (confirmed directly: the first version of this
+    // regex, without the optional "(\.0)?", still misread Guile's own
+    // correct -Infinity as NaN -- caught by actually running this
+    // against every real toolchain, not just the host-available ones).
+    if (/^[+-]?(inf|infinity)(\.0)?$/i.test(s)) {
+        return s.startsWith("-") ? -Infinity : Infinity;
+    }
+    if (/^[+-]?nan(\.0)?$/i.test(s)) {
+        return NaN;
+    }
+    return Number(s);
+}
+
 function parseSuiteOutput(stdout, outputNames) {
     const lines = stdout.toString().trim().split("\n");
     const record = {};
     outputNames.forEach((name, i) => {
-        record[name] = Number(lines[i]);
+        record[name] = parseNumericOutput(lines[i]);
     });
     return record;
 }
@@ -556,12 +916,12 @@ function runSuiteC(ast, inputs, outputNames) {
     const source = emitters.c.emitFunction(ast);
     const dir = tmpDir("ef-c-");
     fs.writeFileSync(path.join(dir, "fn.c"), source);
-    const decls = ast.params.map((p, i) => `double ${p} = atof(argv[${i + 1}]);`).join(" ");
+    const decls = cParamDecls(ast);
     const callArgs = ast.params.join(", ");
     const structName = `${capitalize(ast.name)}Result`;
     const prints = outputNames.map((n) => `printf("%.17f\\n", r.${n});`).join(" ");
     const harness =
-        `#include <stdio.h>\n#include <stdlib.h>\n#include "fn.c"\n` +
+        `#include <stdio.h>\n#include <stdlib.h>\n#include <string.h>\n#include "fn.c"\n` +
         `int main(int argc, char **argv) {\n    ${decls}\n    ${structName} r = ${ast.name}(${callArgs});\n    ${prints}\n    return 0;\n}\n`;
     fs.writeFileSync(path.join(dir, "main.c"), harness);
     const bin = path.join(dir, "bin");
@@ -577,15 +937,13 @@ function runSuiteGo(ast, inputs, outputNames) {
     const usesMath = funcDecl.includes("math.");
     const dir = tmpDir("ef-go-");
     execFileSync("go", ["mod", "init", "ef"], { cwd: dir });
-    const parses = ast.params
-        .map((p, i) => `\t${p}, _ := strconv.ParseFloat(os.Args[${i + 1}], 64)`)
-        .join("\n");
+    const parses = goParamParses(ast);
     const callArgs = ast.params.join(", ");
     const resultVars = outputNames.map((_, i) => `r${i}`).join(", ");
     const printFmt = outputNames.map(() => "%.17f").join("\\n");
     const mainSrc =
         `package main\n\n` +
-        `import (\n\t"fmt"\n${usesMath ? `\t"math"\n` : ""}\t"os"\n\t"strconv"\n)\n\n` +
+        `import (\n\t"fmt"\n${usesMath ? `\t"math"\n` : ""}\t"os"\n${goUsesArray(ast) ? `\t"strings"\n` : ""}\t"strconv"\n)\n\n` +
         `${funcDecl}\n` +
         `func main() {\n${parses}\n\t${resultVars} := ${capitalize(ast.name)}(${callArgs})\n\tfmt.Printf("${printFmt}\\n", ${resultVars})\n}\n`;
     fs.writeFileSync(path.join(dir, "main.go"), mainSrc);
@@ -599,10 +957,8 @@ function runSuiteGo(ast, inputs, outputNames) {
 function runSuiteRust(ast, inputs, outputNames) {
     const source = emitters.rust.emitFunction(ast);
     const dir = tmpDir("ef-rs-");
-    const parses = ast.params
-        .map((p, i) => `    let ${p}: f64 = args[${i + 1}].parse().unwrap();`)
-        .join("\n");
-    const callArgs = ast.params.join(", ");
+    const parses = rustParamParses(ast);
+    const callArgs = rustCallArgs(ast);
     const prints = outputNames.map((n) => `println!("{:.17}", r.${n});`).join("\n    ");
     const mainSrc =
         `${source}\n` +
@@ -626,9 +982,7 @@ function runSuiteJava(ast, inputs, outputNames) {
     const className = capitalize(ast.name);
     const dir = tmpDir("ef-java-");
     fs.writeFileSync(path.join(dir, `${className}.java`), source);
-    const parses = ast.params
-        .map((p, i) => `        double ${p} = Double.parseDouble(args[${i}]);`)
-        .join("\n");
+    const parses = javaParamParses(ast);
     const callArgs = ast.params.join(", ");
     const printFmt = outputNames.map(() => "%.17f").join("\\n");
     const printArgs = outputNames.map((n) => `r.${n}`).join(", ");
@@ -676,20 +1030,35 @@ function csharpClassName(fnName) {
     return `${capitalize(fnName)}Impl`;
 }
 
+// Array-typed params: comma-joined CLI string -> double[] via
+// string.Split + Array.ConvertAll(..., double.Parse). csharp.js's own
+// array-param signature is a plain `double[]` (see its formatFunction),
+// so the call site is unchanged, same as a scalar.
+function csharpParamParses(ast) {
+    return ast.params
+        .map((p, i) => {
+            if (ast.paramTypes?.[p] === "number[]") {
+                return `double[] ${p} = Array.ConvertAll(args[${i}].Split(','), double.Parse);`;
+            }
+            return `double ${p} = double.Parse(args[${i}]);`;
+        })
+        .join("\n");
+}
+
 function runCSharp(ast, inputs) {
     const source = emitters.csharp.emitFunction(ast);
     const className = csharpClassName(ast.name);
     const dir = tmpDir("ef-cs-");
     fs.writeFileSync(path.join(dir, `${className}.cs`), source);
     fs.writeFileSync(path.join(dir, "app.csproj"), CSPROJ);
-    const parses = ast.params.map((p, i) => `double ${p} = double.Parse(args[${i}]);`).join("\n");
+    const parses = csharpParamParses(ast);
     const callArgs = ast.params.join(", ");
     const mainSrc = `${parses}\nConsole.WriteLine(${className}.${ast.name}(${callArgs}).ToString("G17"));\n`;
     fs.writeFileSync(path.join(dir, "Program.cs"), mainSrc);
     const outDir = path.join(dir, "out");
     execFileSync("dotnet", ["build", "-c", "Release", "-o", outDir], { cwd: dir });
     const dll = path.join(outDir, "app.dll");
-    const results = inputs.map((args) => Number(execFileSync("dotnet", [dll, ...args.map(String)]).toString().trim()));
+    const results = inputs.map((args) => parseNumericOutput(execFileSync("dotnet", [dll, ...args.map(String)]).toString().trim()));
     fs.rmSync(dir, { recursive: true, force: true });
     return results;
 }
@@ -700,7 +1069,7 @@ function runSuiteCSharp(ast, inputs, outputNames) {
     const dir = tmpDir("ef-cs-");
     fs.writeFileSync(path.join(dir, `${className}.cs`), source);
     fs.writeFileSync(path.join(dir, "app.csproj"), CSPROJ);
-    const parses = ast.params.map((p, i) => `double ${p} = double.Parse(args[${i}]);`).join("\n");
+    const parses = csharpParamParses(ast);
     const callArgs = ast.params.join(", ");
     const prints = outputNames.map((n) => `Console.WriteLine(r.${n}.ToString("G17"));`).join("\n");
     const mainSrc = `${parses}\nvar r = ${className}.${ast.name}(${callArgs});\n${prints}\n`;
@@ -718,15 +1087,30 @@ function runSuiteCSharp(ast, inputs, outputNames) {
 // No compile step -- python3 interprets the emitted source directly, with
 // a small argv-reading harness appended.
 
+// Array-typed params: comma-joined CLI string -> a plain Python list via
+// a split + float() comprehension. python.js's own array-param signature
+// is just a bare name (no type annotation at all -- see its
+// formatFunction), so the call site is unchanged, same as a scalar.
+function pythonParamParses(ast) {
+    return ast.params
+        .map((p, i) => {
+            if (ast.paramTypes?.[p] === "number[]") {
+                return `${p} = [float(_v) for _v in sys.argv[${i + 1}].split(",")]`;
+            }
+            return `${p} = float(sys.argv[${i + 1}])`;
+        })
+        .join("\n");
+}
+
 function runPython(ast, inputs) {
     const source = emitters.python.emitFunction(ast);
     const dir = tmpDir("ef-py-");
-    const parses = ast.params.map((p, i) => `${p} = float(sys.argv[${i + 1}])`).join("\n");
+    const parses = pythonParamParses(ast);
     const callArgs = ast.params.join(", ");
     const harness = `${source}\nimport sys\n${parses}\nprint(repr(${ast.name}(${callArgs})))\n`;
     const srcPath = path.join(dir, "main.py");
     fs.writeFileSync(srcPath, harness);
-    const results = inputs.map((args) => Number(execFileSync("python3", [srcPath, ...args.map(String)]).toString().trim()));
+    const results = inputs.map((args) => parseNumericOutput(execFileSync("python3", [srcPath, ...args.map(String)]).toString().trim()));
     fs.rmSync(dir, { recursive: true, force: true });
     return results;
 }
@@ -734,7 +1118,7 @@ function runPython(ast, inputs) {
 function runSuitePython(ast, inputs, outputNames) {
     const source = emitters.python.emitFunction(ast);
     const dir = tmpDir("ef-py-");
-    const parses = ast.params.map((p, i) => `${p} = float(sys.argv[${i + 1}])`).join("\n");
+    const parses = pythonParamParses(ast);
     const callArgs = ast.params.join(", ");
     const prints = outputNames.map((n) => `print(repr(r.${n}))`).join("\n");
     const harness = `${source}\nimport sys\n${parses}\nr = ${ast.name}(${callArgs})\n${prints}\n`;
@@ -751,15 +1135,33 @@ function runSuitePython(ast, inputs, outputNames) {
 // arrive via the global `arg` table (arg[1] is the first argument, like
 // argv[1] in C -- arg[0] is the script name, same convention).
 
+// Array-typed params: comma-joined CLI string -> a plain Lua table via a
+// gmatch split loop (Lua has no built-in string-split) + tonumber. This
+// naturally builds a 1-indexed table, matching lua.js's own array-param
+// convention (a bare name; the emitted function itself does the +1
+// translation internally, see its emitIndex), so the call site is
+// unchanged, same as a scalar.
+function luaParamParses(ast) {
+    return ast.params
+        .map((p, i) => {
+            if (ast.paramTypes?.[p] === "number[]") {
+                return `local ${p} = {}\n` +
+                    `for _s in string.gmatch(arg[${i + 1}], "[^,]+") do table.insert(${p}, tonumber(_s)) end`;
+            }
+            return `local ${p} = tonumber(arg[${i + 1}])`;
+        })
+        .join("\n");
+}
+
 function runLua(ast, inputs) {
     const source = emitters.lua.emitFunction(ast);
     const dir = tmpDir("ef-lua-");
-    const parses = ast.params.map((p, i) => `local ${p} = tonumber(arg[${i + 1}])`).join("\n");
+    const parses = luaParamParses(ast);
     const callArgs = ast.params.join(", ");
     const harness = `${source}\n${parses}\nprint(string.format("%.17g", ${ast.name}(${callArgs})))\n`;
     const srcPath = path.join(dir, "main.lua");
     fs.writeFileSync(srcPath, harness);
-    const results = inputs.map((args) => Number(execFileSync("lua", [srcPath, ...args.map(String)]).toString().trim()));
+    const results = inputs.map((args) => parseNumericOutput(execFileSync("lua", [srcPath, ...args.map(String)]).toString().trim()));
     fs.rmSync(dir, { recursive: true, force: true });
     return results;
 }
@@ -767,7 +1169,7 @@ function runLua(ast, inputs) {
 function runSuiteLua(ast, inputs, outputNames) {
     const source = emitters.lua.emitFunction(ast);
     const dir = tmpDir("ef-lua-");
-    const parses = ast.params.map((p, i) => `local ${p} = tonumber(arg[${i + 1}])`).join("\n");
+    const parses = luaParamParses(ast);
     const callArgs = ast.params.join(", ");
     const resultVars = outputNames.map((_, i) => `r${i}`).join(", ");
     const prints = outputNames.map((_, i) => `print(string.format("%.17g", r${i}))`).join("\n");
@@ -784,15 +1186,31 @@ function runSuiteLua(ast, inputs, outputNames) {
 // No compile step -- perl interprets the emitted source directly. Args
 // come in via @ARGV (0-indexed), like argv[1..] in C.
 
+// Array-typed params: comma-joined CLI string -> an arrayref. perl.js's
+// own array-param convention is an ARRAYREF (see its own comment on
+// emitIndex: "$ref->[i]", arrow-deref, not a plain @array) -- so unlike
+// every scalar param, an array-typed one is built as a REAL Perl array
+// first, then referenced with "\@...", not just assigned directly.
+function perlParamParses(ast) {
+    return ast.params
+        .map((p, i) => {
+            if (ast.paramTypes?.[p] === "number[]") {
+                return `my @${p}_list = split(',', $ARGV[${i}]);\nmy $${p} = \\@${p}_list;`;
+            }
+            return `my $${p} = $ARGV[${i}];`;
+        })
+        .join("\n");
+}
+
 function runPerl(ast, inputs) {
     const source = emitters.perl.emitFunction(ast);
     const dir = tmpDir("ef-pl-");
-    const parses = ast.params.map((p, i) => `my $${p} = $ARGV[${i}];`).join("\n");
+    const parses = perlParamParses(ast);
     const callArgs = ast.params.map((p) => `$${p}`).join(", ");
     const harness = `${source}\n${parses}\nprintf("%.17g\\n", ${ast.name}(${callArgs}));\n`;
     const srcPath = path.join(dir, "main.pl");
     fs.writeFileSync(srcPath, harness);
-    const results = inputs.map((args) => Number(execFileSync("perl", [srcPath, ...args.map(String)]).toString().trim()));
+    const results = inputs.map((args) => parseNumericOutput(execFileSync("perl", [srcPath, ...args.map(String)]).toString().trim()));
     fs.rmSync(dir, { recursive: true, force: true });
     return results;
 }
@@ -800,7 +1218,7 @@ function runPerl(ast, inputs) {
 function runSuitePerl(ast, inputs, outputNames) {
     const source = emitters.perl.emitFunction(ast);
     const dir = tmpDir("ef-pl-");
-    const parses = ast.params.map((p, i) => `my $${p} = $ARGV[${i}];`).join("\n");
+    const parses = perlParamParses(ast);
     const callArgs = ast.params.map((p) => `$${p}`).join(", ");
     const prints = outputNames.map((n) => `printf("%.17g\\n", $r->{${n}});`).join("\n");
     const harness = `${source}\n${parses}\nmy $r = ${ast.name}(${callArgs});\n${prints}\n`;
@@ -817,15 +1235,44 @@ function runSuitePerl(ast, inputs, outputNames) {
 // emitted source opens `<?php` and never closes it (see emitters/php.js),
 // so the harness just continues appending plain PHP statements.
 
+// Array-typed params: comma-joined CLI string -> a plain PHP array via
+// explode + array_map('floatval', ...). php.js's own array-param
+// convention is a bare name (no type annotation -- see its
+// formatFunction), so the call site is unchanged, same as a scalar.
+function phpParamParses(ast) {
+    return ast.params
+        .map((p, i) => {
+            if (ast.paramTypes?.[p] === "number[]") {
+                return `$${p} = array_map('floatval', explode(',', $argv[${i + 1}]));`;
+            }
+            return `$${p} = floatval($argv[${i + 1}]);`;
+        })
+        .join("\n");
+}
+
+// This PHP build's own printf()/sprintf() (confirmed: NOT echo, NOT
+// var_dump -- both of those already show the correct signed value)
+// silently DROPS THE SIGN of negative infinity specifically -- "%.17g"
+// and "%f" both print bare "INF" for a value that var_dump() itself
+// reports as float(-INF). A real PHP output-formatting bug (confirmed
+// directly, on the exact php-cli version this project's own CI
+// installs), not anything wrong with the computed value itself or with
+// this project's emitted PHP source -- worked around here, in the test
+// harness, by checking is_infinite() and picking the correctly-signed
+// string by hand instead of trusting printf with it.
+function phpPrintExpr(varExpr) {
+    return `printf("%s\\n", is_infinite(${varExpr}) ? ((${varExpr}) < 0 ? "-INF" : "INF") : sprintf("%.17g", ${varExpr}));`;
+}
+
 function runPhp(ast, inputs) {
     const source = emitters.php.emitFunction(ast);
     const dir = tmpDir("ef-php-");
-    const parses = ast.params.map((p, i) => `$${p} = floatval($argv[${i + 1}]);`).join("\n");
+    const parses = phpParamParses(ast);
     const callArgs = ast.params.map((p) => `$${p}`).join(", ");
-    const harness = `${source}\n${parses}\nprintf("%.17g\\n", ${ast.name}(${callArgs}));\n`;
+    const harness = `${source}\n${parses}\n$ef_result = ${ast.name}(${callArgs});\n${phpPrintExpr("$ef_result")}\n`;
     const srcPath = path.join(dir, "main.php");
     fs.writeFileSync(srcPath, harness);
-    const results = inputs.map((args) => Number(execFileSync("php", [srcPath, ...args.map(String)]).toString().trim()));
+    const results = inputs.map((args) => parseNumericOutput(execFileSync("php", [srcPath, ...args.map(String)]).toString().trim()));
     fs.rmSync(dir, { recursive: true, force: true });
     return results;
 }
@@ -833,9 +1280,9 @@ function runPhp(ast, inputs) {
 function runSuitePhp(ast, inputs, outputNames) {
     const source = emitters.php.emitFunction(ast);
     const dir = tmpDir("ef-php-");
-    const parses = ast.params.map((p, i) => `$${p} = floatval($argv[${i + 1}]);`).join("\n");
+    const parses = phpParamParses(ast);
     const callArgs = ast.params.map((p) => `$${p}`).join(", ");
-    const prints = outputNames.map((n) => `printf("%.17g\\n", $r['${n}']);`).join("\n");
+    const prints = outputNames.map((n) => phpPrintExpr(`$r['${n}']`)).join("\n");
     const harness = `${source}\n${parses}\n$r = ${ast.name}(${callArgs});\n${prints}\n`;
     const srcPath = path.join(dir, "main.php");
     fs.writeFileSync(srcPath, harness);
@@ -850,15 +1297,32 @@ function runSuitePhp(ast, inputs, outputNames) {
 // come in via ARGS (1-indexed), unlike every 0-indexed argv convention
 // elsewhere in this file -- Julia arrays are 1-indexed throughout.
 
+// Array-typed params: comma-joined CLI string -> a plain Julia Vector via
+// split + broadcast parse. julia.js's own array-param convention is a
+// bare name (no type annotation -- see its formatFunction; the emitted
+// function itself handles the 0-based-caller-index -> Julia's native
+// 1-based indexing translation internally, see its emitIndex), so the
+// call site is unchanged, same as a scalar.
+function juliaParamParses(ast) {
+    return ast.params
+        .map((p, i) => {
+            if (ast.paramTypes?.[p] === "number[]") {
+                return `${p} = parse.(Float64, split(ARGS[${i + 1}], ","))`;
+            }
+            return `${p} = parse(Float64, ARGS[${i + 1}])`;
+        })
+        .join("\n");
+}
+
 function runJulia(ast, inputs) {
     const source = emitters.julia.emitFunction(ast);
     const dir = tmpDir("ef-jl-");
-    const parses = ast.params.map((p, i) => `${p} = parse(Float64, ARGS[${i + 1}])`).join("\n");
+    const parses = juliaParamParses(ast);
     const callArgs = ast.params.join(", ");
     const harness = `${source}\n${parses}\nprintln(${ast.name}(${callArgs}))\n`;
     const srcPath = path.join(dir, "main.jl");
     fs.writeFileSync(srcPath, harness);
-    const results = inputs.map((args) => Number(execFileSync("julia", [srcPath, ...args.map(String)]).toString().trim()));
+    const results = inputs.map((args) => parseNumericOutput(execFileSync("julia", [srcPath, ...args.map(String)]).toString().trim()));
     fs.rmSync(dir, { recursive: true, force: true });
     return results;
 }
@@ -866,7 +1330,7 @@ function runJulia(ast, inputs) {
 function runSuiteJulia(ast, inputs, outputNames) {
     const source = emitters.julia.emitFunction(ast);
     const dir = tmpDir("ef-jl-");
-    const parses = ast.params.map((p, i) => `${p} = parse(Float64, ARGS[${i + 1}])`).join("\n");
+    const parses = juliaParamParses(ast);
     const callArgs = ast.params.join(", ");
     const prints = outputNames.map((n) => `println(r.${n})`).join("\n");
     const harness = `${source}\n${parses}\nr = ${ast.name}(${callArgs})\n${prints}\n`;
@@ -886,18 +1350,32 @@ function runSuiteJulia(ast, inputs, outputNames) {
 // return is unpacked with call-with-values, same mechanism
 // samples/spline-frame.js-equivalent Scheme code would use by hand.
 
+// Array-typed params: comma-joined CLI string -> a Scheme vector via
+// string-split + map + string->number. scheme.js's own emitIndex uses
+// vector-ref (see its own comment), so this has to build a VECTOR, not a
+// list -- list->vector wraps the mapped list of numbers.
+function schemeParamParses(ast) {
+    return ast.params
+        .map((p, i) => {
+            if (ast.paramTypes?.[p] === "number[]") {
+                return `(define ${p} (list->vector (map (lambda (s) (exact->inexact (string->number s))) ` +
+                    `(string-split (list-ref (command-line) ${i + 1}) #\\,))))`;
+            }
+            return `(define ${p} (exact->inexact (string->number (list-ref (command-line) ${i + 1}))))`;
+        })
+        .join("\n");
+}
+
 function runScheme(ast, inputs) {
     const source = emitters.scheme.emitFunction(ast);
     const dir = tmpDir("ef-scm-");
-    const parses = ast.params
-        .map((p, i) => `(define ${p} (exact->inexact (string->number (list-ref (command-line) ${i + 1}))))`)
-        .join("\n");
+    const parses = schemeParamParses(ast);
     const callArgs = ast.params.join(" ");
     const harness = `${source}\n${parses}\n(display (${ast.name} ${callArgs})) (newline)\n`;
     const srcPath = path.join(dir, "main.scm");
     fs.writeFileSync(srcPath, harness);
     const results = inputs.map((args) =>
-        Number(execFileSync(GUILE_BIN, ["--no-auto-compile", srcPath, ...args.map(String)]).toString().trim()),
+        parseNumericOutput(execFileSync(GUILE_BIN, ["--no-auto-compile", srcPath, ...args.map(String)]).toString().trim()),
     );
     fs.rmSync(dir, { recursive: true, force: true });
     return results;
@@ -906,9 +1384,7 @@ function runScheme(ast, inputs) {
 function runSuiteScheme(ast, inputs, outputNames) {
     const source = emitters.scheme.emitFunction(ast);
     const dir = tmpDir("ef-scm-");
-    const parses = ast.params
-        .map((p, i) => `(define ${p} (exact->inexact (string->number (list-ref (command-line) ${i + 1}))))`)
-        .join("\n");
+    const parses = schemeParamParses(ast);
     const callArgs = ast.params.join(" ");
     const bindings = outputNames.join(" ");
     const prints = outputNames.map((n) => `(display ${n}) (newline)`).join(" ");
@@ -956,27 +1432,73 @@ function wrapFortranLine(line, maxWidth = 100) {
     return wrapped.join("\n");
 }
 
+// Array-typed params: fixed-size (0:63) real(8) array, matching
+// fn.f90's own assumed-size `dimension(0:*)` dummy argument (see
+// emitters/fortran.js -- confirmed working regardless of the CALLER's
+// own declared bounds). Fortran has no built-in string-split, so the
+// comma-joined CLI arg is parsed with a manual index()-based loop, one
+// element at a time, into per-param-prefixed loop variables (never a
+// shared/reused name -- safe even with multiple array params in one
+// function). Every scalar param still shares the one `double precision`
+// declaration line exactly as before; array params get their own
+// `dimension` line instead.
+function fortranScalarNames(ast) {
+    return ast.params.filter((p) => ast.paramTypes?.[p] !== "number[]");
+}
+
+function fortranArrayNames(ast) {
+    return ast.params.filter((p) => ast.paramTypes?.[p] === "number[]");
+}
+
+function fortranArrayDecls(ast) {
+    return fortranArrayNames(ast)
+        .map((p) => `    real(8), dimension(0:63) :: ${p}\n    integer :: ${p}_pos, ${p}_comma, ${p}_n`)
+        .join("\n");
+}
+
+function fortranReads(ast) {
+    return ast.params
+        .map((p, i) => {
+            if (ast.paramTypes?.[p] === "number[]") {
+                return `    call get_command_argument(${i + 1}, argstr)\n` +
+                    `    ${p}_pos = 1\n    ${p}_n = 0\n` +
+                    `    do while (${p}_pos <= len_trim(argstr))\n` +
+                    `        ${p}_comma = index(argstr(${p}_pos:), ',')\n` +
+                    `        if (${p}_comma == 0) then\n` +
+                    `            read(argstr(${p}_pos:len_trim(argstr)), *) ${p}(${p}_n)\n` +
+                    `            ${p}_pos = len_trim(argstr) + 1\n` +
+                    `        else\n` +
+                    `            read(argstr(${p}_pos:${p}_pos + ${p}_comma - 2), *) ${p}(${p}_n)\n` +
+                    `            ${p}_pos = ${p}_pos + ${p}_comma\n` +
+                    `        end if\n` +
+                    `        ${p}_n = ${p}_n + 1\n` +
+                    `    end do`;
+            }
+            return `    call get_command_argument(${i + 1}, argstr)\n    read(argstr, *) ${p}`;
+        })
+        .join("\n");
+}
+
 function runFortran(ast, inputs) {
     const source = emitters.fortran.emitFunction(ast);
     const dir = tmpDir("ef-f90-");
     fs.writeFileSync(path.join(dir, "fn.f90"), source);
-    const varDecl = [...ast.params, ast.name].join(", ");
-    const reads = ast.params
-        .map((p, i) => `    call get_command_argument(${i + 1}, argstr)\n    read(argstr, *) ${p}`)
-        .join("\n");
+    const varDecl = [...fortranScalarNames(ast), ast.name].join(", ");
+    const reads = fortranReads(ast);
     const callArgs = ast.params.join(", ");
     const harness =
         `program main\n` +
         `    implicit none\n` +
         wrapFortranLine(`    double precision :: ${varDecl}`) + "\n" +
-        `    character(len=64) :: argstr\n` +
+        fortranArrayDecls(ast) + (fortranArrayNames(ast).length ? "\n" : "") +
+        `    character(len=256) :: argstr\n` +
         reads + "\n" +
         wrapFortranLine(`    write(*, '(F0.17)') ${ast.name}(${callArgs})`) + "\n" +
         `end program main\n`;
     fs.writeFileSync(path.join(dir, "main.f90"), harness);
     const bin = path.join(dir, "bin");
     execFileSync("gfortran", ["-O2", "-o", bin, path.join(dir, "main.f90"), path.join(dir, "fn.f90")]);
-    const results = inputs.map((args) => Number(execFileSync(bin, args.map(String)).toString()));
+    const results = inputs.map((args) => parseNumericOutput(execFileSync(bin, args.map(String)).toString()));
     fs.rmSync(dir, { recursive: true, force: true });
     return results;
 }
@@ -985,17 +1507,16 @@ function runSuiteFortran(ast, inputs, outputNames) {
     const source = emitters.fortran.emitFunction(ast);
     const dir = tmpDir("ef-f90-");
     fs.writeFileSync(path.join(dir, "fn.f90"), source);
-    const varDecl = [...ast.params, ...outputNames].join(", ");
-    const reads = ast.params
-        .map((p, i) => `    call get_command_argument(${i + 1}, argstr)\n    read(argstr, *) ${p}`)
-        .join("\n");
+    const varDecl = [...fortranScalarNames(ast), ...outputNames].join(", ");
+    const reads = fortranReads(ast);
     const callArgs = [...ast.params, ...outputNames].join(", ");
     const prints = outputNames.map((n) => `    write(*, '(F0.17)') ${n}`).join("\n");
     const harness =
         `program main\n` +
         `    implicit none\n` +
         wrapFortranLine(`    double precision :: ${varDecl}`) + "\n" +
-        `    character(len=64) :: argstr\n` +
+        fortranArrayDecls(ast) + (fortranArrayNames(ast).length ? "\n" : "") +
+        `    character(len=256) :: argstr\n` +
         reads + "\n" +
         wrapFortranLine(`    call ${ast.name}(${callArgs})`) + "\n" +
         prints + "\n" +
@@ -1021,19 +1542,48 @@ function runSuiteFortran(ast, inputs, outputNames) {
 // fix) that std.debug.print writes to stderr by design, not stdout, so
 // execFileSync (which only captures stdout) was reading nothing.
 
+// Array-typed params: comma-joined CLI string -> a fixed-size (256-slot)
+// buffer, sliced to the real element count, via std.mem.splitScalar +
+// std.fmt.parseFloat. zig.js's own array-param signature is `[]const
+// f64` (a slice -- see its formatFunction), which a sliced-down buffer
+// coerces to directly, so the call site is unchanged, same as a scalar.
+function zigParamParses(ast) {
+    return ast.params
+        .map((p, i) => {
+            if (ast.paramTypes?.[p] === "number[]") {
+                return `    var ${p}_it = std.mem.splitScalar(u8, args[${i + 1}], ',');\n` +
+                    `    var ${p}_buf: [256]f64 = undefined;\n` +
+                    `    var ${p}_n: usize = 0;\n` +
+                    `    while (${p}_it.next()) |_s| {\n` +
+                    `        ${p}_buf[${p}_n] = try std.fmt.parseFloat(f64, _s);\n` +
+                    `        ${p}_n += 1;\n    }\n` +
+                    `    const ${p} = ${p}_buf[0..${p}_n];`;
+            }
+            return `    const ${p} = try std.fmt.parseFloat(f64, args[${i + 1}]);`;
+        })
+        .join("\n");
+}
+
 function runZig(ast, inputs) {
     const source = emitters.zig.emitFunction(ast);
     const dir = tmpDir("ef-zig-");
     fs.writeFileSync(path.join(dir, "fn.zig"), source);
-    const parses = ast.params
-        .map((p, i) => `    const ${p} = try std.fmt.parseFloat(f64, args[${i + 1}]);`)
-        .join("\n");
+    const parses = zigParamParses(ast);
     const callArgs = ast.params.join(", ");
+    // `args` is only ever referenced inside zigParamParses' own output --
+    // an unused local `const` is a real Zig compile error (confirmed
+    // directly, not a warning) for a zero-parameter function, where
+    // `parses` never references it. Every sample before zeroParamDemo
+    // had >=1 parameter, so this declaration never hit the empty case
+    // before.
+    const argsDecl = ast.params.length > 0
+        ? `    const args = try std.process.argsAlloc(std.heap.page_allocator);\n`
+        : "";
     const harness =
         `const std = @import("std");\n` +
         `const fnmod = @import("fn.zig");\n\n` +
         `pub fn main() !void {\n` +
-        `    const args = try std.process.argsAlloc(std.heap.page_allocator);\n` +
+        argsDecl +
         `    const stdout = std.io.getStdOut().writer();\n` +
         parses + "\n" +
         `    try stdout.print("{d}\\n", .{fnmod.${ast.name}(${callArgs})});\n` +
@@ -1041,7 +1591,7 @@ function runZig(ast, inputs) {
     fs.writeFileSync(path.join(dir, "main.zig"), harness);
     const bin = path.join(dir, "bin");
     execFileSync("zig", ["build-exe", path.join(dir, "main.zig"), "-O", "ReleaseFast", `-femit-bin=${bin}`], { cwd: dir });
-    const results = inputs.map((args) => Number(execFileSync(bin, args.map(String)).toString().trim()));
+    const results = inputs.map((args) => parseNumericOutput(execFileSync(bin, args.map(String)).toString().trim()));
     fs.rmSync(dir, { recursive: true, force: true });
     return results;
 }
@@ -1050,9 +1600,7 @@ function runSuiteZig(ast, inputs, outputNames) {
     const source = emitters.zig.emitFunction(ast);
     const dir = tmpDir("ef-zig-");
     fs.writeFileSync(path.join(dir, "fn.zig"), source);
-    const parses = ast.params
-        .map((p, i) => `    const ${p} = try std.fmt.parseFloat(f64, args[${i + 1}]);`)
-        .join("\n");
+    const parses = zigParamParses(ast);
     const callArgs = ast.params.join(", ");
     const prints = outputNames.map((n) => `    try stdout.print("{d}\\n", .{r.${n}});`).join("\n");
     const harness =
@@ -1133,7 +1681,7 @@ function runCobol(ast, inputs) {
     fs.writeFileSync(srcPath, harness);
     const bin = path.join(dir, "bin");
     execFileSync("cobc", ["-x", "-free", "-o", bin, srcPath, path.join(dir, "fn.cob")]);
-    const results = inputs.map((args) => Number(execFileSync(bin, args.map(String)).toString().trim()));
+    const results = inputs.map((args) => parseNumericOutput(execFileSync(bin, args.map(String)).toString().trim()));
     fs.rmSync(dir, { recursive: true, force: true });
     return results;
 }
@@ -1175,7 +1723,7 @@ function runSuiteCobol(ast, inputs, outputNames) {
     return results;
 }
 
-function registerSuiteConformance(sampleName, { ast, inputs }) {
+function registerSuiteConformance(sampleName, { ast, inputs, skipTargets = [] }) {
     const outputNames = suiteOutputNames(ast);
     const targets = [
         ["Interpreter", true, runEval],
@@ -1195,7 +1743,7 @@ function registerSuiteConformance(sampleName, { ast, inputs }) {
         ["Zig", TOOLS.zig, runSuiteZig],
         ["Scheme", TOOLS.guile, runSuiteScheme],
         ["COBOL", TOOLS.cobc, runSuiteCobol],
-    ].filter(([label]) => targetAllowed(label));
+    ].filter(([label]) => !skipTargets.includes(label) && targetAllowed(label));
 
     for (const [label, available, run] of targets) {
         test(
@@ -1312,6 +1860,113 @@ for (const ast of splineFrameAsts) {
     }
     registerSuiteConformance(`splineFrame.${ast.name}`, { ast, inputs });
 }
+
+// --- samples/comparison-ops-demo.js ---------------------------------------
+//
+// Real compiled/executed coverage for every cmp() operator, on every
+// available real toolchain -- see that file's own header comment for the
+// actual shipped bug (qb64/fortran/lua all mishandled "!="; qb64 also
+// mishandled "==") this exists to make structurally impossible to repeat.
+// Every input row below hits BOTH the true and false side of every one of
+// the six operators at least once (a > b, a < b, a == b), including a
+// negative-number pair -- not just the "a > b" shape every OTHER sample
+// that ever exercised select()/cmp() against a real compiler happened to
+// use exclusively.
+registerSuiteConformance("comparisonOps", {
+    ast: comparisonOpsAst,
+    inputs: [
+        [3, 5], // a < b: lt/le/ne true, gt/ge/eq false
+        [5, 3], // a > b: gt/ge/ne true, lt/le/eq false
+        [5, 5], // a == b: ge/le/eq true, gt/lt/ne false
+        [-2, 4], // negative vs positive
+        [-2, -2], // negative equality
+    ],
+    // Same genuine GnuCOBOL codegen limitation as nestedSelect's own
+    // skipTargets above, at its most extreme -- all 6 distinct
+    // comparison operators, each its own emitters/cobol.js FUNCTION-ID
+    // helper, called in one PROCEDURE DIVISION. Confirmed via real CI
+    // runs (not local reproduction, which proved unreliable for this
+    // specific question) on both gnucobol3 and gnucobol4 identically.
+    // See nestedSelect's own comment for the full pattern and what a
+    // real fix would require.
+    skipTargets: ["COBOL"],
+});
+
+// Proves sqrt/log/asin/acos/pow/log2/log10 return NaN/Infinity for an
+// out-of-domain argument identically on every target -- see
+// samples/domain-safety-demo.js's own header comment for the full,
+// directly-verified breakdown of what each target used to do instead
+// (QB64: crashed/hung; Python: raised; Perl: raised for sqrt/log/log2;
+// Scheme: silently became a COMPLEX number) and how each was fixed.
+registerSuiteConformance("domainSafety", {
+    ast: domainSafetyAst,
+    inputs: [
+        [0.5], // fully in-domain -- real values, sanity-checks the fix
+        // didn't change anything for the case that was already correct
+        [-1], // sqrt/log/pow/log2/log10 -> NaN/-Infinity; asin(-1)/
+        // acos(-1) are still in-domain (valid at the boundary)
+        [2], // asin/acos -> NaN; everything else in-domain
+        [0], // log/log2/log10 -> -Infinity; sqrt/asin/acos/pow in-domain
+    ],
+    // GnuCOBOL's intrinsic FUNCTION SQRT/LOG/ASIN/ACOS (and pow's own
+    // spillPow helper) all silently return 0 -- not NaN, not a crash,
+    // not an error -- for an out-of-domain argument, confirmed directly
+    // against a real compile+run. A SIXTH distinct real divergence this
+    // audit found (see domain-safety-demo.js), deliberately NOT
+    // guard-fixed the way QB64/Python/Perl/Scheme were: this project
+    // already found and confirmed (see nestedSelect/comparisonOps'
+    // own skipTargets above, same file) that GnuCOBOL's codegen has a
+    // real, fatal "unknown type name 'cob_decimal'" bug triggered by
+    // piling up multiple decimal-arithmetic-heavy IF-guarded helper
+    // FUNCTION-IDs in one compilation unit -- exactly the shape a
+    // domain-guard fix for 5 different primitives would need. Adding
+    // that risked reintroducing the exact crash already worked around
+    // elsewhere in this same file, for a target whose math intrinsics
+    // are already documented elsewhere as not fully reliable. Skipped,
+    // not silently ignored.
+    skipTargets: ["COBOL"],
+});
+
+// Array-typed parameter used inside a multi-output outputs() suite (see
+// samples/array-suite-demo.js's own header comment) -- the array-param
+// harness work (#36) and the suite/multi-output harness machinery
+// existed independently before this; this is the one place they're
+// actually exercised TOGETHER, against real toolchains.
+registerSuiteConformance("arraySuite", {
+    ast: arraySuiteAst,
+    inputs: [
+        [[10, 20, 30, 40], 4, 5], // wraps past the end
+        [[10, 20, 30, 40], 4, -1], // wraps past the start
+        [[10, 20, 30, 40], 4, 2], // no wrap needed
+    ],
+    skipTargets: ["COBOL"],
+});
+
+// Proves min()/max() propagate NaN identically (regardless of which
+// argument it's in) on every target -- see samples/math-edge-cases-
+// demo.js's own header comment for the full, directly-verified
+// breakdown (C/Rust/Zig: NaN-ignoring; Python/Lua/QB64: position-
+// dependent, first-wins; PHP: position-dependent, second-wins; Perl:
+// inconsistent even with itself) and docs/adr/0003-min-max-nan-
+// propagation.md for the decision record.
+registerSuiteConformance("mathEdgeCases", {
+    ast: mathEdgeCasesAst,
+    inputs: [
+        [5, -1], // real, positive, finite -- the value that "wins" once
+        // NaN is correctly recognized and excluded. negSrc just needs
+        // to be negative (see math-edge-cases-demo.js's own comment on
+        // why it must be a runtime parameter, not a literal constant).
+        [-3, -1], // real, negative, finite -- same check, opposite sign
+    ],
+    // Same GnuCOBOL cob_decimal codegen fragility as domainSafety/
+    // comparisonOps/nestedSelect/arraySuite above -- FUNCTION MIN is
+    // confirmed flatly wrong (returns 0, not either operand) for a NaN
+    // argument, and a real fix needs a new helper FUNCTION-ID, the exact
+    // shape already confirmed to crash cobc when piled up with others.
+    // See emitters/cobol.js's own min:/max: comment. Skipped, not
+    // silently ignored.
+    skipTargets: ["COBOL"],
+});
 
 // --- samples/math-demo.js -------------------------------------------------
 //

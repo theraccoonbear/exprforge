@@ -36,7 +36,14 @@ const CALLS = {
     sqrt: Math.sqrt, abs: Math.abs, sin: Math.sin, cos: Math.cos, tan: Math.tan,
     asin: Math.asin, acos: Math.acos, atan: Math.atan, log: Math.log,
     log2: Math.log2, log10: Math.log10, exp: Math.exp, floor: Math.floor,
-    ceil: Math.ceil, round: Math.round, trunc: Math.trunc, sign: Math.sign,
+    ceil: Math.ceil, trunc: Math.trunc, sign: Math.sign,
+    // NOT Math.round -- it ties toward +Infinity (Math.round(-0.5) is -0,
+    // Math.round(-1.5) is -1), not the round-half-AWAY-from-zero
+    // convention every emitter now standardizes on (see js.js's own
+    // comment and the root README's "round() at exact .5 boundaries"
+    // section). The interpreter has to agree with every emitted target,
+    // not just be internally consistent with itself.
+    round: (x) => Math.sign(x) * Math.floor(Math.abs(x) + 0.5),
     pow: Math.pow, atan2: Math.atan2, min: Math.min, max: Math.max, hypot: Math.hypot,
     // See primitives.js's own comment -- ((i % m) + m) % m rather than a
     // plain `i % m`, so a negative `i` still wraps into [0, m) instead of

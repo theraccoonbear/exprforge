@@ -105,7 +105,28 @@ const emitter = new Emitter({
         asin: fn1("ASIN"), acos: fn1("ACOS"), atan: fn1("ATAN"), atan2: fn2("ATAN2"),
         log: fn1("LOG"), log10: fn1("LOG10"), exp: fn1("EXP"),
         pow: ([x, y]) => `(${x} ** ${y})`,
-        min: fn2("MIN"), max: fn2("MAX"),
+        // NOT bare MIN/MAX: confirmed directly (a real gfortran 15.2.1
+        // compile+run, both -O0 and -O2, so not an optimizer artifact)
+        // that MIN/MAX silently DROP a NaN operand -- but only when
+        // called from inside a SUBROUTINE/FUNCTION (every real target
+        // ExprForge ever emits is one), not at a top-level PROGRAM's own
+        // scope, where the identical intrinsic call correctly returns
+        // NaN. A genuinely new, previously-undocumented divergence (see
+        // docs/adr/0003-min-max-nan-propagation.md), not the
+        // already-known compile-time-literal-constant gap this file's
+        // sqrt/log/etc. share with QB64 -- this one happens with a
+        // perfectly ordinary runtime variable. MERGE (already this
+        // file's own sign: entry's own tool -- an elemental intrinsic,
+        // evaluates both arguments unconditionally, which is fine here
+        // since neither branch can crash) picks between MIN/MAX's own
+        // (occasionally wrong) result and a value GUARANTEED to be NaN
+        // whenever either operand is (IEEE754: NaN + anything = NaN,
+        // regardless of which operand actually was the NaN one) --
+        // "/=" is Fortran's own self-inequality NaN test (confirmed
+        // elsewhere in this project: an IEEE NaN never compares equal to
+        // itself).
+        min: ([a, b]) => `MERGE((${a}) + (${b}), MIN(${a}, ${b}), ((${a}) /= (${a})) .OR. ((${b}) /= (${b})))`,
+        max: ([a, b]) => `MERGE((${a}) + (${b}), MAX(${a}, ${b}), ((${a}) /= (${a})) .OR. ((${b}) /= (${b})))`,
         // HYPOT is an F2008 intrinsic -- no need to derive it by hand.
         hypot: fn2("HYPOT"),
         // ANINT/AINT already return a REAL of the same kind as their
@@ -150,10 +171,21 @@ const emitter = new Emitter({
     // intrinsics don't short-circuit), which matches select()'s own
     // "both branches always evaluated" contract (see ast.js) instead of
     // fighting it.
+    // cmp()'s op is one of ">" "<" ">=" "<=" "==" "!=" (ast.js) -- modern
+    // (F90+) Fortran's relational operators are spelled the same for
+    // every one of those EXCEPT "!=", which isn't valid Fortran at all
+    // (confirmed against a real gfortran compile -- "Syntax error in
+    // argument list"); Fortran's own not-equal is "/=". "==" needs no
+    // translation, unlike QB64's equivalent gap just above. This was
+    // unguarded for as long as select()/cmp() have existed -- every
+    // sample that ever exercised this target's MERGE() emulation only
+    // ever used ">" (see spline-frame.js), so "!=" never actually
+    // compiled through a real Fortran compiler before this fix.
     emitSelect: function (condNode, thenStr, elseStr) {
         const L = this.emitExpr(condNode.left);
         const R = this.emitExpr(condNode.right);
-        return `MERGE(${thenStr}, ${elseStr}, (${L}) ${condNode.op} (${R}))`;
+        const op = condNode.op === "!=" ? "/=" : condNode.op;
+        return `MERGE(${thenStr}, ${elseStr}, (${L}) ${op} (${R}))`;
     },
     formatFunction: (fn, body, letBindings = []) => {
         checkReservedNames([fn.name, ...fn.params, ...letBindings.map((b) => b.name)]);

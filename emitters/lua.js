@@ -21,7 +21,19 @@ const emitter = new Emitter({
     calls: {
         sqrt: fn1("sqrt"), abs: fn1("abs"), sin: fn1("sin"), cos: fn1("cos"), tan: fn1("tan"),
         asin: fn1("asin"), acos: fn1("acos"), atan: fn1("atan"), exp: fn1("exp"),
-        min: fn2("min"), max: fn2("max"),
+        // NOT bare math.min/math.max: confirmed directly that whichever
+        // argument comes FIRST silently wins whenever either is NaN
+        // (min(nan,5)==nan but min(5,nan)==5, same for max) --
+        // position-dependent, same landmine as Python's builtins.
+        // JS/Go/Java/C#/Julia/Scheme/Fortran instead propagate NaN
+        // through min/max the way this project now standardizes on --
+        // see docs/adr/0003-min-max-nan-propagation.md. Lua has no
+        // isnan(); "x ~= x" is the standard self-inequality NaN test
+        // (an IEEE NaN never compares equal to itself). The and/or
+        // ternary idiom is safe here (see this file's own sign: entry
+        // below) since 0/0 (NaN) is truthy in Lua, not falsy.
+        min: ([a, b]) => `((${a} ~= ${a} or ${b} ~= ${b}) and (0 / 0) or math.min(${a}, ${b}))`,
+        max: ([a, b]) => `((${a} ~= ${a} or ${b} ~= ${b}) and (0 / 0) or math.max(${a}, ${b}))`,
         // Lua 5.3+ removed math.atan2 -- math.atan(y, x) with a second
         // argument is the replacement.
         atan2: fn2("atan"),
@@ -43,7 +55,13 @@ const emitter = new Emitter({
         // C/Go/Rust's round-half-away-from-zero -- same already-documented,
         // already-avoided-in-tests divergence as elsewhere in this project,
         // not a new one.
-        round: ([x]) => `(math.floor(${x} + 0.5) + 0.0)`,
+        // Lua's own floor(x + 0.5) formula ties toward +Infinity, NOT
+        // this project's standardized round-half-AWAY-from-zero
+        // convention -- see js.js's own comment and the root README's
+        // "round() at exact .5 boundaries" section. Sign built inline
+        // (Lua has no math.sign), same ternary shape as this file's own
+        // sign: entry below.
+        round: ([x]) => `((((${x} > 0) and 1.0 or ((${x} < 0) and -1.0 or 0.0))) * (math.floor(math.abs(${x}) + 0.5)))`,
         // No math.trunc either -- math.modf(x) returns (integral,
         // fractional) parts as its two results; parenthesizing the call
         // selects just the first (Lua's standard idiom for narrowing a
@@ -79,17 +97,43 @@ const emitter = new Emitter({
     // AST is a number, and only nil/false are ever falsy in Lua, so `a`
     // (the then-branch) is never mistaken for "falsy" regardless of its
     // numeric value (unlike this same idiom in some other languages).
+    // cmp()'s op is one of ">" "<" ">=" "<=" "==" "!=" (ast.js) -- Lua
+    // spells every one of those the same as JS/C EXCEPT "!=", which is a
+    // real syntax error in Lua (confirmed against a real `lua` run --
+    // "')' expected near '!'"); Lua's own not-equal is "~=". "==" needs
+    // no translation. This was unguarded for as long as select()/cmp()
+    // have existed -- every sample that ever exercised this target's
+    // and/or emulation only ever used ">" (see spline-frame.js), so
+    // "!=" never actually ran through a real Lua interpreter before
+    // this fix.
     emitSelect: function (condNode, thenStr, elseStr) {
         const L = this.emitExpr(condNode.left);
         const R = this.emitExpr(condNode.right);
-        return `((${L} ${condNode.op} ${R}) and (${thenStr}) or (${elseStr}))`;
+        const op = condNode.op === "!=" ? "~=" : condNode.op;
+        return `((${L} ${op} ${R}) and (${thenStr}) or (${elseStr}))`;
     },
-    formatFunction: (fn, body, letBindings = []) => {
+    // Opt-in only (see emitFunction's `addTypeGuards` and
+    // docs/runtime-type-guards.md). Lua's array-typed param is a plain
+    // table (see emitIndex above) -- type() ~= "table" is the closest
+    // Lua gets to Array.isArray (a table is also how Lua represents a
+    // map/object, but a caller passing one of THOSE where a numeric
+    // array was expected would already fail loudly at the first
+    // arithmetic on an element, just less clearly than this).
+    typeGuard: (p, fnName) => `if type(${p}) ~= "table" then error(${JSON.stringify(`${fnName}: "${p}" must be a table (array)`)}) end`,
+    // Opt-in on top of typeGuard's own opt-in (see emitFunction's
+    // `fn.arrayLengths` doc comment in base.js) -- runs after the type
+    // guard above, so "#" (Lua's length operator) is always safe here.
+    lengthGuard: (p, lenP, fnName) =>
+        `if #${p} ~= ${lenP} then error(${JSON.stringify(`${fnName}: "#${p}" must equal "${lenP}"`)}) end`,
+    formatFunction: (fn, body, letBindings = [], guardLines = []) => {
         const params = fn.params.join(", ");
+        const guards = guardLines.map((l) => `    ${l}`).join("\n");
+        const guardsBlock = guards ? guards + "\n" : "";
         const lets = letBindings.map(({ name, valueStr }) => `    local ${name} = ${valueStr}`).join("\n");
         const letsBlock = lets ? lets + "\n" : "";
         return `-- AUTO-GENERATED by ExprForge -- do not hand-edit.\n` +
                `function ${fn.name}(${params})\n` +
+               guardsBlock +
                letsBlock +
                `    return ${body}\n` +
                `end\n`;
@@ -100,8 +144,10 @@ const emitter = new Emitter({
     // the body and the trailing `return` list are entirely separate
     // namespaces). A leading comment documents the order, since Lua's
     // returns are positional, not named, at the call site.
-    formatSuite: (fn, outputStrs, letBindings = []) => {
+    formatSuite: (fn, outputStrs, letBindings = [], guardLines = []) => {
         const params = fn.params.join(", ");
+        const guards = guardLines.map((l) => `    ${l}`).join("\n");
+        const guardsBlock = guards ? guards + "\n" : "";
         const lets = letBindings.map(({ name, valueStr }) => `    local ${name} = ${valueStr}`).join("\n");
         const letsBlock = lets ? lets + "\n" : "";
         const outputNames = Object.keys(outputStrs);
@@ -109,6 +155,7 @@ const emitter = new Emitter({
         return `-- AUTO-GENERATED by ExprForge -- do not hand-edit.\n` +
                `-- Returns (${outputNames.join(", ")}).\n` +
                `function ${fn.name}(${params})\n` +
+               guardsBlock +
                letsBlock +
                `    return ${returnStmt}\n` +
                `end\n`;

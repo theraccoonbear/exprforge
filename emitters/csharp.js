@@ -36,10 +36,19 @@ const emitter = new Emitter({
         sqrt: fn1("Sqrt"), abs: fn1("Abs"), sin: fn1("Sin"), cos: fn1("Cos"), tan: fn1("Tan"),
         asin: fn1("Asin"), acos: fn1("Acos"), atan: fn1("Atan"), log: fn1("Log"),
         log2: fn1("Log2"), log10: fn1("Log10"), exp: fn1("Exp"), floor: fn1("Floor"),
-        ceil: fn1("Ceiling"), round: fn1("Round"), trunc: fn1("Truncate"),
+        ceil: fn1("Ceiling"), trunc: fn1("Truncate"),
         pow: fn2("Pow"), atan2: fn2("Atan2"), min: fn2("Min"), max: fn2("Max"),
         // Math.Sign returns int, not double -- our AST is float64-only throughout.
         sign: ([x]) => `((double) Math.Sign(${x}))`,
+        // .NET's Math.Round(double) ties to EVEN ("banker's rounding") by
+        // default, NOT this project's standardized round-half-AWAY-from-
+        // zero convention -- see js.js's own comment and the root
+        // README's "round() at exact .5 boundaries" section. Math.Sign
+        // returns int, which promotes to double automatically in this
+        // multiplication -- no explicit cast needed the way the sign:
+        // entry above needs one on its own (there, the WHOLE expression
+        // needs to already read as a double, since nothing else in it is).
+        round: ([x]) => `(Math.Sign(${x}) * Math.Floor(Math.Abs(${x}) + 0.5))`,
         // No Math.Hypot in .NET -- same manual formula as QB64's/C's.
         hypot: ([a, b]) => `Math.Sqrt((${a}) * (${a}) + (${b}) * (${b}))`,
         wrapIndex: ([i, m]) => `(((${i} % ${m}) + ${m}) % ${m})`,

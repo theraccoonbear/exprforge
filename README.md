@@ -350,6 +350,148 @@ validate against), a wrong argument *count* is a structurally malformed
 call regardless of target, checked unconditionally at the same tier as
 `checkUnboundVars` — see `primitives.js`.
 
+### `round()` at exact `.5` boundaries: standardized, NOT your language's native behavior
+
+**If you're reading emitted code and expected `round()` to behave like
+your target language's own native rounding function, it doesn't, on 8
+of the 18 targets, by deliberate design.** `round(x)` ties **away from
+zero** everywhere, unconditionally — `round(-0.5)` is `-1`,
+`round(1.5)` is `2`, `round(2.5)` is `3` — identical on every target,
+confirmed directly against a real compiler/interpreter for every one of
+them (not assumed). This was NOT always true, and if you're used to one
+of the languages below, this is the one place ExprForge's output
+deliberately does not match what you'd get calling that language's own
+rounding function directly:
+
+| If you know... | ...its native tie-breaking is | ...and used to differ from ExprForge's `round()` at |
+|---|---|---|
+| **JavaScript** (`Math.round`) | ties toward +∞ | `round(-0.5)`: native `-0`/`0`, ExprForge `-1` |
+| **TypeScript** (`Math.round`) | ties toward +∞ | same as JS |
+| **Java** (`Math.round`) | ties toward +∞ | same as JS |
+| **Lua** (`math.floor(x+0.5)`) | ties toward +∞ | same as JS |
+| **Python** (`round()`) | ties to even ("banker's") | `round(-1.5)`: native `-2`, ExprForge `-2` — but `round(0.5)`: native `0`, ExprForge `1` |
+| **Scheme/Guile** (`round`) | ties to even | same pattern as Python |
+| **QB64** (`_ROUND`) | ties to even | same pattern as Python (confirmed against a real compile) |
+| **C#** (`Math.Round(double)`) | ties to even (default) | same pattern as Python |
+
+The other 9 targets (C, Rust, Go, Perl, Zig, Fortran, COBOL, Julia, PHP)
+already tie away from zero natively, so ExprForge's `round()` matches
+what you'd expect from those languages directly — no surprise there.
+
+**Why standardize on away-from-zero specifically, and why now:**
+this library's entire value proposition is "author once, get identical
+behavior everywhere" — `round()` was the one primitive quietly not
+living up to that (three incompatible native conventions, silently
+inherited with zero normalization). Away-from-zero was chosen because
+it was already the majority (9 of the pre-existing 17 non-JS-family
+targets), and because this project's own Julia emitter had already,
+independently, made a deliberate choice to match it
+(`RoundNearestTiesAway`, not Julia's own ties-to-even default) before
+this change existed at all — real precedent, not an arbitrary pick.
+Built from `floor`/`sign`/`abs` (which already agreed everywhere) via
+`sign(x) * floor(abs(x) + 0.5)`, the same formula `emitters/cobol.js`'s
+own hand-written `round` template already used. See
+`samples/round-tie-demo.js`'s own header comment for the full,
+directly-verified breakdown of what each of the 8 changed targets used
+to do, and `test/conformance.test.js`'s `roundTieBoundary` entry for the
+permanent regression test proving every target agrees now.
+
+This is a real, deliberate, one-time behavior change on those 8
+targets — not configurable, no opt-out. If your use case genuinely
+needs a DIFFERENT guaranteed tie-breaking convention (half-up, or
+half-to-even) across every target, don't reach for `round()` — compose
+it yourself from `floor`/`ceil`/`sign`/`abs` (all of which agree
+everywhere) to get the exact behavior you want.
+
+### Domain errors (`sqrt`/`log`/`log2`/`log10`/`asin`/`acos`/`pow`): also unified
+
+An out-of-domain argument (`sqrt` of a negative number, `log` of a
+non-positive number, `asin`/`acos` outside `[-1, 1]`, `pow` with a
+negative base and a non-integer exponent) now returns `NaN`/`Infinity`
+identically on every target — confirmed directly, not assumed, that
+this WASN'T true before, and the divergence wasn't just "a different
+number":
+
+- **QB64**: the classic `SQR`/`LOG`/`^` don't return NaN at all — they
+  **halt the program** ("Illegal function call") and, in any
+  non-interactive context (a real compiled game/tool, or a test
+  harness), hang forever on an interactive "Continue?" prompt. A crash,
+  not a wrong answer.
+- **Python**: `math.sqrt`/`log`/`log2`/`log10`/`asin`/`acos`/`pow` all
+  **raise `ValueError`**.
+- **Perl**: the builtin `sqrt`/`log` (and `log2`, built from `log`)
+  **raise a fatal error** ("Can't take sqrt of -1") — `asin`/`acos`
+  (via `POSIX`) and `pow` (via `**`) were already fine.
+- **Scheme/Guile**: the most dangerous one found — `sqrt`/`log`/`asin`/
+  `acos`/`expt` don't crash or return NaN, they silently **promote to a
+  complex number** (`(sqrt -1.0)` ⇒ `0.0+1.0i`) — a completely different
+  result shape than every other target.
+- **GnuCOBOL**: silently returns **`0`** — not NaN, not a crash, just a
+  wrong number. Deliberately left as-is rather than guard-fixed: this
+  project already found and worked around a real GnuCOBOL codegen bug
+  (a fatal `cob_decimal` compiler error) triggered by piling up
+  decimal-arithmetic-heavy `IF`-guarded helper functions in one
+  compilation unit — exactly the shape a fix for 5 different primitives
+  would need, and not worth risking reintroducing that crash for a
+  target whose math intrinsics are already documented elsewhere as not
+  fully reliable.
+- Every other target (JS, TypeScript, C, Rust, Go, Java, Lua, PHP, Zig,
+  C#) was already correct — clean IEEE754 NaN/Infinity, never throws.
+
+Fortran is a narrow, deliberate exception: `gfortran` refuses to
+*compile* an out-of-domain expression made entirely of literal
+constants (e.g. authoring `sqrt(-4)` directly) — confirmed that the
+identical value through a runtime variable compiles and returns NaN
+correctly. Loud and immediate (a compile error, not a silent wrong
+answer or a hang) and avoidable by construction, unlike everything
+above — not fixed.
+
+See `samples/domain-safety-demo.js`'s own header comment for the full,
+directly-verified breakdown and exactly how each fix works, and
+`test/conformance.test.js`'s `domainSafety` entry for the permanent
+regression test.
+
+### `min()`/`max()` with a NaN argument: also unified
+
+`min`/`max` given a NaN argument now return NaN on every target,
+regardless of which argument it's in — confirmed directly that this
+WASN'T true before, and it wasn't just "a different value," it was
+often **position-dependent** (which argument silently "wins" depends on
+argument order, not any documented rule):
+
+- **C** (`fmin`/`fmax`), **Rust** (`.min()`/`.max()`), **Zig**
+  (`@min`/`@max`): NaN-ignoring by spec — the real operand comes back
+  regardless of position.
+- **Python**, **Lua**, **QB64** (`_MIN`/`_MAX`): position-dependent —
+  whichever argument comes **first** silently wins whenever either is
+  NaN (comparison-based implementations, and a comparison against NaN
+  is always false).
+- **PHP**: the same landmine, but the **second** argument wins instead.
+- **Perl** (`List::Util::min`/`max`): not even internally consistent —
+  `min` is first-wins, `max` is second-wins.
+- **GnuCOBOL**: `FUNCTION MAX` at least returns the real operand: `MIN`
+  is flatly wrong, returning a literal `0` — neither operand's actual
+  value. Deliberately left as-is, same reasoning as the domain-error fix
+  above: a real fix needs a new helper `FUNCTION-ID`, the exact shape
+  already confirmed to crash GnuCOBOL's codegen when piled up with
+  others.
+- Every other target (JS, TypeScript, Go, Java, C#, Julia, Scheme,
+  Fortran) already propagated NaN correctly.
+
+See `samples/math-edge-cases-demo.js`'s own header comment for the
+full, directly-verified breakdown, `test/conformance.test.js`'s
+`mathEdgeCases` entry for the permanent regression test, and
+[`docs/adr/0003-min-max-nan-propagation.md`](docs/adr/0003-min-max-nan-propagation.md)
+for the full decision record.
+
+---
+
+These three normalization decisions (and any future ones like them)
+are tracked as a running decision log in
+[`docs/adr/`](docs/adr/README.md) — worth checking there directly if
+you're debugging something that looks like a cross-target behavior
+mismatch.
+
 ## Symbolic differentiation (`differentiate`)
 
 ```js
@@ -391,7 +533,14 @@ unchanged. The input is never mutated.
   test asserts the symbolic result against a central-difference
   approximation at several sample points (see `test/differentiate.test.js`),
   the same "proof by running" approach this project already uses for
-  round-tripping expr syntax (see "Testing").
+  round-tripping expr syntax (see "Testing"). That check is JS/`evaluate()`-
+  only, though — it can't by itself reveal a target-language mismatch in
+  the derivative TREE any more than any other JS-only check could (see
+  this project's own comparison-operator-bug history). `differentiate()`'s
+  output is now also compiled and run against every real target, the same
+  conformance coverage every other sample here gets — see
+  `samples/differentiate-demo.js` and `test/conformance.test.js`'s
+  `differentiateDemo` entry.
 
 Try it interactively in the [live playground](https://theraccoonbear.github.io/exprforge/)'s
 Differentiation tab — enter a formula, see the derivative and a numeric
@@ -699,11 +848,20 @@ expression model without introducing control flow:
   `if`-expression), and the equivalent arithmetic expression in QB64
   (which has no conditional expression syntax whatsoever).
 
-  **`select` is not a branch** — every target evaluates both `then` and
-  `else`. Don't use it to guard division by zero or anything else
-  undefined; clamp the operand itself with its own `select` first (see
-  `safeDiv` in `samples/spline-frame.js`), or keep a real guard as
-  hand-written code around the generated function.
+  **`select` is not a branch** — modeled as if both `then` and `else`
+  are always evaluated, matching the three real targets where that's
+  literally true: QB64 (the arithmetic expression above genuinely
+  computes both sides), Fortran (`MERGE`, an elemental intrinsic that
+  doesn't short-circuit its arguments — confirmed against a real
+  compiler), and COBOL (its picker helper spills both branches into
+  temps before the call). The other 15 targets — including
+  `evaluate()` itself — happen to short-circuit via their native
+  ternary/`if`-`else`/`and`-`or`, but that's an implementation detail
+  those 15 share and the other 3 don't, not part of this AST's own
+  contract — don't rely on it. Don't use `select` to guard division by
+  zero or anything else undefined; clamp the operand itself with its
+  own `select` first (see `safeDiv` in `samples/spline-frame.js`), or
+  keep a real guard as hand-written code around the generated function.
 
 See [`docs/planned-additions.md`](./docs/planned-additions.md) for the
 full design rationale, including why the naive "guard division with
@@ -763,6 +921,94 @@ Implemented for every registered emitter except `cobol` — GnuCOBOL's
 model, not a "didn't get to it" gap (see that same doc for the full
 rationale). `emitFunction` throws a clear "not supported for this target
 yet" error there instead of emitting something that wouldn't compile.
+
+### Runtime type guards for array parameters (`addTypeGuards`)
+
+Nothing stops a *caller* of emitted code from passing a plain number
+where an array-typed parameter (`paramTypes`) declared an array —
+`evaluate()` already guards this itself, and every statically-typed
+target's own compiler already rejects the mismatch, but plain emitted
+JS/TypeScript/Python/PHP/Lua/Perl/Scheme/Julia source shipped with no
+check at all. Opt in with a 4th argument to `emit()`/`emitMany()`:
+
+```js
+const { emit, cyclicElemAst } = require("exprforge");
+
+emit(cyclicElemAst, "js", undefined, { addTypeGuards: true }).source;
+// function cyclicElem(arr, m, i) {
+//     if (!Array.isArray(arr)) throw new Error("cyclicElem: \"arr\" must be an array");
+//     return arr[(((i % m) + m) % m)];
+// }
+```
+
+Default is `false` — today's output, byte-for-byte, unless you ask for
+this. Silently a no-op for any target with no `typeGuard` configured
+(every statically-typed target, plus `cobol`) or any function with no
+array-typed parameter at all. See
+[`docs/runtime-type-guards.md`](./docs/runtime-type-guards.md) for the
+full per-language breakdown (Perl's arrayref convention, Scheme's
+expression-bodied-function wrapping, ...) and what this deliberately
+doesn't check (element type; array length has its own guard — next).
+
+**Array length is a real, structural gap** in the array-parameter design
+itself — a passed array's length and a separate `n`/`m` bound parameter
+are two independently caller-supplied values, and nothing in the AST
+ties them together (see "Array indexing" above). There's no way for
+ExprForge to catch a genuine mismatch on its own, but an author who
+*knows* the relationship can now say so and get a real check for it —
+`fn.arrayLengths: { arr: "m" }`, same opt-in layered on `addTypeGuards`:
+
+```js
+const cyclicElemAst = {
+    name: "cyclicElem", params: ["arr", "m", "i"],
+    paramTypes: { arr: "number[]" },
+    arrayLengths: { arr: "m" }, // "arr" is declared to have exactly "m" elements
+    body: idx(v("arr"), call("wrapIndex", v("i"), v("m"))),
+};
+
+emit(cyclicElemAst, "js", undefined, { addTypeGuards: true }).source;
+// function cyclicElem(arr, m, i) {
+//     if (!Array.isArray(arr)) throw new Error("cyclicElem: \"arr\" must be an array");
+//     if (arr.length !== m) throw new Error("cyclicElem: \"arr\".length must equal \"m\"");
+//     return arr[(((i % m) + m) % m)];
+// }
+```
+
+Not a complete fix — a caller can still pass a mismatched array *and* a
+wrong `m` that happens to agree with it, and it's limited to the same 8
+dynamic targets `addTypeGuards` already covers (no statically-typed
+target here has a portable, general way to query an array's real
+runtime length). It closes the common case — an author-declared bound
+genuinely drifting out of sync with what's actually passed — at zero
+cost when unused, not the general one. See
+[`docs/runtime-type-guards.md`](./docs/runtime-type-guards.md)'s own
+"Array length" section for the full per-language guard table.
+
+## Concatenating multiple functions into one file
+
+`emitFunction`'s default output assumes one function per compiled unit
+— but a real, common pattern is emitting N functions for the same
+target and concatenating them into ONE file (one `.bi`/`.cob`/`.go`
+file per *program*, not per function). Several targets have some kind
+of always-on preamble per function (QB64's math-safety helpers,
+COBOL's comparison helpers, Go's `package`/`import`, Zig's `@import`,
+PHP's `<?php` tag, Java's one-public-class-per-file rule) that's fine
+in isolation but becomes a duplicate/conflicting declaration once two
+functions' outputs are concatenated as-is — confirmed directly (a real
+consumer report, then the same bug class found in 5 more targets by
+auditing for it): the target's compiler rejects the file outright.
+
+```js
+const out1 = emit(fn1, "qb64").source;                                       // helpers included (default)
+const out2 = emit(fn2, "qb64", undefined, { includeHelpers: false }).source; // helpers omitted
+fs.writeFileSync("spline.bi", [out1, out2].join("\n"));
+```
+
+See [`docs/multi-function-files.md`](./docs/multi-function-files.md)
+for the full per-target table (what repeats, the exact `opts` to pass,
+and which targets needed no fix at all — verified, not assumed) and
+`test/multi-function-files.test.js` for the permanent regression
+coverage, compiled/run for real on every target.
 
 ## Infix expression syntax (`` expr` ` ``)
 

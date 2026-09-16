@@ -20,7 +20,19 @@ const emitter = new Emitter({
     // Explicit f64 suffix: a bare literal like `5.0` is only usable as a
     // method-call receiver (`5.0.sqrt()`) once its type is unambiguous, and
     // rustc won't always infer it from context (E0689).
-    formatNumber: (v) => (Number.isInteger(v) ? `${v}.0f64` : `${v}f64`),
+    // Same real bug class as c.js's formatNumber (see its comment): once
+    // JS's own String() renders an integer-valued number in exponential
+    // form (huge magnitudes, e.g. 1e250), unconditionally appending
+    // ".0f64" produces "1e+250.0f64" -- not valid Rust (confirmed against
+    // a real rustc compile: a decimal point can't follow the exponent
+    // part of a Rust float literal; the fraction has to come BEFORE it,
+    // e.g. "1.0e250f64"). An already-exponential string just needs the
+    // f64 suffix, no ".0" -- it's already an unambiguous float literal.
+    formatNumber: (v) => {
+        const s = String(v);
+        if (/e/i.test(s)) return `${s}f64`;
+        return Number.isInteger(v) ? `${s}.0f64` : `${s}f64`;
+    },
     calls: {
         sqrt: method0("sqrt"), abs: method0("abs"), sin: method0("sin"), cos: method0("cos"),
         tan: method0("tan"), asin: method0("asin"), acos: method0("acos"), atan: method0("atan"),
@@ -32,8 +44,17 @@ const emitter = new Emitter({
         // Java's sign, which both special-case zero). Found by the
         // kitchen-sink conformance test at exactly x - y == 0.
         sign: ([x]) => `(if ${x} > 0.0 { 1.0f64 } else if ${x} < 0.0 { -1.0f64 } else { 0.0f64 })`,
-        pow: method1("powf"), atan2: method1("atan2"), min: method1("min"),
-        max: method1("max"), hypot: method1("hypot"),
+        pow: method1("powf"), atan2: method1("atan2"), hypot: method1("hypot"),
+        // NOT bare .min()/.max(): Rust's f64::min/f64::max are documented
+        // NaN-IGNORING -- if exactly one operand is NaN, the OTHER (real)
+        // value is returned, confirmed directly against rustc (both
+        // orders return 5.0, never NaN). Every other target here that
+        // does this natively (C, Zig) shares the same divergence;
+        // JS/Go/Java/C#/Julia/Scheme/Fortran instead propagate NaN
+        // through min/max the way this project now standardizes on --
+        // see docs/adr/0003-min-max-nan-propagation.md.
+        min: ([a, b]) => `(if (${a}).is_nan() || (${b}).is_nan() { f64::NAN } else { (${a}).min(${b}) })`,
+        max: ([a, b]) => `(if (${a}).is_nan() || (${b}).is_nan() { f64::NAN } else { (${a}).max(${b}) })`,
         // f64::rem_euclid is Rust's own stdlib method for exactly this --
         // always non-negative for a positive divisor, no hand-built
         // sign-correction needed. f64::clamp is likewise a direct stdlib

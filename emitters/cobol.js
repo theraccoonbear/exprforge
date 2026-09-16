@@ -323,7 +323,7 @@ class CobolEmitter extends Emitter {
     // macros.js's createRegistry()/index.js's createSession() -- same
     // `this._registry` instance-state convention as base.js, read by the
     // inherited emitExpr's "call" case for extern resolution.
-    emitFunction(fn, registry = undefined) {
+    emitFunction(fn, registry = undefined, opts = {}) {
         this._registry = registry;
         const { collectLets, checkUnboundVars } = require("../ast.js");
         const { expandMacros } = require("../macros.js");
@@ -371,14 +371,14 @@ class CobolEmitter extends Emitter {
                 outputLines.push(...this._pool.lines);
                 letDecls.push(...this._pool.decls);
             }
-            return this.formatSuiteImpl(fn, outputStrs, letLines, letDecls, outputLines);
+            return this.formatSuiteImpl(fn, outputStrs, letLines, letDecls, outputLines, opts);
         }
 
         this._pool = new TempPool(counter);
         const bodyStr = this.emitExpr(body);
         const bodyLines = this._pool.lines;
         letDecls.push(...this._pool.decls);
-        return this.formatFunctionImpl(fn, bodyStr, letLines, letDecls, bodyLines);
+        return this.formatFunctionImpl(fn, bodyStr, letLines, letDecls, bodyLines, opts);
     }
 }
 
@@ -446,6 +446,25 @@ const emitter = new CobolEmitter({
         sqrt: fn1("SQRT"), abs: fn1("ABS"), sin: fn1("SIN"), cos: fn1("COS"), tan: fn1("TAN"),
         asin: fn1("ASIN"), acos: fn1("ACOS"), atan: fn1("ATAN"),
         exp: fn1("EXP"), log: fn1("LOG"), log10: fn1("LOG10"),
+        // CONFIRMED, DELIBERATELY UNFIXED divergence -- see
+        // docs/adr/0003-min-max-nan-propagation.md. GnuCOBOL's own
+        // FUNCTION MAX returns the real (non-NaN) operand regardless of
+        // NaN, and FUNCTION MIN is outright wrong (not just divergent):
+        // confirmed directly it returns a flat 0 whenever either operand
+        // is NaN -- neither operand's actual value, in either argument
+        // order. Every other target here now propagates NaN through
+        // min/max instead (see e.g. c.js's own min:/max: comment for the
+        // fix shape) -- but that fix needs a real conditional (COBOL has
+        // no ternary, see this file's header comment), which means a new
+        // helper FUNCTION-ID, which is exactly the shape already
+        // confirmed to crash cobc with a fatal cob_decimal error when 2+
+        // distinct helper FUNCTION-IDs get called from one PROCEDURE
+        // DIVISION (see the ef-cmp-* helpers' own comment above, and
+        // test/conformance.test.js's skipTargets on comparisonOps/
+        // nestedSelect/domainSafety/arraySuite for the confirmed CI
+        // evidence). Not worth risking that crash class to fix an
+        // intrinsic this narrow -- left as a documented, tracked
+        // divergence instead of a silent one.
         min: fn2("MIN"), max: fn2("MAX"),
         pow: ([x, y]) => spillPow(x, y),
         // No LOG2 intrinsic -- derive it (nesting two intrinsics is fine;
@@ -592,15 +611,33 @@ const emitter = new CobolEmitter({
     // an underscore (confirmed against a real compiler -- see e.g.
     // samples/spline-frame.js's "wy_wire" param), while CALL "name" takes
     // the program name as a plain string literal, immune to that.
-    formatFunction: (fn, body, letLines, letDecls, bodyLines) => {
+    formatFunction: (fn, body, letLines, letDecls, bodyLines, opts = {}) => {
         checkReservedNames([fn.name, ...fn.params]);
         checkUsingClauseNames([fn.name, ...fn.params]);
         const linkageParams = [...fn.params, "ef-result"];
         const paramDecls = linkageParams.map((p) => `${HDR}01 ${p} USAGE COMP-2.`).join("\n");
         const wsDecls = letDecls.map((n) => `${HDR}01 ${n} USAGE COMP-2.`).join("\n");
+        // opts.includeHelpers (see emitFunction's own doc comment in
+        // base.js) -- default true, so today's single-program output is
+        // byte-for-byte unchanged unless a caller opts out. Confirmed
+        // directly (a real cobc compile) that this has the SAME
+        // duplicate-definition bug a consumer actually reported for
+        // QB64's own always-on SAFE_MATH_HELPERS ("redefinition of
+        // program ID 'ef-cmp-eq'", found proactively before this one
+        // was reported the same way): concatenating N ExprForge-emitted
+        // COBOL programs into one .cob file (the normal way to build a
+        // multi-program COBOL source file) duplicated the 6 ef-cmp-*
+        // FUNCTION-ID definitions N times. NOT CMP_REPOSITORY, though --
+        // that's this PROGRAM's own declaration that IT calls an
+        // externally-defined function, not a definition itself, so it's
+        // required in every program that uses cmp()/select(), same as
+        // every other per-program division here; only the shared
+        // FUNCTION-ID *definitions* need to appear exactly once per file.
+        // See docs/multi-function-files.md.
+        const helperSource = opts.includeHelpers === false ? "" : CMP_HELPER_SOURCE + "\n";
         return `${HDR}>>SOURCE FORMAT FREE\n` +
                `${HDR}*> AUTO-GENERATED by ExprForge -- do not hand-edit.\n` +
-               CMP_HELPER_SOURCE + "\n" +
+               helperSource +
                `${HDR}IDENTIFICATION DIVISION.\n` +
                `${HDR}PROGRAM-ID. ${fn.name}.\n` +
                `${HDR}ENVIRONMENT DIVISION.\n` +
@@ -616,7 +653,7 @@ const emitter = new CobolEmitter({
                `${STMT}GOBACK.\n` +
                `${HDR}END PROGRAM ${fn.name}.\n`;
     },
-    formatSuite: (fn, outputStrs, letLines, letDecls, outputLines) => {
+    formatSuite: (fn, outputStrs, letLines, letDecls, outputLines, opts = {}) => {
         const outputNames = Object.keys(outputStrs);
         checkReservedNames([fn.name, ...fn.params, ...outputNames]);
         checkUsingClauseNames([fn.name, ...fn.params, ...outputNames]);
@@ -624,9 +661,11 @@ const emitter = new CobolEmitter({
         const paramDecls = linkageParams.map((p) => `${HDR}01 ${p} USAGE COMP-2.`).join("\n");
         const wsDecls = letDecls.map((n) => `${HDR}01 ${n} USAGE COMP-2.`).join("\n");
         const assigns = outputNames.map((n) => wrapLine(`${STMT}COMPUTE ${n} = ${outputStrs[n]}`)).join("\n");
+        // See formatFunction's own comment above -- same opts.includeHelpers.
+        const helperSource = opts.includeHelpers === false ? "" : CMP_HELPER_SOURCE + "\n";
         return `${HDR}>>SOURCE FORMAT FREE\n` +
                `${HDR}*> AUTO-GENERATED by ExprForge -- do not hand-edit.\n` +
-               CMP_HELPER_SOURCE + "\n" +
+               helperSource +
                `${HDR}IDENTIFICATION DIVISION.\n` +
                `${HDR}PROGRAM-ID. ${fn.name}.\n` +
                `${HDR}ENVIRONMENT DIVISION.\n` +

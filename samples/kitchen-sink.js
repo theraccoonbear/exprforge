@@ -13,11 +13,15 @@
 // inputs for this sample) so sqrt/log/log2/log10/asin/acos all stay in
 // their valid domain simultaneously. d = x - y is free to land anywhere
 // -- positive, negative, or exactly zero -- and carries the functions
-// that care about sign: floor/ceil/round/trunc/sign. (Test inputs
-// deliberately avoid exact .5 fractional values for d: JS/Java round
-// half-up while C/Go/Rust round half-away-from-zero, which disagree at
-// exact .5 for negative numbers -- a real cross-language difference in
-// round() itself, not an emitter bug, and out of scope to fix here.)
+// that care about sign: floor/ceil/round/trunc/sign. (round() ties AWAY
+// FROM ZERO identically on every target now -- see samples/
+// round-tie-demo.js and the root README's "round() at exact .5
+// boundaries" section for the real, since-fixed three-way divergence
+// this used to have, and why this file's own inputs still don't bother
+// landing exactly on a .5 boundary for d: this file's whole point is
+// exercising the OTHER 21 primitives across every target for the first
+// time, not re-proving round()'s tie-breaking, which round-tie-demo.js
+// already covers on its own, more precisely.)
 const { v, call, add, sub } = require("../ast.js");
 
 const x = v("x");

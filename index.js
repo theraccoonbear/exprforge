@@ -15,6 +15,16 @@ const { kitchenSinkAst } = require("./samples/kitchen-sink.js");
 const { mathDemoAst } = require("./samples/math-demo.js");
 const { macroDemoAst } = require("./samples/macro-demo.js");
 const { cyclicElemAst, clampedElemAst } = require("./samples/array-index-demo.js");
+const { comparisonOpsAst } = require("./samples/comparison-ops-demo.js");
+const { nestedSelectAst } = require("./samples/nested-select-demo.js");
+const { numberExtremesAst } = require("./samples/number-extremes-demo.js");
+const { roundTieBoundaryAst } = require("./samples/round-tie-demo.js");
+const { domainSafetyAst } = require("./samples/domain-safety-demo.js");
+const { arraySuiteAst } = require("./samples/array-suite-demo.js");
+const { arrayMacroDemoAst } = require("./samples/array-macro-demo.js");
+const { mathEdgeCasesAst } = require("./samples/math-edge-cases-demo.js");
+const { differentiateDemoAst } = require("./samples/differentiate-demo.js");
+const { zeroParamDemoAst } = require("./samples/zero-param-demo.js");
 
 /**
  * Run ONE emitter against one AST function definition. Returns
@@ -30,15 +40,23 @@ const { cyclicElemAst, clampedElemAst } = require("./samples/array-index-demo.js
  * process-wide default when omitted -- pass a session's own (see
  * createSession() below) to resolve macros/externs registered in that
  * session instead; ordinary callers never need to pass it directly.
+ *
+ * `opts.addTypeGuards` (default false): opt-in runtime guards against an
+ * array-typed parameter being passed a non-array value, for targets with
+ * no compile-time enforcement of that -- see docs/runtime-type-guards.md
+ * for the full rationale and exactly which 8 targets this affects. No
+ * effect on a target with no array-typed parameter, or on a target this
+ * doesn't apply to (every statically-typed target already gets this for
+ * free from its own compiler).
  */
-function emit(fnDef, lang, registry = undefined) {
+function emit(fnDef, lang, registry = undefined, opts = undefined) {
     const emitter = emitters[lang];
     if (!emitter) {
         throw new Error(
             `emit(): no emitter registered for language "${lang}" -- known languages: ${Object.keys(emitters).sort().join(", ")}`,
         );
     }
-    return { ext: emitter.ext, source: emitter.emitFunction(fnDef, registry) };
+    return { ext: emitter.ext, source: emitter.emitFunction(fnDef, registry, opts) };
 }
 
 /**
@@ -52,9 +70,12 @@ function emit(fnDef, lang, registry = undefined) {
  * paying for) emitters you don't need.
  *
  * `registry` -- see emit()'s own doc comment above -- same meaning here,
- * applied to every language in `langs`.
+ * applied to every language in `langs`. `opts` -- see emit()'s own
+ * `addTypeGuards` doc comment -- same meaning here too, applied to every
+ * language in `langs` that supports it (silently ignored by any target
+ * that doesn't -- see docs/runtime-type-guards.md).
  */
-function emitMany(fnDef, langs = Object.keys(emitters), registry = undefined) {
+function emitMany(fnDef, langs = Object.keys(emitters), registry = undefined, opts = undefined) {
     const result = {};
     for (const lang of langs) {
         const emitter = emitters[lang];
@@ -63,7 +84,7 @@ function emitMany(fnDef, langs = Object.keys(emitters), registry = undefined) {
             continue;
         }
         try {
-            result[lang] = { ext: emitter.ext, source: emitter.emitFunction(fnDef, registry), error: null };
+            result[lang] = { ext: emitter.ext, source: emitter.emitFunction(fnDef, registry, opts), error: null };
         } catch (e) {
             result[lang] = { ext: emitter.ext, source: null, error: e instanceof Error ? e.message : String(e) };
         }
@@ -113,8 +134,8 @@ function createSession() {
         loadExtern: (name, def) => loadExtern(name, def, registry),
         expandMacros: (fnOrNode, extraRegistry = null) => expandMacros(fnOrNode, extraRegistry, registry),
         evaluate: (fn, args) => evaluate(fn, args, registry),
-        emit: (fnDef, lang) => emit(fnDef, lang, registry),
-        emitMany: (fnDef, langs = Object.keys(emitters)) => emitMany(fnDef, langs, registry),
+        emit: (fnDef, lang, opts) => emit(fnDef, lang, registry, opts),
+        emitMany: (fnDef, langs = Object.keys(emitters), opts) => emitMany(fnDef, langs, registry, opts),
         loadExpr: (path) => loadExpr(path, registry),
         loadExprSource: (source, label = "loadExprSource()") => loadExprSource(source, label, registry),
     };
@@ -181,6 +202,31 @@ module.exports = {
     // that doc's own "Not done here" section).
     cyclicElemAst,
     clampedElemAst,
+    // Coverage fixture for every cmp() operator against every real
+    // target -- see samples/comparison-ops-demo.js's own header comment
+    // for the real bug this exists because of.
+    comparisonOpsAst,
+    // Coverage fixtures for two more risks the same audit surfaced but
+    // hadn't yet actually broken anything for -- see each file's own
+    // header comment.
+    nestedSelectAst,
+    numberExtremesAst,
+    roundTieBoundaryAst,
+    domainSafetyAst,
+    arraySuiteAst,
+    arrayMacroDemoAst,
+    // Coverage fixture for min()/max()'s NaN-propagation divergence --
+    // see samples/math-edge-cases-demo.js's own header comment for the
+    // real bug this exists because of, and docs/adr/0003-min-max-nan-
+    // propagation.md for the full decision record.
+    mathEdgeCasesAst,
+    // Coverage fixture for differentiate()'s own output compiled through
+    // a real target -- see samples/differentiate-demo.js's own header
+    // comment for the gap this closes.
+    differentiateDemoAst,
+    // Coverage fixture for a zero-parameter function -- see
+    // samples/zero-param-demo.js's own header comment.
+    zeroParamDemoAst,
     samples: {
         catmullRom: catmullRomAst,
         fibonacci: fibonacciAst,
@@ -190,6 +236,16 @@ module.exports = {
         macroDemo: macroDemoAst,
         cyclicElem: cyclicElemAst,
         clampedElem: clampedElemAst,
+        comparisonOps: comparisonOpsAst,
+        nestedSelect: nestedSelectAst,
+        numberExtremes: numberExtremesAst,
+        roundTieBoundary: roundTieBoundaryAst,
+        domainSafety: domainSafetyAst,
+        arraySuite: arraySuiteAst,
+        arrayMacroDemo: arrayMacroDemoAst,
+        mathEdgeCases: mathEdgeCasesAst,
+        differentiateDemo: differentiateDemoAst,
+        zeroParamDemo: zeroParamDemoAst,
     },
     // Per-language emitter instances, keyed by name (js, qb64, c, java, go, rust).
     emitters,

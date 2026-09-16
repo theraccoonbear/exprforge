@@ -48,6 +48,28 @@ class Emitter {
         this.emitIndexImpl = config.emitIndex
             ? config.emitIndex.bind(this)
             : null;
+        // Optional, opt-in-only (see emitFunction's `addTypeGuards`):
+        // (paramName, fnName) => one line of runtime-guard code asserting
+        // that array-typed parameter actually holds an array-shaped value
+        // at the call boundary. Only meaningful for targets with no
+        // compile-time enforcement of that -- present on the
+        // dynamically-typed emitters (js/ts/python/php/lua/perl/scheme/
+        // julia), absent (null) everywhere else, since every compiled
+        // target already gets this for free from its own compiler. See
+        // docs/runtime-type-guards.md.
+        this.typeGuardImpl = config.typeGuard || null;
+        // Optional, opt-in-only, layered on top of typeGuard above (see
+        // emitFunction's own `fn.arrayLengths` doc comment): (arrayParam,
+        // lengthParam, fnName) => one line of runtime-guard code
+        // asserting that arrayParam's ACTUAL length matches the value of
+        // a separate scalar parameter the caller claims it to be. Same
+        // 8-target availability as typeGuard, for the same reason (every
+        // compiled target either has no portable way to query an array's
+        // real runtime length at all -- see docs/array-index-primitives.md's
+        // "Array length is always caller-supplied" note -- or already
+        // gets an equivalent check from its own compiler/runtime, e.g. a
+        // Rust slice's .len() bounds-checks on access regardless).
+        this.lengthGuardImpl = config.lengthGuard || null;
     }
 
     // Default ternary (cond ? a : b) — correct for JS, C, and Java, which
@@ -123,7 +145,59 @@ class Emitter {
     // session instead. Stashed on `this` for emitExpr's "call" case to
     // read, same instance-state pattern emitters/cobol.js's own
     // `this._pool` already established.
-    emitFunction(fn, registry = undefined) {
+    //
+    // `opts.addTypeGuards` (default false): opt-in only, see
+    // docs/runtime-type-guards.md for the full rationale. When true AND
+    // this target declares a `typeGuard` template (see the constructor)
+    // AND `fn.paramTypes` actually has an array-typed entry, one runtime
+    // guard line per array-typed parameter is generated and spliced into
+    // the output by formatFunctionImpl/formatSuiteImpl (both receive it
+    // as a 4th argument, `guardLines: string[]`, defaulting to `[]` for
+    // every target that doesn't consume it -- an extra unused argument
+    // is harmless in JS, so the ~10 compiled-language emitters (which
+    // never declare `typeGuard` and so never receive a non-empty array
+    // here) don't need any change at all to stay correct). No effect
+    // whatsoever for a target with no `typeGuard` template (every
+    // compiled target already gets this from its own compiler) or a
+    // call with no array-typed parameter.
+    //
+    // `fn.arrayLengths` (optional, independent of `opts.addTypeGuards`
+    // itself but only ever emits anything WHEN it's also on): a
+    // `{ [arrayParam]: lengthParam }` map declaring which OTHER scalar
+    // parameter a given array parameter's real length is supposed to
+    // equal (e.g. `{ arr: "m" }` for `cyclicElem(arr: number[], m, i)`).
+    // ExprForge has no way to verify this itself -- an array's length
+    // and a same-named-in-spirit scalar bound are two independently
+    // caller-supplied values, nothing in the AST ties them together
+    // (see docs/array-index-primitives.md's "Array length is always
+    // caller-supplied" note) -- so this is authors opting in to
+    // documenting the relationship explicitly, which then lets
+    // `lengthGuardImpl` (see the constructor) emit one more runtime
+    // check per declared pair, same 8-target availability and the same
+    // "not perfect, real protection at the boundary" spirit as
+    // `typeGuard` itself. See docs/runtime-type-guards.md's "Array
+    // length" section.
+    //
+    // `opts.includeHelpers` (default true, so today's single-function
+    // output is unchanged unless a caller explicitly opts out): whether
+    // to include this target's own always-on shared helper
+    // preamble/boilerplate (QB64's SAFE_MATH_HELPERS, COBOL's
+    // CMP_HELPER_SOURCE) in THIS call's output. `formatFunctionImpl`/
+    // `formatSuiteImpl` receive the full `opts` object as a 5th
+    // argument -- not just this one flag -- so a target-specific concern
+    // like this stays local to that target's own emitter file instead of
+    // needing a new base.js-level option (and a new positional argument
+    // threaded everywhere) every time one more target needs one. A real,
+    // reported consumer bug (github.com/theraccoonbear/exprforge/pull/37):
+    // concatenating N functions emitted for the SAME target into one
+    // compiled unit (a real, common pattern -- one .bi/.cob file per
+    // program, not one file per function) got that target's shared
+    // helper block duplicated N times, which both QB64 and GnuCOBOL
+    // reject as a duplicate definition at compile time. The fix: emit
+    // it (`includeHelpers: true`, the default) for exactly ONE of the N
+    // calls, pass `{ includeHelpers: false }` for the rest, then
+    // concatenate — see docs/multi-function-files.md.
+    emitFunction(fn, registry = undefined, opts = {}) {
         this._registry = registry;
         // Resolves every macro call and field() access into plain
         // arithmetic first -- see macros.js's own header comment. Must
@@ -137,6 +211,23 @@ class Emitter {
         // (a typo'd/forgotten identifier used to silently succeed here,
         // for every target, with no error at all).
         checkUnboundVars(fn);
+        const guardLines = [];
+        if (opts.addTypeGuards && fn.paramTypes) {
+            const arrayParams = Object.keys(fn.paramTypes).filter((p) => fn.paramTypes[p] === "number[]");
+            for (const p of arrayParams) {
+                if (this.typeGuardImpl) guardLines.push(this.typeGuardImpl(p, fn.name));
+                // Only emitted when the author actually declared the
+                // pairing AND the named length parameter is a real
+                // parameter of this fn -- a typo'd/stale arrayLengths
+                // entry is silently a no-op here, same "opt-in, never a
+                // surprise" spirit as addTypeGuards itself, rather than
+                // throwing over what's still just documentation.
+                const lengthParam = fn.arrayLengths?.[p];
+                if (lengthParam && this.lengthGuardImpl && fn.params.includes(lengthParam)) {
+                    guardLines.push(this.lengthGuardImpl(p, lengthParam, fn.name));
+                }
+            }
+        }
         const { bindings, body } = collectLets(fn.body);
         const letBindings = bindings.map(({ name, node }) => ({
             name,
@@ -150,10 +241,10 @@ class Emitter {
             for (const [name, node] of Object.entries(body.fields)) {
                 outputStrs[name] = this.emitExpr(node);
             }
-            return this.formatSuiteImpl(fn, outputStrs, letBindings);
+            return this.formatSuiteImpl(fn, outputStrs, letBindings, guardLines, opts);
         }
         const bodyStr = this.emitExpr(body);
-        return this.formatFunctionImpl(fn, bodyStr, letBindings);
+        return this.formatFunctionImpl(fn, bodyStr, letBindings, guardLines, opts);
     }
 }
 

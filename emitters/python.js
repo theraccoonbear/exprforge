@@ -23,10 +23,38 @@ const emitter = new Emitter({
     // operand types, unlike C#'s int/int trap.
     formatNumber: (v) => String(v),
     calls: {
-        sqrt: fn1("sqrt"), abs: ([x]) => `abs(${x})`, sin: fn1("sin"), cos: fn1("cos"), tan: fn1("tan"),
-        asin: fn1("asin"), acos: fn1("acos"), atan: fn1("atan"), atan2: fn2("atan2"),
-        log: fn1("log"), log2: fn1("log2"), log10: fn1("log10"), exp: fn1("exp"),
-        pow: fn2("pow"), min: ([a, b]) => `min(${a}, ${b})`, max: ([a, b]) => `max(${a}, ${b})`,
+        // Python's math.sqrt/log/log2/log10/asin/acos/pow all RAISE
+        // ValueError for an out-of-domain argument -- confirmed directly,
+        // not assumed -- unlike every other target here (JS/C/Rust/Go/
+        // Java/Lua/PHP/Zig/C#), which return NaN/Infinity cleanly. Python's
+        // own ternary (`a if cond else b`) is short-circuiting (confirmed
+        // separately this session -- it's what already made normalizeX's
+        // QB64-only divergence possible in the first place), so a simple
+        // inline conditional expression is enough here, unlike QB64's
+        // arithmetic-only select() which needed real helper FUNCTIONs
+        // instead (see emitters/qb64.js's own SAFE_MATH_HELPERS comment
+        // for the full story this fix is the Python half of).
+        sqrt: ([x]) => `(math.sqrt(${x}) if ${x} >= 0 else float('nan'))`,
+        abs: ([x]) => `abs(${x})`, sin: fn1("sin"), cos: fn1("cos"), tan: fn1("tan"),
+        asin: ([x]) => `(math.asin(${x}) if -1 <= ${x} <= 1 else float('nan'))`,
+        acos: ([x]) => `(math.acos(${x}) if -1 <= ${x} <= 1 else float('nan'))`,
+        atan: fn1("atan"), atan2: fn2("atan2"),
+        log: ([x]) => `(math.log(${x}) if ${x} > 0 else (float('-inf') if ${x} == 0 else float('nan')))`,
+        log2: ([x]) => `(math.log2(${x}) if ${x} > 0 else (float('-inf') if ${x} == 0 else float('nan')))`,
+        log10: ([x]) => `(math.log10(${x}) if ${x} > 0 else (float('-inf') if ${x} == 0 else float('nan')))`,
+        exp: fn1("exp"),
+        pow: ([base, exp]) =>
+            `(math.pow(${base}, ${exp}) if not (${base} < 0 and ${exp} != int(${exp})) else float('nan'))`,
+        // NOT bare min()/max(): Python's builtins are comparison-based,
+        // and a comparison against NaN is always False -- so whichever
+        // argument comes FIRST silently wins whenever either is NaN,
+        // confirmed directly (min(nan,5)==nan but min(5,nan)==5, same
+        // for max). Position-dependent, not a real "ignore" or
+        // "propagate" rule. JS/Go/Java/C#/Julia/Scheme/Fortran instead
+        // propagate NaN through min/max the way this project now
+        // standardizes on -- see docs/adr/0003-min-max-nan-propagation.md.
+        min: ([a, b]) => `(float('nan') if (math.isnan(${a}) or math.isnan(${b})) else min(${a}, ${b}))`,
+        max: ([a, b]) => `(float('nan') if (math.isnan(${a}) or math.isnan(${b})) else max(${a}, ${b}))`,
         hypot: fn2("hypot"),
         // math.floor/ceil/trunc and builtin round() all return int in
         // Python 3, not float -- wrap to stay float64 throughout, matching
@@ -34,7 +62,15 @@ const emitter = new Emitter({
         floor: ([x]) => `float(math.floor(${x}))`,
         ceil: ([x]) => `float(math.ceil(${x}))`,
         trunc: ([x]) => `float(math.trunc(${x}))`,
-        round: ([x]) => `float(round(${x}))`,
+        // Python's builtin round() ties to EVEN ("banker's rounding"),
+        // NOT this project's standardized round-half-AWAY-from-zero
+        // convention -- see js.js's own comment and the root README's
+        // "round() at exact .5 boundaries" section. math.copysign copies
+        // the sign of its 2nd argument onto the magnitude of its 1st --
+        // a cleaner fit here than a separate sign*floor(abs+0.5) ternary,
+        // and correctly handles x == 0 too (floor(0 + 0.5) == 0, and
+        // copysign(0, 0) == 0.0).
+        round: ([x]) => `math.copysign(math.floor(abs(${x}) + 0.5), ${x})`,
         // No math.sign in Python's stdlib -- build it directly. Zero-aware
         // by construction (see Go's/Rust's sign() history in this project
         // for what happens when it isn't).
@@ -58,13 +94,28 @@ const emitter = new Emitter({
         const R = this.emitExpr(condNode.right);
         return `(${thenStr} if (${L} ${condNode.op} ${R}) else ${elseStr})`;
     },
-    formatFunction: (fn, body, letBindings = []) => {
+    // Opt-in only (see emitFunction's `addTypeGuards` and
+    // docs/runtime-type-guards.md). Python allows a simple statement on
+    // the same line as its "if:" (no separate indented block needed),
+    // so this stays one physical line, same as every other target's
+    // guard template -- `if not isinstance(arr, list): raise ...`.
+    typeGuard: (p, fnName) =>
+        `if not isinstance(${p}, list): raise TypeError(${JSON.stringify(`${fnName}: "${p}" must be an array`)})`,
+    // Opt-in on top of typeGuard's own opt-in (see emitFunction's
+    // `fn.arrayLengths` doc comment in base.js) -- runs after the type
+    // guard above, so len(...) is always safe to call here.
+    lengthGuard: (p, lenP, fnName) =>
+        `if len(${p}) != ${lenP}: raise ValueError(${JSON.stringify(`${fnName}: len("${p}") must equal "${lenP}"`)})`,
+    formatFunction: (fn, body, letBindings = [], guardLines = []) => {
         const params = fn.params.join(", ");
+        const guards = guardLines.map((l) => `    ${l}`).join("\n");
+        const guardsBlock = guards ? guards + "\n" : "";
         const lets = letBindings.map(({ name, valueStr }) => `    ${name} = ${valueStr}`).join("\n");
         const letsBlock = lets ? lets + "\n" : "";
         return `# AUTO-GENERATED by ExprForge -- do not hand-edit.\n` +
                `import math\n\n\n` +
                `def ${fn.name}(${params}):\n` +
+               guardsBlock +
                letsBlock +
                `    return ${body}\n`;
     },
@@ -73,8 +124,10 @@ const emitter = new Emitter({
     // every other target here (C/Rust's struct, C#/Go's tuple, Java's
     // nested Result class), and a fixed, self-documenting field set
     // instead of an untyped mapping.
-    formatSuite: (fn, outputStrs, letBindings = []) => {
+    formatSuite: (fn, outputStrs, letBindings = [], guardLines = []) => {
         const params = fn.params.join(", ");
+        const guards = guardLines.map((l) => `    ${l}`).join("\n");
+        const guardsBlock = guards ? guards + "\n" : "";
         const lets = letBindings.map(({ name, valueStr }) => `    ${name} = ${valueStr}`).join("\n");
         const letsBlock = lets ? lets + "\n" : "";
         const outputNames = Object.keys(outputStrs);
@@ -88,6 +141,7 @@ const emitter = new Emitter({
                `    def __init__(self, ${ctorParams}):\n` +
                `${ctorAssigns}\n\n\n` +
                `def ${fn.name}(${params}):\n` +
+               guardsBlock +
                letsBlock +
                `    return ${className}(${ctorArgs})\n`;
     },

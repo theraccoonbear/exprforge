@@ -175,12 +175,24 @@ function cmp(left, op, right) {
     return { type: "cmp", op, left, right };
 }
 
-// Conditional *value* selection, not a branch — both `then` and `else` are
-// always evaluated by every emitter (this is a value expression, not
-// control flow). Do not use this to guard division by zero or any other
-// undefined operation: ensure the operands are already safe (e.g. clamp a
-// denominator with its own select before dividing by it), or keep a real
-// guard as hand-written code in the caller of the generated function.
+// Conditional *value* selection, not a branch -- modeled AS IF both `then`
+// and `else` are always evaluated, matching the strictest real targets
+// (QB64's arithmetic-multiplication emulation of a ternary; Fortran's
+// MERGE, an elemental intrinsic that doesn't short-circuit its arguments,
+// confirmed against a real compiler -- see fortran.js's own comment;
+// COBOL's picker helper, which spills both branches into temps before the
+// call). Do NOT use this to guard division by zero or any other undefined
+// operation, even though most OTHER targets happen to short-circuit at
+// the native-language level (a plain ternary/if-else/and-or/if-special-
+// form -- confirmed directly: this is true of evaluate() itself, and of
+// JS/TS/Java/C/C#/Python/Rust/Go/Lua/Scheme/Zig/Julia/Perl/PHP's emitted
+// output) -- relying on that isn't part of this AST's own contract, only
+// an implementation detail of 15 of 18 targets that the remaining 3 don't
+// share, so it breaks silently and unevenly rather than being something
+// safe to build on. Ensure the operands are already safe instead (e.g.
+// clamp a denominator with its own select before dividing by it), or keep
+// a real guard as hand-written code in the caller of the generated
+// function.
 function select(cond, thenNode, elseNode) {
     return { type: "select", cond, then: thenNode, else: elseNode };
 }
@@ -503,6 +515,33 @@ function checkUnboundVars(fn) {
     }
 
     const { bindings, body } = collectLets(fn.body);
+
+    // A let-binding whose name is the SAME as one of this fn's own
+    // parameters (`fn(x): let x = x + 1; return x;`) -- collectLets
+    // above already rejects two LETS sharing a name, but never checked
+    // this case: a let colliding with a PARAM instead of another let.
+    // Confirmed a real, severe, per-target-DIFFERENT bug, not just a
+    // hypothetical: JS/TS `const x = (x + 1)` hits the temporal dead
+    // zone and THROWS at runtime ("Cannot access 'x' before
+    // initialization") -- a crash, not a wrong answer. C/Rust/Go/Java/
+    // C#/Zig instead silently read the NEWLY-declared (uninitialized)
+    // `x`, not the parameter -- undefined behavior/garbage, no error at
+    // all. QB64's `Dim x AS DOUBLE` when `x` is already a parameter is
+    // its own separate unconfirmed risk. Three different failure modes
+    // across targets for the identical AST, none of them "correct" --
+    // rejected here, uniformly, before any of them get a chance to
+    // diverge.
+    for (const { name } of bindings) {
+        if (fn.params.includes(name)) {
+            throw new Error(
+                `checkUnboundVars: "${fn.name}" has a "let ${name} = ..." binding with the same name as its ` +
+                `own parameter "${name}" -- this compiles to a DIFFERENT, WRONG result on almost every target ` +
+                `(a runtime crash on JS/TypeScript, silently reading an uninitialized value on C/Rust/Go/Java/` +
+                `C#/Zig) -- rename the let binding to something that isn't also a parameter name`,
+            );
+        }
+    }
+
     const declared = new Set([...fn.params, ...bindings.map((b) => b.name)]);
 
     const referenced = new Set();

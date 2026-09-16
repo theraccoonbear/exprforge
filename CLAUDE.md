@@ -126,3 +126,20 @@ toolchain and skip (not fail) when a toolchain is absent.
   something yet, throw a clear "not supported for this target" error at
   generation time (same pattern `formatSuite` already uses) and treat it as
   tracked follow-up work, not settled scope.
+- **Any feature with more than one discrete operator/keyword value
+  (comparison operators today; the next one won't be the last) needs real
+  compiled/executed conformance coverage for EVERY value, not just one
+  representative one.** This exists because of a real, shipped bug
+  (2026-09-16): `cmp()`'s six operators (`>` `<` `>=` `<=` `==` `!=`)
+  compile to genuinely different syntax on different targets (QB64 has
+  neither `==` nor `!=`; Fortran and Lua both lack `!=`), but every sample
+  that ever exercised `select()`/`cmp()` against a real compiled toolchain
+  (`spline-frame.js`) happened to only ever use `>` -- so `==`/`!=` shipped
+  broken on three targets for as long as `select`/`cmp` have existed,
+  caught only by a direct user report, not CI. `evaluate()`/unit tests
+  passing is NOT evidence here: they exercise the interpreter's own
+  language (JS), which can't reveal a target-language syntax mismatch by
+  construction. See `samples/comparison-ops-demo.js` and
+  `test/comparison-operators.test.js` for what closing this gap actually
+  looked like -- both a real-compiler conformance sample AND a static
+  per-emitter/per-value string check, not just one or the other.
