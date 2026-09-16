@@ -11,7 +11,18 @@ function fn2(name) {
 
 const emitter = new Emitter({
     ext: "go",
-    formatNumber: (v) => (Number.isInteger(v) ? `${v}.0` : String(v)),
+    // Same real bug class as c.js's formatNumber (see its comment): once
+    // JS's own String() renders an integer-valued number in exponential
+    // form (huge magnitudes, e.g. 1e250), unconditionally appending ".0"
+    // produces "1e+250.0" -- not valid Go (a decimal point can't follow
+    // the exponent in Go's float-literal grammar; the fraction has to
+    // come BEFORE it, e.g. "1.0e250"). An already-exponential string is
+    // already an unambiguous Go float literal on its own.
+    formatNumber: (v) => {
+        const s = String(v);
+        if (/e/i.test(s)) return s;
+        return Number.isInteger(v) ? `${s}.0` : s;
+    },
     calls: {
         sqrt: fn1("Sqrt"), abs: fn1("Abs"), sin: fn1("Sin"), cos: fn1("Cos"), tan: fn1("Tan"),
         asin: fn1("Asin"), acos: fn1("Acos"), atan: fn1("Atan"), log: fn1("Log"),

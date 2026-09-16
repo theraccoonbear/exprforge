@@ -14,10 +14,14 @@
 // their valid domain simultaneously. d = x - y is free to land anywhere
 // -- positive, negative, or exactly zero -- and carries the functions
 // that care about sign: floor/ceil/round/trunc/sign. (Test inputs
-// deliberately avoid exact .5 fractional values for d: JS/Java round
-// half-up while C/Go/Rust round half-away-from-zero, which disagree at
-// exact .5 for negative numbers -- a real cross-language difference in
-// round() itself, not an emitter bug, and out of scope to fix here.)
+// deliberately avoid exact .5 fractional values for d: round() genuinely
+// has THREE distinct tie-breaking conventions across this project's 18
+// targets, not one -- a real, permanent, deliberately undocumented-here
+// divergence, not an emitter bug. This file proves every primitive
+// WORKS; samples/round-tie-demo.js is the one that deliberately does NOT
+// avoid exact .5 and proves/demonstrates the divergence instead -- see
+// its own header comment and the root README's "round() at exact .5
+// boundaries" section for the full, directly-verified breakdown.)
 const { v, call, add, sub } = require("../ast.js");
 
 const x = v("x");

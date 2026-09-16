@@ -350,6 +350,48 @@ validate against), a wrong argument *count* is a structurally malformed
 call regardless of target, checked unconditionally at the same tier as
 `checkUnboundVars` — see `primitives.js`.
 
+### `round()` at exact `.5` boundaries: a real, permanent divergence
+
+Every other primitive above is identical-behavior across all 18 targets
+by construction — `round()` at an exact tie is the one deliberate
+exception, and it's real, not a bug: this library maps `round()` straight
+onto each target's own native rounding call, with zero normalization,
+and those targets don't agree with each other. Confirmed directly
+against a real compiler/interpreter for all but two (noted below), not
+assumed:
+
+| Convention | `round(-0.5)` | `round(-1.5)` | Targets |
+|---|---|---|---|
+| Half-up (ties toward +∞) | `0` | `-1` | JS, TypeScript, Java, Lua |
+| Half away from zero | `-1` | `-2` | C, Rust, Go, Perl, Zig, Fortran, COBOL, Julia, PHP* |
+| Half to even ("banker's rounding") | `0` | `-2` | Python, Scheme, QB64, C#* |
+
+\* PHP's documented `PHP_ROUND_HALF_UP` default and .NET's documented
+`Math.Round(double)` default (ties-to-even) — taken from each vendor's
+own docs, not independently run in this project's own toolchain set.
+
+**This is deliberate, not an oversight to fix here.** The alternative —
+forcing every target onto one convention by wrapping the ones that
+disagree — would be a real, unasked-for behavior change for anyone
+already relying on a target's native rounding, in exchange for an
+"identical everywhere" guarantee this library doesn't otherwise need to
+make for something inherently target-native. Matches this project's
+existing precedent for a genuine cross-language divergence (see QB64's
+`select()`-always-evaluates-both-branches div-by-zero behavior, demonstrated
+via `normalizeX`'s own `skipTargets` in `test/conformance.test.js`):
+demonstrated and permanently regression-tested via a real compiled
+conformance sample (`samples/round-tie-demo.js` — see its own header
+comment for the full breakdown), not silently avoided. `samples/
+kitchen-sink.js`'s own input values deliberately steer clear of exact
+`.5` boundaries for `d` for this exact reason — that file is proving
+every primitive *works*, not proving they all tie-break identically,
+which `round-tie-demo.js` exists to prove (and disprove) on its own.
+
+If your use case genuinely needs one guaranteed tie-breaking convention
+across every target, don't reach for `round()` directly — compose it
+yourself from `floor`/`ceil`/`sign`/`abs` (all of which agree everywhere)
+to get the exact behavior you want.
+
 ## Symbolic differentiation (`differentiate`)
 
 ```js
@@ -699,11 +741,20 @@ expression model without introducing control flow:
   `if`-expression), and the equivalent arithmetic expression in QB64
   (which has no conditional expression syntax whatsoever).
 
-  **`select` is not a branch** — every target evaluates both `then` and
-  `else`. Don't use it to guard division by zero or anything else
-  undefined; clamp the operand itself with its own `select` first (see
-  `safeDiv` in `samples/spline-frame.js`), or keep a real guard as
-  hand-written code around the generated function.
+  **`select` is not a branch** — modeled as if both `then` and `else`
+  are always evaluated, matching the three real targets where that's
+  literally true: QB64 (the arithmetic expression above genuinely
+  computes both sides), Fortran (`MERGE`, an elemental intrinsic that
+  doesn't short-circuit its arguments — confirmed against a real
+  compiler), and COBOL (its picker helper spills both branches into
+  temps before the call). The other 15 targets — including
+  `evaluate()` itself — happen to short-circuit via their native
+  ternary/`if`-`else`/`and`-`or`, but that's an implementation detail
+  those 15 share and the other 3 don't, not part of this AST's own
+  contract — don't rely on it. Don't use `select` to guard division by
+  zero or anything else undefined; clamp the operand itself with its
+  own `select` first (see `safeDiv` in `samples/spline-frame.js`), or
+  keep a real guard as hand-written code around the generated function.
 
 See [`docs/planned-additions.md`](./docs/planned-additions.md) for the
 full design rationale, including why the naive "guard division with

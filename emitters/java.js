@@ -11,7 +11,19 @@ function fn2(name) {
 
 const emitter = new Emitter({
     ext: "java",
-    formatNumber: (v) => (Number.isInteger(v) ? `${v}.0` : String(v)),
+    // Same real bug class as c.js's formatNumber (see its comment): once
+    // JS's own String() renders an integer-valued number in exponential
+    // form (huge magnitudes, e.g. 1e250), unconditionally appending ".0"
+    // produces "1e+250.0" -- not valid Java (a decimal point can't
+    // follow the exponent part of a Java floating-point literal; the
+    // fraction has to come BEFORE it, e.g. "1.0e250"). An already-
+    // exponential string is already an unambiguous Java double literal
+    // on its own.
+    formatNumber: (v) => {
+        const s = String(v);
+        if (/e/i.test(s)) return s;
+        return Number.isInteger(v) ? `${s}.0` : s;
+    },
     calls: {
         sqrt: fn1("sqrt"), abs: fn1("abs"), sin: fn1("sin"), cos: fn1("cos"), tan: fn1("tan"),
         asin: fn1("asin"), acos: fn1("acos"), atan: fn1("atan"), log: fn1("log"),

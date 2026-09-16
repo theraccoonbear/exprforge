@@ -42,6 +42,10 @@ const {
     kitchenSinkAst,
     mathDemoAst,
     macroDemoAst,
+    comparisonOpsAst,
+    nestedSelectAst,
+    numberExtremesAst,
+    roundTieBoundaryAst,
     emitters,
 } = require("../index.js");
 const { evaluate } = require("../evaluate.js");
@@ -225,6 +229,56 @@ const SAMPLES = {
             [0, 0, 0, 0], // every gensym'd let evaluates to exactly 0
             [-2, 7, 1.5, -3.25],
             [10, -10, -10, 10],
+        ],
+    },
+    // Chained/nested select() (a ternary-of-ternary) against every real
+    // target -- see samples/nested-select-demo.js's own header comment
+    // for why this specifically, not previously exercised by any other
+    // real-compiled sample.
+    nestedSelect: {
+        ast: nestedSelectAst,
+        reference: (a, b) => (a > 0 ? 1 : b > 0 ? 2 : b < 0 ? 3 : 4),
+        inputs: [
+            [1, 0], // outer true branch -- inner never evaluated logically,
+            // but select() always evaluates both sides regardless (see
+            // ast.js), so this still exercises every emitter's own
+            // recursive-select emission, just not its RUNTIME result.
+            [-1, 5], // outer false, first inner branch true
+            [-1, -5], // outer false, second inner branch true
+            [-1, 0], // outer false, innermost fallback (b == 0)
+        ],
+    },
+    // Extreme-magnitude numeric literals against every real target -- see
+    // samples/number-extremes-demo.js's own header comment for two real
+    // things this found (a genuine c/rust/go/java formatNumber bug, now
+    // fixed, plus a confirmed QB64 upstream limitation at magnitudes far
+    // beyond this) and why 1e25, not the original 1e250, is what's
+    // actually locked in as a permanent regression test here.
+    numberExtremes: {
+        ast: numberExtremesAst,
+        reference: (x) => x + 1e25 + 1e-25,
+        inputs: [[3], [-7.5], [0]],
+    },
+    // A real, PERMANENT divergence, not a bug -- see
+    // samples/round-tie-demo.js's own header comment for the full,
+    // directly-verified breakdown (three distinct tie-breaking
+    // conventions across this project's 18 targets) and the root
+    // README's "round() at exact .5 boundaries" section for why this is
+    // documented and demonstrated rather than unified. Reference is
+    // JS's own Math.round (half-up, ties toward +Infinity) -- the same
+    // "JS is the baseline every compiled target is compared against"
+    // role it already plays everywhere else in this file (see
+    // loadJsFn). skipTargets lists every target confirmed (or, for
+    // PHP/C#, documented) to use a DIFFERENT convention -- that's most
+    // of them, and that's the actual point being proven here, not a
+    // sign of something broken.
+    roundTieBoundary: {
+        ast: roundTieBoundaryAst,
+        reference: (which) => [-0.5, -1.5, 0.5, 1.5].map(Math.round)[which],
+        inputs: [[0], [1], [2], [3]],
+        skipTargets: [
+            "C", "Go", "Rust", "Perl", "Zig", "Fortran", "COBOL", "Julia", "PHP", // away from zero
+            "Python", "Scheme", "QB64", "C#", // half to even
         ],
     },
 };
@@ -1312,6 +1366,28 @@ for (const ast of splineFrameAsts) {
     }
     registerSuiteConformance(`splineFrame.${ast.name}`, { ast, inputs });
 }
+
+// --- samples/comparison-ops-demo.js ---------------------------------------
+//
+// Real compiled/executed coverage for every cmp() operator, on every
+// available real toolchain -- see that file's own header comment for the
+// actual shipped bug (qb64/fortran/lua all mishandled "!="; qb64 also
+// mishandled "==") this exists to make structurally impossible to repeat.
+// Every input row below hits BOTH the true and false side of every one of
+// the six operators at least once (a > b, a < b, a == b), including a
+// negative-number pair -- not just the "a > b" shape every OTHER sample
+// that ever exercised select()/cmp() against a real compiler happened to
+// use exclusively.
+registerSuiteConformance("comparisonOps", {
+    ast: comparisonOpsAst,
+    inputs: [
+        [3, 5], // a < b: lt/le/ne true, gt/ge/eq false
+        [5, 3], // a > b: gt/ge/ne true, lt/le/eq false
+        [5, 5], // a == b: ge/le/eq true, gt/lt/ne false
+        [-2, 4], // negative vs positive
+        [-2, -2], // negative equality
+    ],
+});
 
 // --- samples/math-demo.js -------------------------------------------------
 //

@@ -11,7 +11,21 @@ function fn2(name) {
 
 const emitter = new Emitter({
     ext: "c",
-    formatNumber: (v) => (Number.isInteger(v) ? `${v}.0` : String(v)),
+    // Appending ".0" unconditionally to an integer-valued number is wrong
+    // once JS's own String() renders it in exponential form (>= 1e21, or
+    // Number.isInteger's own "whole number" sense includes huge integer-
+    // valued doubles well past that) -- "1e+250.0" is a real C syntax
+    // error ("invalid suffix '.0' on floating constant"), confirmed
+    // against a real gcc compile, not assumed. A string already
+    // containing an exponent marker is already an unambiguous C floating
+    // constant on its own (no decimal point required once there's an
+    // exponent) -- ".0" is only needed to stop an otherwise-plain integer
+    // literal (e.g. "5") from being read as `int` instead of `double`.
+    formatNumber: (v) => {
+        const s = String(v);
+        if (/e/i.test(s)) return s;
+        return Number.isInteger(v) ? `${s}.0` : s;
+    },
     calls: {
         sqrt: fn1("sqrt"), abs: fn1("fabs"), sin: fn1("sin"), cos: fn1("cos"), tan: fn1("tan"),
         asin: fn1("asin"), acos: fn1("acos"), atan: fn1("atan"), log: fn1("log"),

@@ -77,10 +77,23 @@ const emitter = new Emitter({
     // cond= 0 (false): (-1*then)* 0 + else*1 = else
     // Both `then` and `else` are always evaluated here (see select()'s
     // doc comment in ast.js) — same as every other target.
+    //
+    // cmp()'s op is one of ">" "<" ">=" "<=" "==" "!=" (ast.js) -- JS/C
+    // spelling, which QB64/classic BASIC does NOT share for equality:
+    // "==" and "!=" are both syntax errors there (confirmed against a
+    // real qb64pe compile -- "Syntax error in argument list"), never
+    // silently accepted or reinterpreted as something else. BASIC spells
+    // these "=" and "<>" instead; ">" "<" ">=" "<=" are the same symbols
+    // in both, so only the (in)equality pair needs translating. This was
+    // unguarded for as long as select()/cmp() have existed -- every
+    // sample that ever exercised this target's ternary emulation only
+    // ever used ">" (see spline-frame.js), so nothing ever compiled a
+    // "==)"/"!=" through a real QB64 compiler before this fix.
     emitSelect: function (condNode, thenStr, elseStr) {
         const L = this.emitExpr(condNode.left);
         const R = this.emitExpr(condNode.right);
-        const cond = `(${L} ${condNode.op} ${R})`;
+        const op = condNode.op === "==" ? "=" : condNode.op === "!=" ? "<>" : condNode.op;
+        const cond = `(${L} ${op} ${R})`;
         return `((-1# * ${thenStr}) * ${cond} + ${elseStr} * (1# + ${cond}))`;
     },
     // Array subscripts accept a numeric expression directly (QB64 rounds

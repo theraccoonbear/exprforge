@@ -150,10 +150,21 @@ const emitter = new Emitter({
     // intrinsics don't short-circuit), which matches select()'s own
     // "both branches always evaluated" contract (see ast.js) instead of
     // fighting it.
+    // cmp()'s op is one of ">" "<" ">=" "<=" "==" "!=" (ast.js) -- modern
+    // (F90+) Fortran's relational operators are spelled the same for
+    // every one of those EXCEPT "!=", which isn't valid Fortran at all
+    // (confirmed against a real gfortran compile -- "Syntax error in
+    // argument list"); Fortran's own not-equal is "/=". "==" needs no
+    // translation, unlike QB64's equivalent gap just above. This was
+    // unguarded for as long as select()/cmp() have existed -- every
+    // sample that ever exercised this target's MERGE() emulation only
+    // ever used ">" (see spline-frame.js), so "!=" never actually
+    // compiled through a real Fortran compiler before this fix.
     emitSelect: function (condNode, thenStr, elseStr) {
         const L = this.emitExpr(condNode.left);
         const R = this.emitExpr(condNode.right);
-        return `MERGE(${thenStr}, ${elseStr}, (${L}) ${condNode.op} (${R}))`;
+        const op = condNode.op === "!=" ? "/=" : condNode.op;
+        return `MERGE(${thenStr}, ${elseStr}, (${L}) ${op} (${R}))`;
     },
     formatFunction: (fn, body, letBindings = []) => {
         checkReservedNames([fn.name, ...fn.params, ...letBindings.map((b) => b.name)]);

@@ -15,6 +15,10 @@ const { kitchenSinkAst } = require("./samples/kitchen-sink.js");
 const { mathDemoAst } = require("./samples/math-demo.js");
 const { macroDemoAst } = require("./samples/macro-demo.js");
 const { cyclicElemAst, clampedElemAst } = require("./samples/array-index-demo.js");
+const { comparisonOpsAst } = require("./samples/comparison-ops-demo.js");
+const { nestedSelectAst } = require("./samples/nested-select-demo.js");
+const { numberExtremesAst } = require("./samples/number-extremes-demo.js");
+const { roundTieBoundaryAst } = require("./samples/round-tie-demo.js");
 
 /**
  * Run ONE emitter against one AST function definition. Returns
@@ -181,6 +185,16 @@ module.exports = {
     // that doc's own "Not done here" section).
     cyclicElemAst,
     clampedElemAst,
+    // Coverage fixture for every cmp() operator against every real
+    // target -- see samples/comparison-ops-demo.js's own header comment
+    // for the real bug this exists because of.
+    comparisonOpsAst,
+    // Coverage fixtures for two more risks the same audit surfaced but
+    // hadn't yet actually broken anything for -- see each file's own
+    // header comment.
+    nestedSelectAst,
+    numberExtremesAst,
+    roundTieBoundaryAst,
     samples: {
         catmullRom: catmullRomAst,
         fibonacci: fibonacciAst,
@@ -190,6 +204,10 @@ module.exports = {
         macroDemo: macroDemoAst,
         cyclicElem: cyclicElemAst,
         clampedElem: clampedElemAst,
+        comparisonOps: comparisonOpsAst,
+        nestedSelect: nestedSelectAst,
+        numberExtremes: numberExtremesAst,
+        roundTieBoundary: roundTieBoundaryAst,
     },
     // Per-language emitter instances, keyed by name (js, qb64, c, java, go, rust).
     emitters,

@@ -79,10 +79,20 @@ const emitter = new Emitter({
     // AST is a number, and only nil/false are ever falsy in Lua, so `a`
     // (the then-branch) is never mistaken for "falsy" regardless of its
     // numeric value (unlike this same idiom in some other languages).
+    // cmp()'s op is one of ">" "<" ">=" "<=" "==" "!=" (ast.js) -- Lua
+    // spells every one of those the same as JS/C EXCEPT "!=", which is a
+    // real syntax error in Lua (confirmed against a real `lua` run --
+    // "')' expected near '!'"); Lua's own not-equal is "~=". "==" needs
+    // no translation. This was unguarded for as long as select()/cmp()
+    // have existed -- every sample that ever exercised this target's
+    // and/or emulation only ever used ">" (see spline-frame.js), so
+    // "!=" never actually ran through a real Lua interpreter before
+    // this fix.
     emitSelect: function (condNode, thenStr, elseStr) {
         const L = this.emitExpr(condNode.left);
         const R = this.emitExpr(condNode.right);
-        return `((${L} ${condNode.op} ${R}) and (${thenStr}) or (${elseStr}))`;
+        const op = condNode.op === "!=" ? "~=" : condNode.op;
+        return `((${L} ${op} ${R}) and (${thenStr}) or (${elseStr}))`;
     },
     formatFunction: (fn, body, letBindings = []) => {
         const params = fn.params.join(", ");
