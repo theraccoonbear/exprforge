@@ -1547,7 +1547,7 @@ function runSuiteCobol(ast, inputs, outputNames) {
     return results;
 }
 
-function registerSuiteConformance(sampleName, { ast, inputs }) {
+function registerSuiteConformance(sampleName, { ast, inputs, skipTargets = [] }) {
     const outputNames = suiteOutputNames(ast);
     const targets = [
         ["Interpreter", true, runEval],
@@ -1567,7 +1567,7 @@ function registerSuiteConformance(sampleName, { ast, inputs }) {
         ["Zig", TOOLS.zig, runSuiteZig],
         ["Scheme", TOOLS.guile, runSuiteScheme],
         ["COBOL", TOOLS.cobc, runSuiteCobol],
-    ].filter(([label]) => targetAllowed(label));
+    ].filter(([label]) => !skipTargets.includes(label) && targetAllowed(label));
 
     for (const [label, available, run] of targets) {
         test(
