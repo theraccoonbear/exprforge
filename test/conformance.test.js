@@ -1186,12 +1186,26 @@ function phpParamParses(ast) {
         .join("\n");
 }
 
+// This PHP build's own printf()/sprintf() (confirmed: NOT echo, NOT
+// var_dump -- both of those already show the correct signed value)
+// silently DROPS THE SIGN of negative infinity specifically -- "%.17g"
+// and "%f" both print bare "INF" for a value that var_dump() itself
+// reports as float(-INF). A real PHP output-formatting bug (confirmed
+// directly, on the exact php-cli version this project's own CI
+// installs), not anything wrong with the computed value itself or with
+// this project's emitted PHP source -- worked around here, in the test
+// harness, by checking is_infinite() and picking the correctly-signed
+// string by hand instead of trusting printf with it.
+function phpPrintExpr(varExpr) {
+    return `printf("%s\\n", is_infinite(${varExpr}) ? ((${varExpr}) < 0 ? "-INF" : "INF") : sprintf("%.17g", ${varExpr}));`;
+}
+
 function runPhp(ast, inputs) {
     const source = emitters.php.emitFunction(ast);
     const dir = tmpDir("ef-php-");
     const parses = phpParamParses(ast);
     const callArgs = ast.params.map((p) => `$${p}`).join(", ");
-    const harness = `${source}\n${parses}\nprintf("%.17g\\n", ${ast.name}(${callArgs}));\n`;
+    const harness = `${source}\n${parses}\n$ef_result = ${ast.name}(${callArgs});\n${phpPrintExpr("$ef_result")}\n`;
     const srcPath = path.join(dir, "main.php");
     fs.writeFileSync(srcPath, harness);
     const results = inputs.map((args) => parseNumericOutput(execFileSync("php", [srcPath, ...args.map(String)]).toString().trim()));
@@ -1204,7 +1218,7 @@ function runSuitePhp(ast, inputs, outputNames) {
     const dir = tmpDir("ef-php-");
     const parses = phpParamParses(ast);
     const callArgs = ast.params.map((p) => `$${p}`).join(", ");
-    const prints = outputNames.map((n) => `printf("%.17g\\n", $r['${n}']);`).join("\n");
+    const prints = outputNames.map((n) => phpPrintExpr(`$r['${n}']`)).join("\n");
     const harness = `${source}\n${parses}\n$r = ${ast.name}(${callArgs});\n${prints}\n`;
     const srcPath = path.join(dir, "main.php");
     fs.writeFileSync(srcPath, harness);
