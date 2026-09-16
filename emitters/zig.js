@@ -56,7 +56,16 @@ const emitter = new Emitter({
         abs: builtin("abs"), exp: builtin("exp"), log: builtin("log"),
         log2: builtin("log2"), log10: builtin("log10"),
         floor: builtin("floor"), ceil: builtin("ceil"), round: builtin("round"), trunc: builtin("trunc"),
-        min: builtin2("min"), max: builtin2("max"),
+        // NOT bare @min/@max: Zig's builtins are documented NaN-IGNORING
+        // -- if exactly one operand is NaN, the OTHER (real) value is
+        // returned, confirmed directly against a real compile+run (both
+        // orders return 5.0, never NaN). Every other target here that
+        // does this natively (C, Rust) shares the same divergence;
+        // JS/Go/Java/C#/Julia/Scheme/Fortran instead propagate NaN
+        // through min/max the way this project now standardizes on --
+        // see docs/adr/0003-min-max-nan-propagation.md.
+        min: ([a, b]) => `(if (std.math.isNan(${a}) or std.math.isNan(${b})) std.math.nan(f64) else @min(${a}, ${b}))`,
+        max: ([a, b]) => `(if (std.math.isNan(${a}) or std.math.isNan(${b})) std.math.nan(f64) else @max(${a}, ${b}))`,
         // std.math functions -- not compiler builtins, but ordinary Zig
         // stdlib functions with the expected 1/2-arg float signatures.
         sqrt: mathFn("sqrt"), sin: mathFn("sin"), cos: mathFn("cos"), tan: mathFn("tan"),

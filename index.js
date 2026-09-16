@@ -22,6 +22,7 @@ const { roundTieBoundaryAst } = require("./samples/round-tie-demo.js");
 const { domainSafetyAst } = require("./samples/domain-safety-demo.js");
 const { arraySuiteAst } = require("./samples/array-suite-demo.js");
 const { arrayMacroDemoAst } = require("./samples/array-macro-demo.js");
+const { mathEdgeCasesAst } = require("./samples/math-edge-cases-demo.js");
 
 /**
  * Run ONE emitter against one AST function definition. Returns
@@ -212,6 +213,11 @@ module.exports = {
     domainSafetyAst,
     arraySuiteAst,
     arrayMacroDemoAst,
+    // Coverage fixture for min()/max()'s NaN-propagation divergence --
+    // see samples/math-edge-cases-demo.js's own header comment for the
+    // real bug this exists because of, and docs/adr/0003-min-max-nan-
+    // propagation.md for the full decision record.
+    mathEdgeCasesAst,
     samples: {
         catmullRom: catmullRomAst,
         fibonacci: fibonacciAst,
@@ -228,6 +234,7 @@ module.exports = {
         domainSafety: domainSafetyAst,
         arraySuite: arraySuiteAst,
         arrayMacroDemo: arrayMacroDemoAst,
+        mathEdgeCases: mathEdgeCasesAst,
     },
     // Per-language emitter instances, keyed by name (js, qb64, c, java, go, rust).
     emitters,

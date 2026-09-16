@@ -31,7 +31,18 @@ const emitter = new Emitter({
         asin: fn1("asin"), acos: fn1("acos"), atan: fn1("atan"), log: fn1("log"),
         log2: fn1("log2"), log10: fn1("log10"), exp: fn1("exp"), floor: fn1("floor"),
         ceil: fn1("ceil"), round: fn1("round"), trunc: fn1("trunc"),
-        pow: fn2("pow"), atan2: fn2("atan2"), min: fn2("fmin"), max: fn2("fmax"), hypot: fn2("hypot"),
+        pow: fn2("pow"), atan2: fn2("atan2"), hypot: fn2("hypot"),
+        // NOT bare fmin/fmax: C99 defines both as NaN-IGNORING -- if
+        // exactly one argument is NaN, the OTHER (real) value is
+        // returned, confirmed directly against gcc (fmin(NaN,5)==5 and
+        // fmin(5,NaN)==5, same for fmax). Every other target here that
+        // does this natively (Rust, Zig) shares the same divergence;
+        // JS/Go/Java/C#/Julia/Scheme/Fortran instead propagate NaN
+        // through min/max the way this project now standardizes on --
+        // see docs/adr/0003-min-max-nan-propagation.md. isnan() is
+        // already available via math.h (already included).
+        min: ([a, b]) => `(isnan(${a}) || isnan(${b}) ? (double) NAN : fmin(${a}, ${b}))`,
+        max: ([a, b]) => `(isnan(${a}) || isnan(${b}) ? (double) NAN : fmax(${a}, ${b}))`,
         // No standard libm "sign" function — emit the comparison directly.
         sign: ([x]) => `((${x}) > 0.0 ? 1.0 : ((${x}) < 0.0 ? -1.0 : 0.0))`,
         // C's `%` is integer-only -- fmod (already available via

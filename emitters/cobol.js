@@ -446,6 +446,25 @@ const emitter = new CobolEmitter({
         sqrt: fn1("SQRT"), abs: fn1("ABS"), sin: fn1("SIN"), cos: fn1("COS"), tan: fn1("TAN"),
         asin: fn1("ASIN"), acos: fn1("ACOS"), atan: fn1("ATAN"),
         exp: fn1("EXP"), log: fn1("LOG"), log10: fn1("LOG10"),
+        // CONFIRMED, DELIBERATELY UNFIXED divergence -- see
+        // docs/adr/0003-min-max-nan-propagation.md. GnuCOBOL's own
+        // FUNCTION MAX returns the real (non-NaN) operand regardless of
+        // NaN, and FUNCTION MIN is outright wrong (not just divergent):
+        // confirmed directly it returns a flat 0 whenever either operand
+        // is NaN -- neither operand's actual value, in either argument
+        // order. Every other target here now propagates NaN through
+        // min/max instead (see e.g. c.js's own min:/max: comment for the
+        // fix shape) -- but that fix needs a real conditional (COBOL has
+        // no ternary, see this file's header comment), which means a new
+        // helper FUNCTION-ID, which is exactly the shape already
+        // confirmed to crash cobc with a fatal cob_decimal error when 2+
+        // distinct helper FUNCTION-IDs get called from one PROCEDURE
+        // DIVISION (see the ef-cmp-* helpers' own comment above, and
+        // test/conformance.test.js's skipTargets on comparisonOps/
+        // nestedSelect/domainSafety/arraySuite for the confirmed CI
+        // evidence). Not worth risking that crash class to fix an
+        // intrinsic this narrow -- left as a documented, tracked
+        // divergence instead of a silent one.
         min: fn2("MIN"), max: fn2("MAX"),
         pow: ([x, y]) => spillPow(x, y),
         // No LOG2 intrinsic -- derive it (nesting two intrinsics is fine;

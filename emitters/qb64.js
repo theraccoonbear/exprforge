@@ -92,6 +92,37 @@ const SAFE_MATH_HELPERS =
     `    ELSE\n` +
     `        ef_safe_pow# = ef_base ^ ef_expo\n` +
     `    END IF\n` +
+    `END FUNCTION\n\n` +
+    // _MIN/_MAX don't crash, but confirmed directly to be NaN-IGNORING
+    // in a POSITION-DEPENDENT way, not a clean "always ignore" rule:
+    // _MIN(nan,5#) returns NaN (first operand wins) while _MIN(5#,nan)
+    // returns 5 -- same landmine class as Python's/Lua's builtins.
+    // JS/Go/Java/C#/Julia/Scheme/Fortran instead propagate NaN through
+    // min/max the way this project now standardizes on -- see
+    // docs/adr/0003-min-max-nan-propagation.md. "a <> a" is the
+    // self-inequality NaN test (an IEEE NaN never compares equal to
+    // itself, and this project already confirmed QB64's own <>/=
+    // translate correctly -- see emitSelect below), and the real
+    // IF/THEN/ELSE *statement* genuinely short-circuits (see this
+    // const's own header comment above) so there's no risk of _MIN/
+    // _MAX itself ever running against a NaN it can't handle.
+    `FUNCTION ef_safe_min# (ef_a AS DOUBLE, ef_b AS DOUBLE)\n` +
+    `    DIM ef_zero AS DOUBLE\n` +
+    `    IF ef_a <> ef_a OR ef_b <> ef_b THEN\n` +
+    `        ef_zero = 0#\n` +
+    `        ef_safe_min# = ef_zero / ef_zero\n` +
+    `    ELSE\n` +
+    `        ef_safe_min# = _MIN(ef_a, ef_b)\n` +
+    `    END IF\n` +
+    `END FUNCTION\n\n` +
+    `FUNCTION ef_safe_max# (ef_a AS DOUBLE, ef_b AS DOUBLE)\n` +
+    `    DIM ef_zero AS DOUBLE\n` +
+    `    IF ef_a <> ef_a OR ef_b <> ef_b THEN\n` +
+    `        ef_zero = 0#\n` +
+    `        ef_safe_max# = ef_zero / ef_zero\n` +
+    `    ELSE\n` +
+    `        ef_safe_max# = _MAX(ef_a, ef_b)\n` +
+    `    END IF\n` +
     `END FUNCTION\n\n`;
 
 const emitter = new Emitter({
@@ -120,8 +151,8 @@ const emitter = new Emitter({
         exp: ([x]) => `EXP(${x})`,
         log: ([x]) => `ef_safe_log#(${x})`,
         sign: ([x]) => `SGN(${x})`,
-        min: ([a, b]) => `_MIN(${a}, ${b})`,
-        max: ([a, b]) => `_MAX(${a}, ${b})`,
+        min: ([a, b]) => `ef_safe_min#(${a}, ${b})`,
+        max: ([a, b]) => `ef_safe_max#(${a}, ${b})`,
         // _ROUND ties to EVEN ("banker's rounding" -- confirmed against a
         // real compile: _ROUND(-0.5#) is 0, _ROUND(-1.5#) is -2), NOT
         // this project's standardized round-half-AWAY-from-zero

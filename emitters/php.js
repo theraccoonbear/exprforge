@@ -30,7 +30,17 @@ const emitter = new PhpEmitter({
         asin: fn1("asin"), acos: fn1("acos"), atan: fn1("atan"), atan2: fn2("atan2"),
         log: fn1("log"), log10: fn1("log10"), exp: fn1("exp"), pow: fn2("pow"),
         floor: fn1("floor"), ceil: fn1("ceil"), round: fn1("round"),
-        min: fn2("min"), max: fn2("max"), hypot: fn2("hypot"),
+        hypot: fn2("hypot"),
+        // NOT bare min()/max(): confirmed directly that whichever
+        // argument comes SECOND silently wins whenever either is NaN
+        // (min(nan,5)==5 but min(5,nan)==NAN, same for max) --
+        // position-dependent, same landmine class as Python's/Lua's
+        // builtins (though PHP's own quirk picks the opposite position).
+        // JS/Go/Java/C#/Julia/Scheme/Fortran instead propagate NaN
+        // through min/max the way this project now standardizes on --
+        // see docs/adr/0003-min-max-nan-propagation.md.
+        min: ([a, b]) => `(is_nan(${a}) || is_nan(${b}) ? NAN : min(${a}, ${b}))`,
+        max: ([a, b]) => `(is_nan(${a}) || is_nan(${b}) ? NAN : max(${a}, ${b}))`,
         // log() takes an optional base argument -- covers log2 without a
         // separate function (PHP has no log2() of its own).
         log2: ([x]) => `log(${x}, 2)`,

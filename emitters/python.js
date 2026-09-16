@@ -45,7 +45,16 @@ const emitter = new Emitter({
         exp: fn1("exp"),
         pow: ([base, exp]) =>
             `(math.pow(${base}, ${exp}) if not (${base} < 0 and ${exp} != int(${exp})) else float('nan'))`,
-        min: ([a, b]) => `min(${a}, ${b})`, max: ([a, b]) => `max(${a}, ${b})`,
+        // NOT bare min()/max(): Python's builtins are comparison-based,
+        // and a comparison against NaN is always False -- so whichever
+        // argument comes FIRST silently wins whenever either is NaN,
+        // confirmed directly (min(nan,5)==nan but min(5,nan)==5, same
+        // for max). Position-dependent, not a real "ignore" or
+        // "propagate" rule. JS/Go/Java/C#/Julia/Scheme/Fortran instead
+        // propagate NaN through min/max the way this project now
+        // standardizes on -- see docs/adr/0003-min-max-nan-propagation.md.
+        min: ([a, b]) => `(float('nan') if (math.isnan(${a}) or math.isnan(${b})) else min(${a}, ${b}))`,
+        max: ([a, b]) => `(float('nan') if (math.isnan(${a}) or math.isnan(${b})) else max(${a}, ${b}))`,
         hypot: fn2("hypot"),
         // math.floor/ceil/trunc and builtin round() all return int in
         // Python 3, not float -- wrap to stay float64 throughout, matching

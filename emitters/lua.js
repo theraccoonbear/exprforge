@@ -21,7 +21,19 @@ const emitter = new Emitter({
     calls: {
         sqrt: fn1("sqrt"), abs: fn1("abs"), sin: fn1("sin"), cos: fn1("cos"), tan: fn1("tan"),
         asin: fn1("asin"), acos: fn1("acos"), atan: fn1("atan"), exp: fn1("exp"),
-        min: fn2("min"), max: fn2("max"),
+        // NOT bare math.min/math.max: confirmed directly that whichever
+        // argument comes FIRST silently wins whenever either is NaN
+        // (min(nan,5)==nan but min(5,nan)==5, same for max) --
+        // position-dependent, same landmine as Python's builtins.
+        // JS/Go/Java/C#/Julia/Scheme/Fortran instead propagate NaN
+        // through min/max the way this project now standardizes on --
+        // see docs/adr/0003-min-max-nan-propagation.md. Lua has no
+        // isnan(); "x ~= x" is the standard self-inequality NaN test
+        // (an IEEE NaN never compares equal to itself). The and/or
+        // ternary idiom is safe here (see this file's own sign: entry
+        // below) since 0/0 (NaN) is truthy in Lua, not falsy.
+        min: ([a, b]) => `((${a} ~= ${a} or ${b} ~= ${b}) and (0 / 0) or math.min(${a}, ${b}))`,
+        max: ([a, b]) => `((${a} ~= ${a} or ${b} ~= ${b}) and (0 / 0) or math.max(${a}, ${b}))`,
         // Lua 5.3+ removed math.atan2 -- math.atan(y, x) with a second
         // argument is the replacement.
         atan2: fn2("atan"),

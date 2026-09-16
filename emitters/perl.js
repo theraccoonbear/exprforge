@@ -63,9 +63,18 @@ const emitter = new PerlEmitter({
         hypot: ([a, b]) => `POSIX::hypot(${a}, ${b})`,
         // No log2 anywhere in core or POSIX -- derive it.
         log2: ([x]) => `((${x} > 0 ? log(${x}) : (${x} == 0 ? -(9**9**9) : 9**9**9 - 9**9**9)) / log(2))`,
-        // List::Util, same fully-qualified convention as POSIX above.
-        min: ([a, b]) => `List::Util::min(${a}, ${b})`,
-        max: ([a, b]) => `List::Util::max(${a}, ${b})`,
+        // List::Util, same fully-qualified convention as POSIX above --
+        // but NOT called bare: confirmed directly that List::Util's
+        // min/max aren't even internally consistent with EACH OTHER
+        // around NaN -- min(nan,5)==NaN but min(5,nan)==5 (first wins),
+        // while max(nan,5)==5 but max(5,nan)==NaN (SECOND wins instead).
+        // JS/Go/Java/C#/Julia/Scheme/Fortran instead propagate NaN
+        // through min/max the way this project now standardizes on --
+        // see docs/adr/0003-min-max-nan-propagation.md. Same self-
+        // inequality NaN test and NaN-synthesis idiom as sqrt:/log:
+        // above (an IEEE NaN never compares equal to itself).
+        min: ([a, b]) => `(${a} != ${a} || ${b} != ${b} ? 9**9**9 - 9**9**9 : List::Util::min(${a}, ${b}))`,
+        max: ([a, b]) => `(${a} != ${a} || ${b} != ${b} ? 9**9**9 - 9**9**9 : List::Util::max(${a}, ${b}))`,
         // No sign() anywhere in core, POSIX, or List::Util -- build it
         // directly. Zero-aware by construction (see Go's/Rust's sign()
         // history in this project for what happens when it isn't).

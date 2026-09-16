@@ -451,6 +451,47 @@ directly-verified breakdown and exactly how each fix works, and
 `test/conformance.test.js`'s `domainSafety` entry for the permanent
 regression test.
 
+### `min()`/`max()` with a NaN argument: also unified
+
+`min`/`max` given a NaN argument now return NaN on every target,
+regardless of which argument it's in — confirmed directly that this
+WASN'T true before, and it wasn't just "a different value," it was
+often **position-dependent** (which argument silently "wins" depends on
+argument order, not any documented rule):
+
+- **C** (`fmin`/`fmax`), **Rust** (`.min()`/`.max()`), **Zig**
+  (`@min`/`@max`): NaN-ignoring by spec — the real operand comes back
+  regardless of position.
+- **Python**, **Lua**, **QB64** (`_MIN`/`_MAX`): position-dependent —
+  whichever argument comes **first** silently wins whenever either is
+  NaN (comparison-based implementations, and a comparison against NaN
+  is always false).
+- **PHP**: the same landmine, but the **second** argument wins instead.
+- **Perl** (`List::Util::min`/`max`): not even internally consistent —
+  `min` is first-wins, `max` is second-wins.
+- **GnuCOBOL**: `FUNCTION MAX` at least returns the real operand: `MIN`
+  is flatly wrong, returning a literal `0` — neither operand's actual
+  value. Deliberately left as-is, same reasoning as the domain-error fix
+  above: a real fix needs a new helper `FUNCTION-ID`, the exact shape
+  already confirmed to crash GnuCOBOL's codegen when piled up with
+  others.
+- Every other target (JS, TypeScript, Go, Java, C#, Julia, Scheme,
+  Fortran) already propagated NaN correctly.
+
+See `samples/math-edge-cases-demo.js`'s own header comment for the
+full, directly-verified breakdown, `test/conformance.test.js`'s
+`mathEdgeCases` entry for the permanent regression test, and
+[`docs/adr/0003-min-max-nan-propagation.md`](docs/adr/0003-min-max-nan-propagation.md)
+for the full decision record.
+
+---
+
+These three normalization decisions (and any future ones like them)
+are tracked as a running decision log in
+[`docs/adr/`](docs/adr/README.md) — worth checking there directly if
+you're debugging something that looks like a cross-target behavior
+mismatch.
+
 ## Symbolic differentiation (`differentiate`)
 
 ```js

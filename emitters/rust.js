@@ -44,8 +44,17 @@ const emitter = new Emitter({
         // Java's sign, which both special-case zero). Found by the
         // kitchen-sink conformance test at exactly x - y == 0.
         sign: ([x]) => `(if ${x} > 0.0 { 1.0f64 } else if ${x} < 0.0 { -1.0f64 } else { 0.0f64 })`,
-        pow: method1("powf"), atan2: method1("atan2"), min: method1("min"),
-        max: method1("max"), hypot: method1("hypot"),
+        pow: method1("powf"), atan2: method1("atan2"), hypot: method1("hypot"),
+        // NOT bare .min()/.max(): Rust's f64::min/f64::max are documented
+        // NaN-IGNORING -- if exactly one operand is NaN, the OTHER (real)
+        // value is returned, confirmed directly against rustc (both
+        // orders return 5.0, never NaN). Every other target here that
+        // does this natively (C, Zig) shares the same divergence;
+        // JS/Go/Java/C#/Julia/Scheme/Fortran instead propagate NaN
+        // through min/max the way this project now standardizes on --
+        // see docs/adr/0003-min-max-nan-propagation.md.
+        min: ([a, b]) => `(if (${a}).is_nan() || (${b}).is_nan() { f64::NAN } else { (${a}).min(${b}) })`,
+        max: ([a, b]) => `(if (${a}).is_nan() || (${b}).is_nan() { f64::NAN } else { (${a}).max(${b}) })`,
         // f64::rem_euclid is Rust's own stdlib method for exactly this --
         // always non-negative for a positive divisor, no hand-built
         // sign-correction needed. f64::clamp is likewise a direct stdlib

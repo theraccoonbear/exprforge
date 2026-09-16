@@ -49,6 +49,7 @@ const {
     domainSafetyAst,
     arraySuiteAst,
     arrayMacroDemoAst,
+    mathEdgeCasesAst,
     cyclicElemAst,
     clampedElemAst,
     emitters,
@@ -1866,6 +1867,32 @@ registerSuiteConformance("arraySuite", {
         [[10, 20, 30, 40], 4, -1], // wraps past the start
         [[10, 20, 30, 40], 4, 2], // no wrap needed
     ],
+    skipTargets: ["COBOL"],
+});
+
+// Proves min()/max() propagate NaN identically (regardless of which
+// argument it's in) on every target -- see samples/math-edge-cases-
+// demo.js's own header comment for the full, directly-verified
+// breakdown (C/Rust/Zig: NaN-ignoring; Python/Lua/QB64: position-
+// dependent, first-wins; PHP: position-dependent, second-wins; Perl:
+// inconsistent even with itself) and docs/adr/0003-min-max-nan-
+// propagation.md for the decision record.
+registerSuiteConformance("mathEdgeCases", {
+    ast: mathEdgeCasesAst,
+    inputs: [
+        [5, -1], // real, positive, finite -- the value that "wins" once
+        // NaN is correctly recognized and excluded. negSrc just needs
+        // to be negative (see math-edge-cases-demo.js's own comment on
+        // why it must be a runtime parameter, not a literal constant).
+        [-3, -1], // real, negative, finite -- same check, opposite sign
+    ],
+    // Same GnuCOBOL cob_decimal codegen fragility as domainSafety/
+    // comparisonOps/nestedSelect/arraySuite above -- FUNCTION MIN is
+    // confirmed flatly wrong (returns 0, not either operand) for a NaN
+    // argument, and a real fix needs a new helper FUNCTION-ID, the exact
+    // shape already confirmed to crash cobc when piled up with others.
+    // See emitters/cobol.js's own min:/max: comment. Skipped, not
+    // silently ignored.
     skipTargets: ["COBOL"],
 });
 
