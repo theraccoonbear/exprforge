@@ -533,7 +533,14 @@ unchanged. The input is never mutated.
   test asserts the symbolic result against a central-difference
   approximation at several sample points (see `test/differentiate.test.js`),
   the same "proof by running" approach this project already uses for
-  round-tripping expr syntax (see "Testing").
+  round-tripping expr syntax (see "Testing"). That check is JS/`evaluate()`-
+  only, though — it can't by itself reveal a target-language mismatch in
+  the derivative TREE any more than any other JS-only check could (see
+  this project's own comparison-operator-bug history). `differentiate()`'s
+  output is now also compiled and run against every real target, the same
+  conformance coverage every other sample here gets — see
+  `samples/differentiate-demo.js` and `test/conformance.test.js`'s
+  `differentiateDemo` entry.
 
 Try it interactively in the [live playground](https://theraccoonbear.github.io/exprforge/)'s
 Differentiation tab — enter a formula, see the derivative and a numeric

@@ -50,6 +50,8 @@ const {
     arraySuiteAst,
     arrayMacroDemoAst,
     mathEdgeCasesAst,
+    differentiateDemoAst,
+    zeroParamDemoAst,
     cyclicElemAst,
     clampedElemAst,
     emitters,
@@ -335,6 +337,15 @@ const SAMPLES = {
             [[10, 20, 30, 40], 4, -1], // wraps past the start (negative)
             [[10, 20, 30, 40], 4, 2], // no wrap needed
             [[5], 1, 3], // single-element array
+            // Exact-boundary and multi-wrap cases -- previously untested
+            // (every case above wraps by exactly one step past an end,
+            // never lands exactly ON the boundary or wraps more than
+            // once): i == m exactly (not m+1) must wrap all the way
+            // around to index 0, and i == -m exactly likewise.
+            [[10, 20, 30, 40], 4, 4], // i == m exactly -> index 0
+            [[10, 20, 30, 40], 4, -4], // i == -m exactly -> index 0
+            [[10, 20, 30, 40], 4, 11], // multi-wrap forward (wraps twice + 3)
+            [[10, 20, 30, 40], 4, -9], // multi-wrap backward
         ],
         skipTargets: ["COBOL"],
     },
@@ -345,6 +356,13 @@ const SAMPLES = {
             [[10, 20, 30, 40], 4, 5], // clamps past the end
             [[10, 20, 30, 40], 4, -1], // clamps past the start
             [[10, 20, 30, 40], 4, 2], // no clamp needed
+            // Exact-boundary cases -- previously untested (every case
+            // above is either strictly outside or strictly inside the
+            // range, never landing exactly ON a boundary, where a
+            // fencepost/off-by-one in the clamp itself would show up as
+            // a no-op that should have been one, or vice versa).
+            [[10, 20, 30, 40], 4, 0], // i == lo exactly -> no-op, index 0
+            [[10, 20, 30, 40], 4, 3], // i == hi exactly (n-1) -> no-op, index 3
         ],
         skipTargets: ["COBOL"],
     },
@@ -360,6 +378,30 @@ const SAMPLES = {
             [[10, 20, 30, 40], 4, -1], // wraps past the start
         ],
         skipTargets: ["COBOL"],
+    },
+    // Proves differentiate()'s OUTPUT compiles and runs correctly on
+    // every real target -- see samples/differentiate-demo.js's own
+    // header comment for the gap this closes (previously verified only
+    // via numericalDerivative()'s central-difference check against
+    // evaluate()/JS, never through a real compiler). The reference here
+    // is the hand-derived closed-form d/dx(x^2 * sin(x)), independent of
+    // differentiate.js's own rule implementations -- same "two
+    // independent checks" shape as every other sample in this file.
+    differentiateDemo: {
+        ast: differentiateDemoAst,
+        reference: (x) => 2 * x * Math.sin(x) + x * x * Math.cos(x),
+        inputs: [[0.5], [1.0], [2.0], [-1.5], [3.14159]],
+    },
+    // Proves a zero-parameter function compiles and runs correctly on
+    // every real target -- see samples/zero-param-demo.js's own header
+    // comment for exactly what this boundary value could plausibly
+    // break that every other sample here, with >=1 parameter, never
+    // exercised. Single input row: an empty argument tuple -- there's
+    // nothing else to vary.
+    zeroParamDemo: {
+        ast: zeroParamDemoAst,
+        reference: () => Math.sqrt(16) + Math.sign(-3),
+        inputs: [[]],
     },
 };
 
@@ -570,9 +612,16 @@ function runGo(ast, inputs) {
     execFileSync("go", ["mod", "init", "ef"], { cwd: dir });
     const parses = goParamParses(ast);
     const callArgs = ast.params.join(", ");
+    // "os" and "strconv" are only ever referenced inside goParamParses'
+    // own output -- both become "imported and not used" (a real Go
+    // compile error, confirmed directly, not a warning) for a
+    // zero-parameter function, where `parses` is empty. Every sample
+    // before zeroParamDemo had >=1 parameter, so this import list never
+    // hit the empty case before.
+    const hasParams = ast.params.length > 0;
     const mainSrc =
         `package main\n\n` +
-        `import (\n\t"fmt"\n${usesMath ? `\t"math"\n` : ""}\t"os"\n${goUsesArray(ast) ? `\t"strings"\n` : ""}\t"strconv"\n)\n\n` +
+        `import (\n\t"fmt"\n${usesMath ? `\t"math"\n` : ""}${hasParams ? `\t"os"\n` : ""}${goUsesArray(ast) ? `\t"strings"\n` : ""}${hasParams ? `\t"strconv"\n` : ""})\n\n` +
         `${funcDecl}\n` +
         `func main() {\n${parses}\n\tfmt.Printf("%.17f", ${capitalize(ast.name)}(${callArgs}))\n}\n`;
     fs.writeFileSync(path.join(dir, "main.go"), mainSrc);
@@ -761,8 +810,15 @@ function runQB64(ast, inputs) {
     const dir = tmpDir("ef-qb64-");
     const argReads = qb64ArgReads(ast);
     const callArgs = qb64CallArgs(ast);
+    // NOT unconditionally `name#(${callArgs})`: confirmed directly
+    // against a real compile that QB64 rejects a zero-argument call
+    // written with empty parens ("name#()", "Expected (...)") -- a
+    // zero-param FUNCTION must be called bare ("name#", no parens at
+    // all). Every sample before zeroParamDemo had >=1 parameter, so
+    // this call site never hit the empty case before.
+    const callExpr = callArgs ? `${ast.name}#(${callArgs})` : `${ast.name}#`;
     const harness =
-        `$CONSOLE:ONLY\n${source}\n${argReads}\nPRINT ${ast.name}#(${callArgs})\nSYSTEM\n`;
+        `$CONSOLE:ONLY\n${source}\n${argReads}\nPRINT ${callExpr}\nSYSTEM\n`;
     const srcPath = path.join(dir, "main.bas");
     fs.writeFileSync(srcPath, harness);
     const bin = path.join(dir, "bin");
@@ -779,9 +835,16 @@ function runSuiteQB64(ast, inputs, outputNames) {
     const callArgs = qb64CallArgs(ast);
     const outDecl = `DIM ${outputNames.join(" AS DOUBLE, ")} AS DOUBLE`;
     const prints = outputNames.map((n) => `PRINT ${n}`).join("\n");
+    // Same reasoning as runQB64's own callExpr above -- a leading comma
+    // ("CALL name(, out1, out2)") if callArgs were ever empty would be
+    // just as broken as the bare-parens case there. No zero-param SUITE
+    // sample exists yet to force this in practice (a suite needs >=1
+    // output field, never 0 params AND 0 args together here), but this
+    // stays correct if one ever does.
+    const allCallArgs = [callArgs, outputNames.join(", ")].filter(Boolean).join(", ");
     const harness =
         `$CONSOLE:ONLY\n${source}\n${argReads}\n${outDecl}\n` +
-        `CALL ${ast.name}(${callArgs}, ${outputNames.join(", ")})\n${prints}\nSYSTEM\n`;
+        `CALL ${ast.name}(${allCallArgs})\n${prints}\nSYSTEM\n`;
     const srcPath = path.join(dir, "main.bas");
     fs.writeFileSync(srcPath, harness);
     const bin = path.join(dir, "bin");
@@ -1507,11 +1570,20 @@ function runZig(ast, inputs) {
     fs.writeFileSync(path.join(dir, "fn.zig"), source);
     const parses = zigParamParses(ast);
     const callArgs = ast.params.join(", ");
+    // `args` is only ever referenced inside zigParamParses' own output --
+    // an unused local `const` is a real Zig compile error (confirmed
+    // directly, not a warning) for a zero-parameter function, where
+    // `parses` never references it. Every sample before zeroParamDemo
+    // had >=1 parameter, so this declaration never hit the empty case
+    // before.
+    const argsDecl = ast.params.length > 0
+        ? `    const args = try std.process.argsAlloc(std.heap.page_allocator);\n`
+        : "";
     const harness =
         `const std = @import("std");\n` +
         `const fnmod = @import("fn.zig");\n\n` +
         `pub fn main() !void {\n` +
-        `    const args = try std.process.argsAlloc(std.heap.page_allocator);\n` +
+        argsDecl +
         `    const stdout = std.io.getStdOut().writer();\n` +
         parses + "\n" +
         `    try stdout.print("{d}\\n", .{fnmod.${ast.name}(${callArgs})});\n` +

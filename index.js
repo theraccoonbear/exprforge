@@ -23,6 +23,8 @@ const { domainSafetyAst } = require("./samples/domain-safety-demo.js");
 const { arraySuiteAst } = require("./samples/array-suite-demo.js");
 const { arrayMacroDemoAst } = require("./samples/array-macro-demo.js");
 const { mathEdgeCasesAst } = require("./samples/math-edge-cases-demo.js");
+const { differentiateDemoAst } = require("./samples/differentiate-demo.js");
+const { zeroParamDemoAst } = require("./samples/zero-param-demo.js");
 
 /**
  * Run ONE emitter against one AST function definition. Returns
@@ -218,6 +220,13 @@ module.exports = {
     // real bug this exists because of, and docs/adr/0003-min-max-nan-
     // propagation.md for the full decision record.
     mathEdgeCasesAst,
+    // Coverage fixture for differentiate()'s own output compiled through
+    // a real target -- see samples/differentiate-demo.js's own header
+    // comment for the gap this closes.
+    differentiateDemoAst,
+    // Coverage fixture for a zero-parameter function -- see
+    // samples/zero-param-demo.js's own header comment.
+    zeroParamDemoAst,
     samples: {
         catmullRom: catmullRomAst,
         fibonacci: fibonacciAst,
@@ -235,6 +244,8 @@ module.exports = {
         arraySuite: arraySuiteAst,
         arrayMacroDemo: arrayMacroDemoAst,
         mathEdgeCases: mathEdgeCasesAst,
+        differentiateDemo: differentiateDemoAst,
+        zeroParamDemo: zeroParamDemoAst,
     },
     // Per-language emitter instances, keyed by name (js, qb64, c, java, go, rust).
     emitters,
