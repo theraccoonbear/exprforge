@@ -984,6 +984,32 @@ cost when unused, not the general one. See
 [`docs/runtime-type-guards.md`](./docs/runtime-type-guards.md)'s own
 "Array length" section for the full per-language guard table.
 
+## Concatenating multiple functions into one file
+
+`emitFunction`'s default output assumes one function per compiled unit
+— but a real, common pattern is emitting N functions for the same
+target and concatenating them into ONE file (one `.bi`/`.cob`/`.go`
+file per *program*, not per function). Several targets have some kind
+of always-on preamble per function (QB64's math-safety helpers,
+COBOL's comparison helpers, Go's `package`/`import`, Zig's `@import`,
+PHP's `<?php` tag, Java's one-public-class-per-file rule) that's fine
+in isolation but becomes a duplicate/conflicting declaration once two
+functions' outputs are concatenated as-is — confirmed directly (a real
+consumer report, then the same bug class found in 5 more targets by
+auditing for it): the target's compiler rejects the file outright.
+
+```js
+const out1 = emit(fn1, "qb64").source;                                       // helpers included (default)
+const out2 = emit(fn2, "qb64", undefined, { includeHelpers: false }).source; // helpers omitted
+fs.writeFileSync("spline.bi", [out1, out2].join("\n"));
+```
+
+See [`docs/multi-function-files.md`](./docs/multi-function-files.md)
+for the full per-target table (what repeats, the exact `opts` to pass,
+and which targets needed no fix at all — verified, not assumed) and
+`test/multi-function-files.test.js` for the permanent regression
+coverage, compiled/run for real on every target.
+
 ## Infix expression syntax (`` expr` ` ``)
 
 `add(mul(v("a"), v("b")), num(1))` is exactly what gets built, but it's

@@ -177,6 +177,26 @@ class Emitter {
     // "not perfect, real protection at the boundary" spirit as
     // `typeGuard` itself. See docs/runtime-type-guards.md's "Array
     // length" section.
+    //
+    // `opts.includeHelpers` (default true, so today's single-function
+    // output is unchanged unless a caller explicitly opts out): whether
+    // to include this target's own always-on shared helper
+    // preamble/boilerplate (QB64's SAFE_MATH_HELPERS, COBOL's
+    // CMP_HELPER_SOURCE) in THIS call's output. `formatFunctionImpl`/
+    // `formatSuiteImpl` receive the full `opts` object as a 5th
+    // argument -- not just this one flag -- so a target-specific concern
+    // like this stays local to that target's own emitter file instead of
+    // needing a new base.js-level option (and a new positional argument
+    // threaded everywhere) every time one more target needs one. A real,
+    // reported consumer bug (github.com/theraccoonbear/exprforge/pull/37):
+    // concatenating N functions emitted for the SAME target into one
+    // compiled unit (a real, common pattern -- one .bi/.cob file per
+    // program, not one file per function) got that target's shared
+    // helper block duplicated N times, which both QB64 and GnuCOBOL
+    // reject as a duplicate definition at compile time. The fix: emit
+    // it (`includeHelpers: true`, the default) for exactly ONE of the N
+    // calls, pass `{ includeHelpers: false }` for the rest, then
+    // concatenate — see docs/multi-function-files.md.
     emitFunction(fn, registry = undefined, opts = {}) {
         this._registry = registry;
         // Resolves every macro call and field() access into plain
@@ -221,10 +241,10 @@ class Emitter {
             for (const [name, node] of Object.entries(body.fields)) {
                 outputStrs[name] = this.emitExpr(node);
             }
-            return this.formatSuiteImpl(fn, outputStrs, letBindings, guardLines);
+            return this.formatSuiteImpl(fn, outputStrs, letBindings, guardLines, opts);
         }
         const bodyStr = this.emitExpr(body);
-        return this.formatFunctionImpl(fn, bodyStr, letBindings, guardLines);
+        return this.formatFunctionImpl(fn, bodyStr, letBindings, guardLines, opts);
     }
 }
 
