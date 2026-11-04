@@ -2,7 +2,7 @@
 //
 // The LaTeX target has no compiler to run its output through and can't
 // round-trip back into an AST (unlike emitters/exprsyntax.js), so it's
-// covered two ways:
+// covered three ways:
 //
 //   1. Exact-string checks for every node type, every built-in primitive,
 //      every cmp() operator, and every mulSymbol value (plus each case
@@ -12,6 +12,10 @@
 //      TypeScript (see test/conformance.test.js's TOOLS), never a project
 //      dependency. Skipped when katex isn't installed; CI's test-latex.yml
 //      installs it and runs this with EXPRFORGE_TEST_TARGETS=LaTeX.
+//      The math wraps (inline/display/equation) are parsed the same way
+//      after unwrapping.
+//   3. A real pdflatex compile of every sample in wrap "document" mode
+//      (KaTeX can't parse a whole document). Skipped without pdflatex.
 const test = require("node:test");
 const assert = require("node:assert");
 const fs = require("node:fs");
@@ -281,6 +285,75 @@ test("outputs render each field as its own function of the parameters", () => {
     );
 });
 
+// --- wrap -------------------------------------------------------------------
+
+const WRAP_SINGLE = { name: "f", params: ["x"], body: mul(num(2), v("x")) };
+const WRAP_ALIGNED = { name: "f", params: ["x", "y"], body: letIn("d", sub(x, y), mul(v("d"), v("d"))) };
+const WRAP_SUITE = { name: "frame", params: ["t"], body: outputs({ a: v("t"), b: add(v("t"), num(1)) }) };
+
+const WRAP_EXPECTED = {
+    none: {
+        single: "f\\left(x\\right) = 2 x\n",
+        aligned: "\\begin{aligned}\n  d &= x - y \\\\\n  f\\left(x, y\\right) &= d d\n\\end{aligned}\n",
+        suite: "\\begin{aligned}\n  a\\left(t\\right) &= t \\\\\n  b\\left(t\\right) &= t + 1\n\\end{aligned}\n",
+    },
+    inline: {
+        single: "$f\\left(x\\right) = 2 x$\n",
+        aligned: "$\\begin{aligned}\n  d &= x - y \\\\\n  f\\left(x, y\\right) &= d d\n\\end{aligned}$\n",
+        suite: "$\\begin{aligned}\n  a\\left(t\\right) &= t \\\\\n  b\\left(t\\right) &= t + 1\n\\end{aligned}$\n",
+    },
+    display: {
+        single: "$$\nf\\left(x\\right) = 2 x\n$$\n",
+        aligned: "$$\n\\begin{aligned}\n  d &= x - y \\\\\n  f\\left(x, y\\right) &= d d\n\\end{aligned}\n$$\n",
+        suite: "$$\n\\begin{aligned}\n  a\\left(t\\right) &= t \\\\\n  b\\left(t\\right) &= t + 1\n\\end{aligned}\n$$\n",
+    },
+    equation: {
+        single: "\\begin{equation}\nf\\left(x\\right) = 2 x\n\\end{equation}\n",
+        aligned:
+            "\\begin{equation}\n\\begin{aligned}\n  d &= x - y \\\\\n  f\\left(x, y\\right) &= d d\n\\end{aligned}\n\\end{equation}\n",
+        suite:
+            "\\begin{equation}\n\\begin{aligned}\n  a\\left(t\\right) &= t \\\\\n  b\\left(t\\right) &= t + 1\n\\end{aligned}\n\\end{equation}\n",
+    },
+    document: {
+        single:
+            "\\documentclass{article}\n\\usepackage{amsmath}\n\\begin{document}\n\\[\nf\\left(x\\right) = 2 x\n\\]\n\\end{document}\n",
+        aligned:
+            "\\documentclass{article}\n\\usepackage{amsmath}\n\\begin{document}\n\\[\n\\begin{aligned}\n  d &= x - y \\\\\n  f\\left(x, y\\right) &= d d\n\\end{aligned}\n\\]\n\\end{document}\n",
+        suite:
+            "\\documentclass{article}\n\\usepackage{amsmath}\n\\begin{document}\n\\[\n\\begin{aligned}\n  a\\left(t\\right) &= t \\\\\n  b\\left(t\\right) &= t + 1\n\\end{aligned}\n\\]\n\\end{document}\n",
+    },
+};
+
+for (const [wrap, expected] of Object.entries(WRAP_EXPECTED)) {
+    test(`wrap "${wrap}": exact output for a single-line function, an aligned function and a suite`, () => {
+        const opts = { wrap };
+        assert.strictEqual(latex.emitFunction(WRAP_SINGLE, undefined, opts), expected.single);
+        assert.strictEqual(latex.emitFunction(WRAP_ALIGNED, undefined, opts), expected.aligned);
+        assert.strictEqual(latex.emitFunction(WRAP_SUITE, undefined, opts), expected.suite);
+    });
+}
+
+test('wrap defaults to "none" and covers exactly the documented values', () => {
+    assert.deepStrictEqual(Object.keys(WRAP_EXPECTED), ["none", "inline", "display", "equation", "document"]);
+    assert.strictEqual(latex.emitFunction(WRAP_ALIGNED), latex.emitFunction(WRAP_ALIGNED, undefined, { wrap: "none" }));
+});
+
+test("an unknown wrap value throws a clear error", () => {
+    for (const bad of ["bogus", "", "Display", 1, true]) {
+        assert.throws(
+            () => latex.emitFunction(WRAP_SINGLE, undefined, { wrap: bad }),
+            /unknown wrap .* expected one of: none, inline, display, equation, document/,
+            `wrap=${JSON.stringify(bad)}`,
+        );
+    }
+});
+
+test("wrap composes with mulSymbol and the collision fallback", () => {
+    const fnDef = { name: "f", params: ["x1", "x_1"], body: mul(v("x1"), v("x_1")) };
+    const bare = latex.emitFunction(fnDef, undefined, { mulSymbol: "cdot" });
+    assert.strictEqual(latex.emitFunction(fnDef, undefined, { mulSymbol: "cdot", wrap: "display" }), `$$\n${bare}$$\n`);
+});
+
 // --- real KaTeX parse of every sample ---------------------------------------
 
 function hasTool(cmd, args) {
@@ -321,6 +394,17 @@ function katexParse(source) {
     execFileSync("katex", ["--display-mode", "--strict"], { input: source, stdio: ["pipe", "ignore", "pipe"] });
 }
 
+function innerMath(source, wrap) {
+    const unwrap = {
+        inline: /^\$([\s\S]*)\$\n$/,
+        display: /^\$\$\n([\s\S]*)\$\$\n$/,
+        equation: /^\\begin\{equation\}\n([\s\S]*)\\end\{equation\}\n$/,
+    }[wrap];
+    const m = unwrap.exec(source);
+    assert.ok(m, `${wrap} output not in the expected shape:\n${source}`);
+    return m[1];
+}
+
 test("every sample's LaTeX output parses in KaTeX (strict), for every mulSymbol", { skip: katexSkip }, () => {
     const defs = sampleFnDefs();
     assert.ok(defs.length >= 15, `expected to find the samples, found ${defs.length}`);
@@ -329,5 +413,77 @@ test("every sample's LaTeX output parses in KaTeX (strict), for every mulSymbol"
             const source = latex.emitFunction(def, undefined, { mulSymbol });
             assert.doesNotThrow(() => katexParse(source), `${label} (mulSymbol=${mulSymbol}) failed to parse:\n${source}`);
         }
+    }
+});
+
+test("every sample's math-mode wrap parses in KaTeX once unwrapped", { skip: katexSkip }, () => {
+    for (const [label, def] of sampleFnDefs()) {
+        for (const wrap of ["inline", "display", "equation"]) {
+            const inner = innerMath(latex.emitFunction(def, undefined, { wrap }), wrap);
+            assert.doesNotThrow(() => katexParse(inner), `${label} (wrap=${wrap}) failed to parse:\n${inner}`);
+        }
+    }
+});
+
+// KaTeX cannot parse a whole document, so "document" mode is checked with a
+// real pdflatex run instead: every sample must compile cleanly and produce
+// a PDF. Skipped when pdflatex isn't on PATH; CI's test-latex.yml installs
+// TeX Live and runs this with EXPRFORGE_TEST_TARGETS=LaTeX.
+const PDFLATEX = hasTool("pdflatex", ["--version"]);
+const pdflatexSkip = TARGET_FILTER && !TARGET_FILTER.has("LaTeX")
+    ? "EXPRFORGE_TEST_TARGETS excludes LaTeX"
+    : !PDFLATEX && "pdflatex not available";
+
+// Overfull \hbox warnings are layout notes, not failures: a long formula is
+// emitted on one line (the emitter does no line breaking), so a few samples
+// legitimately run past the margin. They are reported as diagnostics only.
+const LOG_PROBLEMS = /^(!|.*(Undefined control sequence|LaTeX Error|Package .* Error|Missing .* inserted|File .* not found)).*$/m;
+
+function relevantLogLines(log) {
+    const lines = log.split("\n");
+    const out = [];
+    lines.forEach((line, i) => {
+        if (LOG_PROBLEMS.test(line)) out.push(...lines.slice(i, i + 3));
+    });
+    return out.length ? out.join("\n") : lines.slice(-20).join("\n");
+}
+
+function compileDocument(dir, name, source) {
+    const texPath = path.join(dir, `${name}.tex`);
+    fs.writeFileSync(texPath, source);
+    let failure = null;
+    try {
+        execFileSync("pdflatex", ["-interaction=nonstopmode", "-halt-on-error", `${name}.tex`], {
+            cwd: dir,
+            stdio: ["ignore", "pipe", "pipe"],
+            timeout: 60000,
+        });
+    } catch (err) {
+        failure = `pdflatex exited abnormally: ${err.message.split("\n")[0]}`;
+    }
+    const logPath = path.join(dir, `${name}.log`);
+    const log = fs.existsSync(logPath) ? fs.readFileSync(logPath, "utf8") : "";
+    const pdfOk = fs.existsSync(path.join(dir, `${name}.pdf`));
+    const problems = log.split("\n").filter((l) => /Undefined control sequence|LaTeX Error|Package .* Error|File .* not found|Missing .* inserted/.test(l));
+    const overfull = log.split("\n").filter((l) => l.startsWith("Overfull")).length;
+    return { ok: !failure && pdfOk && problems.length === 0, failure, pdfOk, log, problems, overfull };
+}
+
+test('every sample compiles with pdflatex in wrap "document" mode', { skip: pdflatexSkip }, (t) => {
+    const defs = sampleFnDefs();
+    assert.ok(defs.length >= 15, `expected to find the samples, found ${defs.length}`);
+    const dir = fs.mkdtempSync(path.join(require("node:os").tmpdir(), "exprforge-latex-"));
+    try {
+        defs.forEach(([label, def], i) => {
+            const source = latex.emitFunction(def, undefined, { wrap: "document" });
+            const res = compileDocument(dir, `sample${i}`, source);
+            if (res.overfull) t.diagnostic(`${label}: ${res.overfull} overfull hbox warning(s) (long single-line formula)`);
+            assert.ok(
+                res.ok,
+                `${label} failed to compile${res.failure ? ` (${res.failure})` : ""}${res.pdfOk ? "" : "; no PDF produced"}:\n${relevantLogLines(res.log)}\n--- source ---\n${source}`,
+            );
+        });
+    } finally {
+        fs.rmSync(dir, { recursive: true, force: true });
     }
 });
