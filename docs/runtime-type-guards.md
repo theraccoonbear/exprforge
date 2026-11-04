@@ -98,7 +98,7 @@ only when `guardLines` is non-empty (byte-for-byte unchanged otherwise).
 
 ## Verification
 
-Every one of the 8 targets confirmed directly against a real interpreter
+Every one of the 9 targets confirmed directly against a real interpreter
 (not just written and assumed correct): a wrong-type call throws the
 expected message, a correctly-typed call still returns the right result.
 See `test/runtime-type-guards.test.js`.
@@ -152,7 +152,7 @@ portable, general way to query an array's real runtime length at all
 (a raw C pointer, a fixed Fortran `dimension`, a QB64 dynamic array
 whose `LBOUND`/`UBOUND` reliability at this call boundary this project
 already couldn't confirm — see `docs/array-index-primitives.md`), so
-this stays limited to the same 8 dynamic targets `addTypeGuards`
+this stays limited to the same 9 dynamic targets `addTypeGuards`
 already covers. It closes the specific, common failure mode (an
 author-declared bound genuinely drifting out of sync with the array
 actually passed) at zero cost when not used, not the general case.
