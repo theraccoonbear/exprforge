@@ -26,6 +26,7 @@ import { StreamLanguage } from "@codemirror/language";
 import { csharp as legacyCSharp } from "@codemirror/legacy-modes/mode/clike";
 import { lua as legacyLua } from "@codemirror/legacy-modes/mode/lua";
 import { perl as legacyPerl } from "@codemirror/legacy-modes/mode/perl";
+import { ruby as legacyRuby } from "@codemirror/legacy-modes/mode/ruby";
 import { julia as legacyJulia } from "@codemirror/legacy-modes/mode/julia";
 import { fortran as legacyFortran } from "@codemirror/legacy-modes/mode/fortran";
 import { scheme as legacyScheme } from "@codemirror/legacy-modes/mode/scheme";
@@ -38,6 +39,7 @@ import { exprForgeLanguage } from "./exprForgeMode";
 const CSHARP = StreamLanguage.define(legacyCSharp);
 const LUA = StreamLanguage.define(legacyLua);
 const PERL = StreamLanguage.define(legacyPerl);
+const RUBY = StreamLanguage.define(legacyRuby);
 const JULIA = StreamLanguage.define(legacyJulia);
 const FORTRAN = StreamLanguage.define(legacyFortran);
 const SCHEME = StreamLanguage.define(legacyScheme);
@@ -69,6 +71,7 @@ const HIGHLIGHT: Record<string, Extension> = {
     rust: rust(),
     lua: LUA,
     perl: PERL,
+    ruby: RUBY,
     php: php(),
     julia: JULIA,
     fortran: FORTRAN,

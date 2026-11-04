@@ -220,7 +220,7 @@ emission of the same function, so callers don't need per-language-different
 call sites.
 
 **Every other registered emitter (c, cobol, csharp, exprsyntax, fortran, go,
-java, julia, lua, perl, php, python, rust, scheme, zig).** Full support is
+java, julia, lua, perl, php, python, ruby, rust, scheme, zig).** Full support is
 the default expectation for any AST-level addition, not an opt-in stretch
 goal for "the languages that need it right now" — an emitter not
 implementing something a new primitive/node type needs is a gap to close,
@@ -233,7 +233,7 @@ below) — "didn't get to it yet" isn't one.
 Grouped by what each target actually needs:
 
 - **Native array type, 0-indexed, near-free** (js, ts, python, go, rust,
-  java, csharp, php, perl, scheme, zig, exprsyntax): an array param is
+  java, csharp, php, perl, ruby, scheme, zig, exprsyntax): an array param is
   just that language's own array/slice/list type; `index` emits as that
   language's native subscript syntax directly.
 - **Native array type, but 1-indexed** (julia, lua): same as above,

@@ -13,6 +13,7 @@
 [![Go](https://github.com/theraccoonbear/exprforge/actions/workflows/test-go.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test-go.yml)
 [![Rust](https://github.com/theraccoonbear/exprforge/actions/workflows/test-rust.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test-rust.yml)
 [![Perl](https://github.com/theraccoonbear/exprforge/actions/workflows/test-perl.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test-perl.yml)
+[![Ruby](https://github.com/theraccoonbear/exprforge/actions/workflows/test-ruby.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test-ruby.yml)
 [![PHP](https://github.com/theraccoonbear/exprforge/actions/workflows/test-php.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test-php.yml)
 [![Julia](https://github.com/theraccoonbear/exprforge/actions/workflows/test-julia.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test-julia.yml)
 [![Fortran](https://github.com/theraccoonbear/exprforge/actions/workflows/test-fortran.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test-fortran.yml)
@@ -27,8 +28,8 @@
 
 ExprForge authors a math formula once, as a small AST, and emits
 verified, identical-behavior implementations in JavaScript, TypeScript,
-Python, C#, Lua, QB64, C, Java, Go, Rust, Perl, PHP, Julia, Fortran, Zig,
-Scheme (Guile), and COBOL (GnuCOBOL) — plus a native in-process
+Python, C#, Lua, QB64, C, Java, Go, Rust, Perl, Ruby, PHP, Julia, Fortran,
+Zig, Scheme (Guile), and COBOL (GnuCOBOL) — plus a native in-process
 evaluator, a printer for its own readable syntax, and typeset LaTeX
 output for documenting the formula itself. No required dependencies.
 
@@ -78,8 +79,9 @@ Two shapes of real use this tends to fall into:
 ## Intents
 
 **What it does**: turns one small, pure-arithmetic AST into
-identical-behavior source text for 16 real target languages, a native
-evaluator, and its own readable printer — all from the same tree, walked
+identical-behavior source text for 18 programming languages (executable
+targets), a native evaluator, typeset LaTeX output, and a printer for
+ExprForge's own syntax (20 output targets in total) — all from the same tree, walked
 once per target. Symbolic differentiation (`differentiate`) works over
 that same AST too, so a derivative is just another tree, emittable and
 evaluable exactly the same way.
@@ -355,7 +357,7 @@ call regardless of target, checked unconditionally at the same tier as
 
 **If you're reading emitted code and expected `round()` to behave like
 your target language's own native rounding function, it doesn't, on 8
-of the 18 targets, by deliberate design.** `round(x)` ties **away from
+of the 18 programming-language targets, by deliberate design.** `round(x)` ties **away from
 zero** everywhere, unconditionally — `round(-0.5)` is `-1`,
 `round(1.5)` is `2`, `round(2.5)` is `3` — identical on every target,
 confirmed directly against a real compiler/interpreter for every one of
@@ -375,7 +377,7 @@ rounding function directly:
 | **QB64** (`_ROUND`) | ties to even | same pattern as Python (confirmed against a real compile) |
 | **C#** (`Math.Round(double)`) | ties to even (default) | same pattern as Python |
 
-The other 9 targets (C, Rust, Go, Perl, Zig, Fortran, COBOL, Julia, PHP)
+The other 10 programming-language targets (C, Rust, Go, Perl, Ruby, Zig, Fortran, COBOL, Julia, PHP)
 already tie away from zero natively, so ExprForge's `round()` matches
 what you'd expect from those languages directly — no surprise there.
 
@@ -420,6 +422,9 @@ number":
   not a wrong answer.
 - **Python**: `math.sqrt`/`log`/`log2`/`log10`/`asin`/`acos`/`pow` all
   **raise `ValueError`**.
+- **Ruby**: `Math.sqrt`/`log`/`log2`/`log10`/`asin`/`acos` **raise
+  `Math::DomainError`**, and `Float ** Float` with a negative base and a
+  non-integer exponent returns a **`Complex`**.
 - **Perl**: the builtin `sqrt`/`log` (and `log2`, built from `log`)
   **raise a fatal error** ("Can't take sqrt of -1") — `asin`/`acos`
   (via `POSIX`) and `pow` (via `**`) were already fine.
@@ -463,7 +468,7 @@ argument order, not any documented rule):
 - **C** (`fmin`/`fmax`), **Rust** (`.min()`/`.max()`), **Zig**
   (`@min`/`@max`): NaN-ignoring by spec — the real operand comes back
   regardless of position.
-- **Python**, **Lua**, **QB64** (`_MIN`/`_MAX`): position-dependent —
+- **Python**, **Ruby** (`[a, b].min` raises on NaN), **Lua**, **QB64** (`_MIN`/`_MAX`): position-dependent —
   whichever argument comes **first** silently wins whenever either is
   NaN (comparison-based implementations, and a comparison against NaN
   is always false).
@@ -929,7 +934,7 @@ Nothing stops a *caller* of emitted code from passing a plain number
 where an array-typed parameter (`paramTypes`) declared an array —
 `evaluate()` already guards this itself, and every statically-typed
 target's own compiler already rejects the mismatch, but plain emitted
-JS/TypeScript/Python/PHP/Lua/Perl/Scheme/Julia source shipped with no
+JS/TypeScript/Python/PHP/Lua/Perl/Ruby/Scheme/Julia source shipped with no
 check at all. Opt in with a 4th argument to `emit()`/`emitMany()`:
 
 ```js
@@ -1423,6 +1428,7 @@ multi-value idiom it has, since none of them agree:
 | Java, Python | a nested/local `Result` class |
 | QB64, Fortran | a `SUB`/`subroutine` with the outputs as trailing by-reference (`intent(out)`) parameters |
 | Perl | a hash ref (`{ rx => ..., ry => ... }`) |
+| Ruby | a Hash with Symbol keys (`{ rx: ..., ry: ... }`) |
 | PHP | an associative array (`['rx' => ..., 'ry' => ...]`) |
 | COBOL | a callable `PROGRAM-ID`, every output as a trailing `BY REFERENCE` parameter, invoked via `CALL "name" USING ...` — COBOL's *scalar* case uses this same shape too, not a `FUNCTION`-style return (see Testing below) |
 
@@ -1525,7 +1531,7 @@ Runs `node --test`. For each sample, that's three kinds of check:
 The compiled/interpreted-language checks need their toolchain on `PATH`
 and skip (not fail) when it's missing, so `npm test` degrades gracefully
 on any one machine. Every one of `tsc`/`qb64pe`/`dotnet`/`python3`/`lua`/
-`perl`/`php`/`julia`/`gfortran`/`zig`/`guile3.0`/`cobc` is treated exactly
+`perl`/`ruby`/`php`/`julia`/`gfortran`/`zig`/`guile3.0`/`cobc` is treated exactly
 like gcc/go/rustc/javac: looked up on `PATH`, never a project
 dependency — exprforge only ever generates source text for these, it
 doesn't execute or type-check any of it itself. `package.json` has zero
@@ -1555,7 +1561,7 @@ toolchain-free `Interpreter` slice (`EXPRFORGE_TEST_TARGETS=Interpreter`,
 same filter every `test-*.yml` workflow already uses), gated on a fixed
 threshold, since that's the one environment where the number means the
 same thing on every run — installing zero, one, or a different subset of
-the 17 per-language toolchains would make an aggregate threshold either
+the 18 per-language toolchains would make an aggregate threshold either
 flaky or meaningless. Core logic (`ast.js`/`evaluate.js`/`expr.js`/
 `fn.js`/`index.js`/`load-expr.js`/`macros.js`/`math/`/`primitives.js`/
 `samples/`/`util.js`) sits at 95-100% in every environment, toolchains or
@@ -1563,7 +1569,7 @@ not; per-target emitter coverage is intentionally excluded from that
 mental model — code that only really runs inside a real compiled/
 interpreted program can't be exercised without that target's own
 toolchain, and that verification already happens for real, by actually
-compiling and running the output, in the 17 other workflows — a lower
+compiling and running the output, in the 18 other workflows — a lower
 coverage *percentage* there isn't itself a problem this gate is
 positioned to catch.
 
@@ -1604,6 +1610,17 @@ compiling/running against a real toolchain rather than assumed to work:
   (POSIX supplies `trunc`/`hypot`, `log2` is derived); PHP has no
   `trunc()` at all (`floor`/`ceil` picked by sign instead, not an `(int)`
   cast, which would misbehave outside PHP's platform integer range).
+- **Ruby**: every numeric literal is emitted as a Float and every scalar
+  parameter is coerced with `Float()` on entry, because `Integer / 0`
+  raises `ZeroDivisionError` and `Integer / Integer` truncates, while
+  `Float / 0.0` is IEEE 754. Array elements read through indexing are
+  wrapped in `Float()` too (which also raises on an out-of-range index
+  instead of reading `nil` as `0.0`). `Float % 0.0` raises in Ruby, so
+  `wrapIndex` with a zero modulus returns NaN explicitly. `floor`/`ceil`/
+  `trunc`/`round` return Integer and raise on NaN/Infinity natively, so
+  non-finite values are passed through. Names starting with an uppercase
+  letter (a Ruby constant) or equal to a reserved word get a leading
+  underscore. Needs Ruby 2.4+ (`round(half: :up)`); CI uses 3.3.
 - **Julia**: `round()` defaults to ties-to-even (banker's rounding), not
   ties-away-from-zero like every other target here —
   `round(x, RoundNearestTiesAway)` used explicitly to actually match,

@@ -72,7 +72,9 @@ git log --oneline origin/main..HEAD
 
 ExprForge is a cross-language math expression code generator. Author a
 pure-arithmetic formula once as an AST, emit identical-behavior implementations
-in 18 target languages plus a native JS evaluator.
+in 18 programming languages (executable targets) plus a native JS evaluator,
+LaTeX typeset output, and a printer for ExprForge's own syntax (20 output
+targets in total).
 
 ### Architecture layers
 

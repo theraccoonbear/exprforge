@@ -20,9 +20,9 @@ dimension(0:*)` etc. is declared simply fails to compile. `evaluate()`,
 ExprForge's own native interpreter, also already guards this itself (a
 real `Array.isArray()` check, thrown clearly, tested).
 
-But plain **emitted** source for the 8 dynamically-typed targets — JS,
+But plain **emitted** source for the 9 dynamically-typed targets — JS,
 TypeScript (only at the type-check layer, erased at runtime), Python, PHP,
-Lua, Perl, Scheme, Julia — shipped with no guard at all. A caller passing
+Lua, Perl, Ruby, Scheme, Julia — shipped with no guard at all. A caller passing
 a plain number where `arr: number[]` was declared would either hit an
 unrelated, confusing error several layers down (indexing a number), or in
 some cases silently produce a wrong result via coercion.
@@ -65,6 +65,7 @@ target's real idiom for "is this actually an array-shaped value":
 | PHP | `is_array($arr)` |
 | Lua | `type(arr) == "table"` |
 | Julia | `arr isa AbstractVector` |
+| Ruby | `arr.is_a?(Array)` |
 | Perl | `ref($arr) eq 'ARRAY'` — Perl's own array-param convention is an ARRAYREF (`$arr->[i]`), not a plain `@array` (see `emitters/perl.js`'s own comment), so the check is on the reference, not the value |
 | Scheme | `(vector? arr)` — `emitters/scheme.js`'s own `emitIndex` uses `vector-ref`, so this checks for a vector specifically, not a list |
 
@@ -97,7 +98,7 @@ only when `guardLines` is non-empty (byte-for-byte unchanged otherwise).
 
 ## Verification
 
-Every one of the 8 targets confirmed directly against a real interpreter
+Every one of the 9 targets confirmed directly against a real interpreter
 (not just written and assumed correct): a wrong-type call throws the
 expected message, a correctly-typed call still returns the right result.
 See `test/runtime-type-guards.test.js`.
@@ -138,11 +139,11 @@ BOTH `arrayLengths` declares the pairing for that parameter AND the
 named length parameter is a real parameter of the function; a
 typo'd/stale entry is silently a no-op, same "never a surprise" spirit
 as `addTypeGuards` itself, rather than throwing over what's still just
-documentation. Same 8-target availability as `typeGuard`, using each
+documentation. Same 9-target availability as `typeGuard`, using each
 target's own length-of-array idiom, checked AFTER the type guard (so
 it's always safe to call): `.length` (JS/TS), `len()` (Python),
 `count()` (PHP), `#` (Lua), `scalar(@$arr)` (Perl — dereferencing the
-arrayref), `length()` (Julia), `(vector-length ...)` (Scheme).
+arrayref), `.length` (Ruby), `length()` (Julia), `(vector-length ...)` (Scheme).
 
 **This is deliberately not a complete fix** — a caller can still pass a
 mismatched array and a WRONG `m` that happens to agree with its actual
@@ -151,7 +152,7 @@ portable, general way to query an array's real runtime length at all
 (a raw C pointer, a fixed Fortran `dimension`, a QB64 dynamic array
 whose `LBOUND`/`UBOUND` reliability at this call boundary this project
 already couldn't confirm — see `docs/array-index-primitives.md`), so
-this stays limited to the same 8 dynamic targets `addTypeGuards`
+this stays limited to the same 9 dynamic targets `addTypeGuards`
 already covers. It closes the specific, common failure mode (an
 author-declared bound genuinely drifting out of sync with the array
 actually passed) at zero cost when not used, not the general case.

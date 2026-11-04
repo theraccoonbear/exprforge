@@ -27,6 +27,9 @@ that's achievable without disproportionate risk:
   trick, which can't guard this at all).
 - **Python**: raises `ValueError`. Fixed with an inline `if`/`else`
   ternary (confirmed short-circuiting).
+- **Ruby**: `Math.sqrt`/`log`/`log2`/`log10`/`asin`/`acos` raise
+  `Math::DomainError`; `Float ** Float` with a negative base and
+  non-integer exponent returns a `Complex`. Guarded inline.
 - **Perl**: the builtin `sqrt`/`log`/`log2` raise a fatal error;
   `asin`/`acos`/`pow` were already fine. Fixed with an inline ternary
   and a confirmed-safe NaN/Infinity synthesis idiom.

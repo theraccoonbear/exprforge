@@ -104,3 +104,12 @@ test("ruby: round ties away from zero and min/max propagate NaN in either positi
         assert.strictEqual(runRuby(m, "m(5, Float::NAN)"), "NaN");
     }
 });
+
+test("ruby: addTypeGuards and arrayLengths guards actually raise in a real ruby", { skip }, () => {
+    const fn = parseFn([`cyclicElem(arr: number[], m, i):\n  return arr[wrapIndex(i, m)];`]);
+    const source = emitters.ruby.emitFunction({ ...fn, arrayLengths: { arr: "m" } }, undefined, { addTypeGuards: true });
+    const run = (code) => execFileSync("ruby", ["-e", `${source}\n${code}`], { stdio: ["ignore", "pipe", "pipe"] }).toString().trim();
+    assert.strictEqual(run("puts cyclicElem([10, 20, 30, 40], 4, 5)"), "20.0");
+    assert.throws(() => run("cyclicElem(5, 4, 5)"), /Command failed/);
+    assert.throws(() => run("cyclicElem([1, 2, 3], 4, 5)"), /Command failed/);
+});
