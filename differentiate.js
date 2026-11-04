@@ -4,7 +4,7 @@
 // node representing the derivative of `node` with respect to `varName`.
 //
 // The result is an ordinary AST in the exact same representation as
-// everything else -- emittable to all 18 targets via emit()/emitMany()
+// everything else -- emittable to every registered target via emit()/emitMany()
 // unchanged, and evaluable via evaluate() for the numerical verification
 // the issue describes (central-difference proof).
 //

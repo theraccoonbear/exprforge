@@ -2,7 +2,7 @@
 //
 // Locks in, via a real compiled/executed conformance test, that round()'s
 // behavior at an exact ".5" tie is IDENTICAL across every one of this
-// project's 18 targets -- round half AWAY FROM ZERO, unconditionally.
+// project's executable targets -- round half AWAY FROM ZERO, unconditionally.
 //
 // This wasn't true before, and the discrepancy was real: each target's
 // `round` calls-table entry used to delegate straight to that language's
@@ -18,8 +18,8 @@
 // divergence (matching this project's precedent for QB64's select()
 // div-by-zero behavior). Revisited: unlike that precedent, this one had
 // a real, sound, already-majority convention to converge on instead of
-// just living with -- away-from-zero is what 8 of the (then-)17 non-JS-
-// family targets already did NATIVELY, and Julia's own emitter already
+// just living with -- away-from-zero is what 9 of the 17 programming-language
+// targets already did NATIVELY, and Julia's own emitter already
 // made a deliberate, precedent-setting choice to match it
 // (RoundNearestTiesAway, not Julia's own ties-to-even default) before
 // this file existed at all. So the 8 targets that DIDN'T already agree

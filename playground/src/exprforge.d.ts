@@ -90,7 +90,7 @@ declare module "exprforge" {
     // throws with a clear message otherwise. Called once, up front, by
     // useExprForge.ts, so an unbound identifier surfaces as ONE top-level
     // error (same tier as a parse error) rather than the identical
-    // message repeated across all 18 per-language cards.
+    // message repeated across every per-language card.
     export function checkUnboundVars(def: FnDef): void;
     // Real Emitter instances, not just {ext} -- exposed for callers that
     // want to enumerate registered languages (e.g. to build `langs` for

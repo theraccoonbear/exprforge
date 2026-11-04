@@ -6,14 +6,14 @@ name: Test Coverage
 # Node's own built-in coverage instrumentation (--experimental-test-
 # coverage), gated on a fixed threshold. Deliberately scoped to
 # Interpreter only, not the whole suite: this workflow installs no
-# per-language toolchain at all, unlike the 17 test-<lang>.yml workflows
+# per-language toolchain at all, unlike the per-language test-<lang>.yml workflows
 # (each installing exactly one) -- every toolchain-dependent conformance
 # check would otherwise either skip (harmless, but dilutes the number)
 # or, if a runner image happens to ship some SDK already, run
 # inconsistently from one CI run to the next. Neither is a stable basis
 # for a regression gate. Real cross-language correctness is already
 # verified by actually compiling and running the emitted output, in
-# those other 17 workflows -- this one measures something different (how
+# those other workflows -- this one measures something different (how
 # much of the JS source itself gets exercised), and needs a
 # deterministic, toolchain-free environment to mean the same thing every
 # time it runs.

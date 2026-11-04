@@ -12,7 +12,7 @@
 // (all built around scalar-only positional arguments) to also construct
 // and pass an array argument per language's own calling convention, a
 // real, separate undertaking of its own, not a quick extension. Instead:
-// every one of the 17 emitters that implements array indexing was
+// every executable emitter that implements array indexing was
 // manually verified against its real toolchain during development
 // (js/ts/python/c/rust/perl/go/java/php/lua/julia/scheme/zig/fortran
 // actually executed and confirmed correct; qb64 confirmed to compile,
