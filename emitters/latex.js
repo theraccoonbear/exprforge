@@ -37,9 +37,27 @@
 // number), a multi-letter identifier on either side (\mathit{rate}
 // \cdot \mathit{time}, never "ratetime"), and a cases block on either
 // side. Scientific-notation literals always use \times 10^{k} regardless.
+//
+// `opts.wrap`: "none" (default, bare math-mode content) | "inline" ($...$)
+// | "display" ($$ on their own lines) | "equation" (equation environment)
+// | "document" (a minimal standalone article using amsmath, which
+// provides aligned, cases, \operatorname, \text and \lvert). Applies to
+// functions and suites alike.
 const Emitter = require("./base.js");
 
 const MUL_SYMBOLS = { implicit: null, cdot: "\\cdot", times: "\\times" };
+
+// Each wrapper receives the bare output (which already ends in a newline)
+// and returns it wrapped, keeping the trailing newline. "document" is a
+// complete file; concatenating several of them is not valid LaTeX.
+const WRAPS = {
+    none: (body) => body,
+    inline: (body) => `$${body.replace(/\n$/, "")}$\n`,
+    display: (body) => `$$\n${body}$$\n`,
+    equation: (body) => `\\begin{equation}\n${body}\\end{equation}\n`,
+    document: (body) =>
+        `\\documentclass{article}\n\\usepackage{amsmath}\n\\begin{document}\n\\[\n${body}\\]\n\\end{document}\n`,
+};
 
 // NEG: a negated literal or a unary minus applied to a tighter-binding
 // term -- fine as a product's left factor (-5 x), never as its right.
@@ -155,6 +173,16 @@ class LatexEmitter extends Emitter {
         if (typeof greekLetters !== "boolean") {
             throw new Error(`emitter for .${this.ext}: greekLetters must be true or false, got ${JSON.stringify(greekLetters)}`);
         }
+        const wrap = opts.wrap ?? "none";
+        if (typeof wrap !== "string" || !Object.hasOwn(WRAPS, wrap)) {
+            throw new Error(
+                `emitter for .${this.ext}: unknown wrap ${JSON.stringify(wrap)} -- expected one of: ${Object.keys(WRAPS).join(", ")}`,
+            );
+        }
+        return WRAPS[wrap](this._emitBare(fn, registry, opts, mulSymbol, greekLetters));
+    }
+
+    _emitBare(fn, registry, opts, mulSymbol, greekLetters) {
         const prev = this._state;
         try {
             this._state = { mulSymbol, greek: greekLetters, literal: new Set(), seen: new Map() };
