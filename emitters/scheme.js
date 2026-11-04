@@ -124,15 +124,22 @@ const emitter = new SchemeEmitter({
         trunc: fn1("truncate"),
         min: fn2("min"), max: fn2("max"),
         // No hypot procedure -- derive it directly.
-        hypot: ([a, b]) => `(sqrt (+ (* ${a} ${a}) (* ${b} ${b})))`,
+        hypot: ([a, b]) =>
+            `(let ((a (abs ${a})) (b (abs ${b}))) (let ((s (+ (* a a) (* b b)))) ` +
+            `(if (and (< s 1e300) (> s 1e-290)) (sqrt s) ` +
+            `(cond ((or (= a +inf.0) (= b +inf.0)) +inf.0) ` +
+            `((or (not (= a a)) (not (= b b))) +nan.0) ` +
+            `((= (max a b) 0.0) 0.0) ` +
+            `(else (let ((r (/ (min a b) (max a b)))) (* (max a b) (sqrt (+ 1.0 (* r r))))))))))`,
         // No sign procedure either -- build it directly. Zero-aware by
         // construction (see Go's/Rust's sign() history in this project for
         // what happens when it isn't).
-        sign: ([x]) => `(if (> ${x} 0.0) 1.0 (if (< ${x} 0.0) -1.0 0.0))`,
+        sign: ([x]) => `(if (> ${x} 0.0) 1.0 (if (< ${x} 0.0) -1.0 (+ ${x} 0.0)))`,
         // modulo is traditional Scheme's floor-mod procedure (result
         // takes the sign of the divisor), distinct from remainder
         // (dividend's sign) -- the right one here, no correction needed.
-        wrapIndex: fn2("modulo"),
+        wrapIndex: ([i, m]) =>
+            `(let ((ef-m ${m})) (if (= ef-m 0.0) +nan.0 (truncate-remainder (+ (truncate-remainder ${i} ef-m) ef-m) ef-m)))`,
         clampIndex: ([i, lo, hi]) => `(max ${lo} (min ${hi} ${i}))`,
     },
     // vector-ref requires an exact non-negative integer index -- every

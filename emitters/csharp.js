@@ -39,7 +39,7 @@ const emitter = new Emitter({
         ceil: fn1("Ceiling"), trunc: fn1("Truncate"),
         pow: fn2("Pow"), atan2: fn2("Atan2"), min: fn2("Min"), max: fn2("Max"),
         // Math.Sign returns int, not double -- our AST is float64-only throughout.
-        sign: ([x]) => `((double) Math.Sign(${x}))`,
+        sign: ([x]) => `(${x} > 0.0 ? 1.0 : (${x} < 0.0 ? -1.0 : ${x} + 0.0))`,
         // .NET's Math.Round(double) ties to EVEN ("banker's rounding") by
         // default, NOT this project's standardized round-half-AWAY-from-
         // zero convention -- see js.js's own comment and the root
@@ -50,7 +50,7 @@ const emitter = new Emitter({
         // needs to already read as a double, since nothing else in it is).
         round: ([x]) => `(Math.Sign(${x}) * Math.Floor(Math.Abs(${x}) + 0.5))`,
         // No Math.Hypot in .NET -- same manual formula as QB64's/C's.
-        hypot: ([a, b]) => `Math.Sqrt((${a}) * (${a}) + (${b}) * (${b}))`,
+        hypot: ([a, b]) => `double.Hypot(${a}, ${b})`,
         wrapIndex: ([i, m]) => `(((${i} % ${m}) + ${m}) % ${m})`,
         // Math.Clamp (.NET Core 2.0+) is a direct stdlib match for
         // clampIndex's semantics -- no hand-built max(lo, min(hi, i))

@@ -33,7 +33,7 @@ const emitter = new Emitter({
         // returns ±1 at x == 0 too, unlike JS's Math.sign(0) === 0 (and
         // C's/Java's sign, which both special-case zero). Found by the
         // kitchen-sink conformance test at exactly x - y == 0.
-        sign: ([x]) => `func() float64 { if ${x} > 0.0 { return 1.0 }; if ${x} < 0.0 { return -1.0 }; return 0.0 }()`,
+        sign: ([x]) => `func() float64 { if ${x} > 0.0 { return 1.0 }; if ${x} < 0.0 { return -1.0 }; return ${x} + 0.0 }()`,
         // Go's `%` doesn't work on float64 at all (compile error) --
         // math.Mod is the float-capable equivalent (sign-of-dividend per
         // its own docs), so the double-application wrap still applies.

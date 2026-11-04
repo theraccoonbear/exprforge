@@ -78,13 +78,13 @@ const emitter = new PerlEmitter({
         // No sign() anywhere in core, POSIX, or List::Util -- build it
         // directly. Zero-aware by construction (see Go's/Rust's sign()
         // history in this project for what happens when it isn't).
-        sign: ([x]) => `(${x} > 0 ? 1.0 : (${x} < 0 ? -1.0 : 0.0))`,
+        sign: ([x]) => `(${x} > 0 ? 1.0 : (${x} < 0 ? -1.0 : ${x} + 0.0))`,
         // Perl's % on non-integer operands has enough real-world edge-
         // case ambiguity (see perlop's own caveats) that this uses the
         // same self-correcting double-application wrap as the definitely-
         // sign-of-dividend languages, rather than trusting a specific
         // convention from memory alone.
-        wrapIndex: ([i, m]) => `(((${i} % ${m}) + ${m}) % ${m})`,
+        wrapIndex: ([i, m]) => `POSIX::fmod(POSIX::fmod(${i}, ${m}) + ${m}, ${m})`,
         clampIndex: ([i, lo, hi]) => `List::Util::max(${lo}, List::Util::min(${hi}, ${i}))`,
     },
     // Perl subs flatten every argument into one flat @_ list, so a real

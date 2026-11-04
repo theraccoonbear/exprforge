@@ -70,7 +70,14 @@ const emitter = new Emitter({
         // stdlib functions with the expected 1/2-arg float signatures.
         sqrt: mathFn("sqrt"), sin: mathFn("sin"), cos: mathFn("cos"), tan: mathFn("tan"),
         asin: mathFn("asin"), acos: mathFn("acos"), atan: mathFn("atan"), atan2: mathFn("atan2"),
-        hypot: mathFn("hypot"),
+        hypot: ([a, b]) => {
+            const hi = `@max(@abs(${a}), @abs(${b}))`;
+            const lo = `@min(@abs(${a}), @abs(${b}))`;
+            return `(if (std.math.isInf(${a}) or std.math.isInf(${b})) std.math.inf(f64) ` +
+                `else if (std.math.isNan(${a}) or std.math.isNan(${b})) std.math.nan(f64) ` +
+                `else if (${hi} == 0) @as(f64, 0.0) ` +
+                `else ${hi} * @sqrt(@as(f64, 1.0) + (${lo} / ${hi}) * (${lo} / ${hi})))`;
+        },
         // pow needs an explicit type argument (std.math.pow(T, x, y)) --
         // unlike every other std.math function here, it's not purely
         // inferred from its float arguments.
@@ -80,12 +87,12 @@ const emitter = new Emitter({
         // hand-built to get the zero case right (see Go's/Rust's sign()
         // history in this project for what happens when a language's
         // native sign function isn't).
-        sign: mathFn("sign"),
+        sign: ([x]) => `(if (${x} > 0) @as(f64, 1.0) else if (${x} < 0) @as(f64, -1.0) else ${x} + @as(f64, 0.0))`,
         // @mod is Zig's compiler builtin for floor-mod specifically
         // (Zig distinguishes it from @rem, the truncated/sign-of-
         // dividend version, precisely for this case) -- no sign
         // correction needed. std.math.clamp matches clampIndex directly.
-        wrapIndex: ([i, m]) => `@mod(${i}, ${m})`,
+        wrapIndex: ([i, m]) => `@rem(@rem(${i}, ${m}) + ${m}, ${m})`,
         clampIndex: ([i, lo, hi]) => `std.math.clamp(${i}, ${lo}, ${hi})`,
     },
     // Zig slice indexing requires a usize index. @intFromFloat's return

@@ -51,7 +51,7 @@ const emitter = new PhpEmitter({
         // No sign() either -- build it directly. Zero-aware by construction
         // (see Go's/Rust's sign() history in this project for what happens
         // when it isn't).
-        sign: ([x]) => `(${x} > 0 ? 1.0 : (${x} < 0 ? -1.0 : 0.0))`,
+        sign: ([x]) => `(${x} > 0 ? 1.0 : (${x} < 0 ? -1.0 : ${x} + 0.0))`,
         // PHP's % converts both operands to int first (silently
         // truncating) -- fmod() is the float-preserving equivalent,
         // sign-of-dividend per its docs, so the double-application wrap

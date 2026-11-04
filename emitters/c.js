@@ -44,7 +44,7 @@ const emitter = new Emitter({
         min: ([a, b]) => `(isnan(${a}) || isnan(${b}) ? (double) NAN : fmin(${a}, ${b}))`,
         max: ([a, b]) => `(isnan(${a}) || isnan(${b}) ? (double) NAN : fmax(${a}, ${b}))`,
         // No standard libm "sign" function — emit the comparison directly.
-        sign: ([x]) => `((${x}) > 0.0 ? 1.0 : ((${x}) < 0.0 ? -1.0 : 0.0))`,
+        sign: ([x]) => `((${x}) > 0.0 ? 1.0 : ((${x}) < 0.0 ? -1.0 : (${x}) + 0.0))`,
         // C's `%` is integer-only -- fmod (already available via
         // math.h) is the float-capable equivalent, sign-of-dividend like
         // C's integer %, so the double-application wrap still applies.

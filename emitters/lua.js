@@ -73,9 +73,15 @@ const emitter = new Emitter({
         // any number) is always truthy, unlike JS/Python/C. Zero-aware by
         // construction (see Go's/Rust's sign() history in this project for
         // what happens when it isn't).
-        sign: ([x]) => `((${x} > 0) and 1.0 or ((${x} < 0) and -1.0 or 0.0))`,
+        sign: ([x]) => `((${x} > 0) and 1.0 or ((${x} < 0) and -1.0 or (${x} + 0.0)))`,
         // No math.hypot in Lua's standard library at any version.
-        hypot: ([a, b]) => `math.sqrt((${a}) * (${a}) + (${b}) * (${b}))`,
+        hypot: ([a, b]) =>
+            `(function(a, b) a = math.abs(a); b = math.abs(b); local s = a * a + b * b; ` +
+            `if s < 1e300 and s > 1e-290 then return math.sqrt(s) end; ` +
+            `if a == math.huge or b == math.huge then return math.huge end; ` +
+            `if a ~= a or b ~= b then return 0 / 0 end; ` +
+            `if a < b then a, b = b, a end; if a == 0 then return 0.0 end; ` +
+            `local r = b / a; return a * math.sqrt(1 + r * r) end)(${a}, ${b})`,
         // Lua's % is documented in the reference manual as `a - floor(a/b)*b`
         // -- floor-mod, same as Python's -- so no sign-correction wrapper
         // is needed here either.
