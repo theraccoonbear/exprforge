@@ -799,6 +799,29 @@ function runTS(ast, inputs) {
 // confirmed against a real compiler. Plain Number() doesn't understand
 // that and silently gives NaN, so this is needed on every value QB64
 // prints, not just ones near the E/D-notation-vs-fixed threshold.
+// Harness-side helpers (not part of the emitted code under test). VAL()
+// cannot read NaN/Infinity/-0, and PRINT drops the sign of zero and shows
+// only ~15 digits, so non-finite and signed-zero values are synthesized
+// at runtime from a variable zero (a literal would be constant-folded)
+// and printed through ef_show$ instead.
+const QB64_HARNESS_HELPERS =
+    `FUNCTION ef_arg# (s AS STRING)\n` +
+    `    DIM z AS DOUBLE\n` +
+    `    z = 0#\n` +
+    `    IF s = "NaN" THEN\n        ef_arg# = z / z\n` +
+    `    ELSEIF s = "Infinity" THEN\n        ef_arg# = 1# / z\n` +
+    `    ELSEIF s = "-Infinity" THEN\n        ef_arg# = -1# / z\n` +
+    `    ELSEIF s = "-0" THEN\n        ef_arg# = z * -1#\n` +
+    `    ELSE\n        ef_arg# = VAL(s)\n    END IF\n` +
+    `END FUNCTION\n\n` +
+    `FUNCTION ef_show$ (x AS DOUBLE)\n` +
+    `    IF x <> x THEN\n        ef_show$ = "NaN"\n` +
+    `    ELSEIF x = 0# THEN\n        IF 1# / x < 0# THEN ef_show$ = "-0" ELSE ef_show$ = "0"\n` +
+    `    ELSEIF x > 1.7976931348623157D308 THEN\n        ef_show$ = "inf"\n` +
+    `    ELSEIF x < -1.7976931348623157D308 THEN\n        ef_show$ = "-inf"\n` +
+    `    ELSE\n        ef_show$ = _TRIM$(STR$(x))\n    END IF\n` +
+    `END FUNCTION\n\n`;
+
 function qb64ToNumber(str) {
     if (str.includes("QB64-RUNTIME-ERROR")) throw new Error(`QB64 runtime error: ${str}`);
     // QB64 prints "-NAN"/"NAN" for NaN and "inf"/"-inf" for Infinity
@@ -842,7 +865,7 @@ function qb64ArgReads(ast) {
                     `    ${p}_n = ${p}_n + 1\n` +
                     `LOOP`;
             }
-            return `DIM ${p} AS DOUBLE : ${p} = VAL(COMMAND$(${i + 1}))`;
+            return `DIM ${p} AS DOUBLE : ${p} = ef_arg#(COMMAND$(${i + 1}))`;
         })
         .join("\n");
 }
@@ -864,7 +887,7 @@ function runQB64(ast, inputs) {
     // this call site never hit the empty case before.
     const callExpr = callArgs ? `${ast.name}#(${callArgs})` : `${ast.name}#`;
     const harness =
-        `$CONSOLE:ONLY\n${source}\nON ERROR GOTO ef_fail\n${argReads}\nPRINT ${callExpr}\nSYSTEM\nef_fail:\nPRINT "QB64-RUNTIME-ERROR"; ERR\nSYSTEM\n`;
+        `$CONSOLE:ONLY\n${source}\n${QB64_HARNESS_HELPERS}ON ERROR GOTO ef_fail\n${argReads}\nPRINT ef_show$(${callExpr})\nSYSTEM\nef_fail:\nPRINT "QB64-RUNTIME-ERROR"; ERR\nSYSTEM\n`;
     const srcPath = path.join(dir, "main.bas");
     fs.writeFileSync(srcPath, harness);
     const bin = path.join(dir, "bin");
@@ -880,7 +903,7 @@ function runSuiteQB64(ast, inputs, outputNames) {
     const argReads = qb64ArgReads(ast);
     const callArgs = qb64CallArgs(ast);
     const outDecl = `DIM ${outputNames.join(" AS DOUBLE, ")} AS DOUBLE`;
-    const prints = outputNames.map((n) => `PRINT ${n}`).join("\n");
+    const prints = outputNames.map((n) => `PRINT ef_show$(${n})`).join("\n");
     // Same reasoning as runQB64's own callExpr above -- a leading comma
     // ("CALL name(, out1, out2)") if callArgs were ever empty would be
     // just as broken as the bare-parens case there. No zero-param SUITE
@@ -889,7 +912,7 @@ function runSuiteQB64(ast, inputs, outputNames) {
     // stays correct if one ever does.
     const allCallArgs = [callArgs, outputNames.join(", ")].filter(Boolean).join(", ");
     const harness =
-        `$CONSOLE:ONLY\n${source}\nON ERROR GOTO ef_fail\n${argReads}\n${outDecl}\n` +
+        `$CONSOLE:ONLY\n${source}\n${QB64_HARNESS_HELPERS}ON ERROR GOTO ef_fail\n${argReads}\n${outDecl}\n` +
         `CALL ${ast.name}(${allCallArgs})\n${prints}\nSYSTEM\nef_fail:\nPRINT "QB64-RUNTIME-ERROR"; ERR\nSYSTEM\n`;
     const srcPath = path.join(dir, "main.bas");
     fs.writeFileSync(srcPath, harness);
@@ -2203,3 +2226,84 @@ for (const ast of splineFrameAsts) {
 test("mathDemo: round-trips through the expr-syntax emitter and back through fn()", () => {
     assertExprSyntaxRoundTrips(mathDemoAst, MATH_DEMO_INPUTS);
 });
+
+// --- samples/boundary-conditions-demo.js -----------------------------------
+//
+// Issue #45: huge / non-finite / signed-zero / subnormal / degenerate
+// operands against every real toolchain. See that file's header and
+// README "Numeric guarantees" for the per-behavior outcome.
+{
+    const B = require("../samples/boundary-conditions-demo.js");
+    const NaN_ = NaN;
+    const INF = Infinity;
+    const NZ = -0;
+
+    registerSuiteConformance("boundary.rounding", {
+        ast: B.roundingBoundaryAst,
+        inputs: [
+            [1e300], [-1e300], [9.3e18], [-9.3e18], [2147483648.5], [4503599627370497], [-4503599627370497],
+            [2 ** 53], [1e15 + 0.5], [INF], [-INF], [NaN_], [NZ], [0.4], [-0.4], [0.5], [-0.5],
+        ],
+        signedZero: true,
+    });
+    registerConformance("boundary.sign", {
+        ast: B.signBoundaryAst,
+        inputs: [[5], [-5], [0], [NZ], [NaN_], [INF], [-INF], [5e-324], [-5e-324]],
+        signedZero: true,
+    });
+    registerConformance("boundary.hypot", {
+        ast: B.hypotBoundaryAst,
+        inputs: [
+            [3, 4], [1e200, 1e200], [1e308, 1e308], [1e-200, 1e-200], [5e-324, 5e-324], [1e-170, 1e-170],
+            [INF, 1], [-INF, 1], [INF, NaN_], [NaN_, INF], [NaN_, 1], [1, NaN_], [0, 0], [NZ, NZ], [NZ, 0],
+        ],
+        signedZero: true,
+    });
+    registerConformance("boundary.pow", {
+        ast: B.powBoundaryAst,
+        inputs: [
+            [0, 0], [NZ, 0], [NaN_, 0], [INF, 0], [1, NaN_], [1, INF], [1, -INF], [-1, INF], [-1, -INF],
+            [0, -1], [NZ, -1], [0, -2], [NZ, -2], [0, -0.5], [NZ, -0.5], [0, 3], [NZ, 3], [NZ, 2],
+            [INF, 2], [INF, -2], [-INF, 3], [-INF, 2], [-INF, -3], [-INF, -2],
+            [2, INF], [2, -INF], [0.5, INF], [0.5, -INF],
+            [-8, 3], [-8, 2], [-8, -3], [-8, 1 / 3], [-8, 0.5], [-2, 1e300], [-2, 1e15 + 1],
+            [2, 1024], [2, -1075], [2, 0.5], [NaN_, 1], [2, NaN_],
+        ],
+        signedZero: true,
+    });
+    registerConformance("boundary.atan2", {
+        ast: B.atan2BoundaryAst,
+        inputs: [
+            [0, 0], [NZ, 0], [0, NZ], [NZ, NZ], [0, 1], [NZ, 1], [0, -1], [NZ, -1],
+            [1, 0], [-1, 0], [1, NZ], [-1, NZ], [INF, INF], [INF, -INF], [-INF, INF], [-INF, -INF],
+            [1, INF], [1, -INF], [NaN_, 1], [1, NaN_],
+        ],
+        signedZero: true,
+    });
+    registerConformance("boundary.passThrough", {
+        ast: B.passThroughAst,
+        inputs: [[NaN_], [INF], [-INF], [NZ], [0], [5e-324], [-5e-324], [1.7976931348623157e308], [2.2250738585072014e-308]],
+        exact: true,
+    });
+    registerConformance("boundary.negate", {
+        ast: B.negateAst,
+        inputs: [[NZ], [0], [INF], [-INF], [NaN_]],
+        signedZero: true,
+    });
+    registerSuiteConformance("boundary.overflowSubnormal", {
+        ast: B.overflowBoundaryAst,
+        inputs: [
+            [1e200], [-1e200], [1e308], [-1e308], [1e155], [710], [-745], [-746], [709.5], [0],
+            [5e-324], [1e-320], [2.2250738585072014e-308],
+        ],
+        signedZero: true,
+    });
+    registerConformance("boundary.wrapIndex", {
+        ast: B.wrapIndexBoundaryAst,
+        inputs: [
+            [5, 0], [-5, 0], [0, 0], [5, -3], [-5, -3], [4, -4], [5.5, 3], [-5.5, 3], [5, 2.5], [-1, 2.5],
+            [5, 1], [5, INF], [-5, INF], [INF, 3], [NaN_, 3], [3, NaN_], [NZ, 3], [3, 3], [-3, 3],
+        ],
+        signedZero: true,
+    });
+}
