@@ -430,7 +430,6 @@ const DEFAULT_MAX_ULPS = 64;
 
 function showNum(x) {
     if (Object.is(x, -0)) return "-0";
-    if (Number.isFinite(x) && Math.abs(x) >= 1e15) return x.toExponential();
     return String(x);
 }
 
@@ -478,7 +477,9 @@ function assertClose(actual, expected, msg, opts = {}) {
 // Number -> CLI argument text. String() renders -0 as "0", which would
 // silently turn a signed-zero probe into a +0 probe on every target.
 function argText(x) {
-    return Object.is(x, -0) ? "-0" : String(x);
+    if (Object.is(x, -0)) return "-0";
+    if (Number.isFinite(x) && Math.abs(x) >= 1e15) return x.toExponential();
+    return String(x);
 }
 
 function hasTool(cmd, args) {
