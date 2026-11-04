@@ -1,6 +1,6 @@
 // Display metadata for each emitters/registry.js key -- labels and which
 // ones are toggled on by default. Deliberately a small curated default
-// set rather than all 19 at once (see the plan's "easily see multiple
+// set rather than every target at once (see the plan's "easily see multiple
 // toggleable outputs, not overwhelmed by all of them" requirement); the
 // full set is always one click away via the toggle chips.
 export interface LanguageMeta {

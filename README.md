@@ -19,6 +19,7 @@
 [![Zig](https://github.com/theraccoonbear/exprforge/actions/workflows/test-zig.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test-zig.yml)
 [![Scheme](https://github.com/theraccoonbear/exprforge/actions/workflows/test-scheme.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test-scheme.yml)
 [![COBOL](https://github.com/theraccoonbear/exprforge/actions/workflows/test-cobol.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test-cobol.yml)
+[![Octave](https://github.com/theraccoonbear/exprforge/actions/workflows/test-octave.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test-octave.yml)
 [![LaTeX](https://github.com/theraccoonbear/exprforge/actions/workflows/test-latex.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test-latex.yml)
 [![Test Coverage](https://github.com/theraccoonbear/exprforge/actions/workflows/test-coverage.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test-coverage.yml)
 [![VS Code Syntax](https://github.com/theraccoonbear/exprforge/actions/workflows/test-vscode-syntax.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test-vscode-syntax.yml)
@@ -27,8 +28,8 @@
 
 ExprForge authors a math formula once, as a small AST, and emits
 verified, identical-behavior implementations in JavaScript, TypeScript,
-Python, C#, Lua, QB64, C, Java, Go, Rust, Perl, PHP, Julia, Fortran, Zig,
-Scheme (Guile), and COBOL (GnuCOBOL) — plus a native in-process
+Python, C#, Lua, QB64, C, Java, Go, Rust, Perl, PHP, Julia, MATLAB/Octave,
+Fortran, Zig, Scheme (Guile), and COBOL (GnuCOBOL) — plus a native in-process
 evaluator, a printer for its own readable syntax, and typeset LaTeX
 output for documenting the formula itself. No required dependencies.
 
@@ -436,6 +437,10 @@ number":
   would need, and not worth risking reintroducing that crash for a
   target whose math intrinsics are already documented elsewhere as not
   fully reliable.
+- **MATLAB/Octave**: like Scheme, `sqrt`/`log`/`log2`/`log10`/`asin`/
+  `acos` and `pow` with a negative base silently return a **complex
+  number** for an out-of-domain real argument (`sqrt(-1)` ⇒ `0 + 1i`).
+  Fixed with real `if` guards in local helper functions.
 - Every other target (JS, TypeScript, C, Rust, Go, Java, Lua, PHP, Zig,
   C#) was already correct — clean IEEE754 NaN/Infinity, never throws.
 
@@ -476,6 +481,9 @@ argument order, not any documented rule):
   above: a real fix needs a new helper `FUNCTION-ID`, the exact shape
   already confirmed to crash GnuCOBOL's codegen when piled up with
   others.
+- **MATLAB/Octave** (`min`/`max`): NaN-**ignoring** by default —
+  `min(NaN, 5)` is `5` in either argument position. Fixed with a
+  self-inequality NaN check in a local helper function.
 - Every other target (JS, TypeScript, Go, Java, C#, Julia, Scheme,
   Fortran) already propagated NaN correctly.
 
@@ -760,6 +768,50 @@ session.evaluate(doubled, [21]); // 42
   a fresh `createSession()` instead of trying to unregister one
   macro/extern out of an existing one.
 
+## MATLAB / Octave target
+
+`emitters/matlab.js` (registry key `matlab`, extension `.m`) emits code
+restricted to the subset that behaves identically in MATLAB and GNU
+Octave. **CI exercises Octave only** (`test-octave.yml`: Ubuntu 24.04's
+`octave` package from apt, `octave-cli --version` is printed in the log,
+tests run through `octave-cli`, never the GUI). MATLAB itself is not
+installed in CI, so MATLAB compatibility is by construction (shared
+syntax subset: `end`-terminated functions, `~=`, `||` on scalars, no
+Octave-only extensions) and is not machine-verified.
+
+How each cross-target behavior is handled:
+
+| Behavior | Handling |
+|---|---|
+| `round` | native `round`, which ties away from zero in both |
+| Domain errors | `sqrt`/`log`/`log2`/`log10`/`asin`/`acos`/`pow` call `ef_*` helper functions with a real `if` guard, returning `NaN` (or `-Inf` for `log*(0)`) instead of a complex number |
+| `min`/`max` | `ef_min`/`ef_max` return `NaN` if either operand is NaN; the native functions ignore NaN |
+| Division | native IEEE (`1/0` is `Inf`, `0/0` is `NaN`) |
+| `wrapIndex` | native `mod` (floor-mod). Exception: `mod(i, 0)` is `i`, where the interpreter yields NaN |
+| `clampIndex` | `ef_max(lo, ef_min(hi, i))`, so NaN propagates like `evaluate()` |
+| Comparisons | all six; `!=` is `~=` (MATLAB has no `!=`) |
+| `select` | `ef_select(cond, then, else)`, a helper with a real `if` |
+| Arrays | caller-side 0-based index, `arr(round(i) + 1)` |
+| Outputs | `function [a, b] = f(...)` |
+| Literals | JS shortest round-trip rendering (full double precision) |
+
+**Why a helper for `select`.** MATLAB has no conditional expression.
+Arithmetic emulation (`c*a + (1-c)*b`, the QB64 approach) turns an
+untaken-branch `Inf`/`NaN` into `NaN` (`0*Inf`). Indexing a literal
+(`[b, a](1 + c)`) is Octave-only. A helper function with an `if` returns
+the chosen value exactly, so an `Inf`/`NaN` in the untaken branch cannot
+leak (covered by the `selectNoLeak` test). Both branches are still
+evaluated as arguments, matching the "select is not a branch" contract.
+
+**File layout.** Each emitted function is followed by its local helper
+functions (all prefixed `ef_`), so one emitted function is one
+self-contained `.m` file, which must be saved as `<function name>.m`.
+To put several functions in one file, pass `{ includeHelpers: false }` for
+every call after the first (see `docs/multi-function-files.md`). In
+MATLAB only the first function of a file is callable from outside it; in
+Octave, a file loaded with `source()` needs a leading `1;` line to define
+all of its functions.
+
 ## Adding a language
 
 Write `emitters/<lang>.js` exporting an `Emitter` instance (see any
@@ -847,7 +899,10 @@ expression model without introducing control flow:
   number is always truthy, so this never mis-selects at zero), an
   immediately-invoked function in Go (which has neither ternary nor an
   `if`-expression), and the equivalent arithmetic expression in QB64
-  (which has no conditional expression syntax whatsoever).
+  (which has no conditional expression syntax whatsoever), and a small
+  local helper function with a real `if` statement in MATLAB/Octave
+  (see "MATLAB / Octave target" below for why that, and not arithmetic
+  emulation or an indexing idiom).
 
   **`select` is not a branch** — modeled as if both `then` and `else`
   are always evaluated, matching the three real targets where that's
@@ -1421,6 +1476,7 @@ multi-value idiom it has, since none of them agree:
 | C#, Julia | a native named value tuple / named tuple |
 | C / Rust / Zig | a small `...Result` struct, returned by value |
 | Java, Python | a nested/local `Result` class |
+| MATLAB/Octave | native multiple return values, `function [rx, ry] = f(...)`, called as `[rx, ry] = f(...)` |
 | QB64, Fortran | a `SUB`/`subroutine` with the outputs as trailing by-reference (`intent(out)`) parameters |
 | Perl | a hash ref (`{ rx => ..., ry => ... }`) |
 | PHP | an associative array (`['rx' => ..., 'ry' => ...]`) |
@@ -1525,7 +1581,7 @@ Runs `node --test`. For each sample, that's three kinds of check:
 The compiled/interpreted-language checks need their toolchain on `PATH`
 and skip (not fail) when it's missing, so `npm test` degrades gracefully
 on any one machine. Every one of `tsc`/`qb64pe`/`dotnet`/`python3`/`lua`/
-`perl`/`php`/`julia`/`gfortran`/`zig`/`guile3.0`/`cobc` is treated exactly
+`perl`/`php`/`julia`/`octave-cli`/`gfortran`/`zig`/`guile3.0`/`cobc` is treated exactly
 like gcc/go/rustc/javac: looked up on `PATH`, never a project
 dependency — exprforge only ever generates source text for these, it
 doesn't execute or type-check any of it itself. `package.json` has zero

@@ -6,7 +6,7 @@
 // JS/C-spelled token inside their emitSelect (the only place a cmp() op is
 // ever actually printed -- see ast.js's own comment: cmp is never a general
 // boolean expression, only select()'s cond). ">" "<" ">=" "<=" happen to be
-// spelled identically in every one of this project's 19 targets, so those
+// spelled identically in every one of this project's registered targets, so those
 // four masked the bug completely; QB64 has no "==" or "!=" at all (needs
 // "=" / "<>"), Fortran has no "!=" (needs "/="), and Lua has no "!=" (needs
 // "~="). Every one of those is a real compile error on a real compiler
@@ -111,7 +111,7 @@ test("every registered emitter prints a real, valid comparison operator for == a
 
 test("every registered emitter prints the four operators shared identically across every target (>, <, >=, <=)", () => {
     // Unlike ==/!=, these four really are spelled the same everywhere in
-    // this project's 19 targets (confirmed by the per-language audit that
+    // this project's registered targets (confirmed by the per-language audit that
     // found the ==/!= bug in the first place) -- this just locks that in,
     // so a FUTURE target with different spelling (rare, but not
     // impossible) fails here immediately instead of joining qb64/fortran/
