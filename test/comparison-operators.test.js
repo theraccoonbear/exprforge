@@ -57,6 +57,15 @@ const EXPECTED = {
     // inline at all -- see CMP_HELPERS in emitters/cobol.js. Already
     // correct before this file existed, included for the same reason.
     cobol: { eq: "ef-cmp-eq", ne: "ef-cmp-ne" },
+    // latex: typeset math, not code -- "=" and "\neq" inside a cases
+    // block's "\text{if }" row. Neither JS token may leak through.
+    latex: { eq: "x = 5", ne: "x \\neq 5", forbidEq: "==", forbidNe: "!=" },
+};
+
+// Same idea for the four operators every CODE target spells identically:
+// only targets whose spelling differs are listed.
+const SHARED_OP_SPELLING = {
+    latex: { ">": "x > 5", "<": "x < 5", ">=": "x \\geq 5", "<=": "x \\leq 5" },
 };
 
 function expectedFor(lang) {
@@ -109,9 +118,10 @@ test("every registered emitter prints the four operators shared identically acro
     for (const op of [">", "<", ">=", "<="]) {
         for (const [lang, emitter] of Object.entries(emitters)) {
             const source = emitter.emitFunction(makeFn(op));
+            const spelled = SHARED_OP_SPELLING[lang]?.[op] ?? op;
             assert.ok(
-                source.includes(op),
-                `${lang}: "${op}" should appear unchanged in the emitted source -- got:\n${source}`,
+                source.includes(spelled),
+                `${lang}: "${op}" should appear as "${spelled}" in the emitted source -- got:\n${source}`,
             );
         }
     }

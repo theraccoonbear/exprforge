@@ -45,7 +45,7 @@ const PORT = 4310;
 // it plain, with that prefix stripped, reproduces the exact same app
 // bundle without needing to fight vite's own preview-server base-path
 // handling just to serve a directory locally for this one script.
-const MIME = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".svg": "image/svg+xml" };
+const MIME = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".svg": "image/svg+xml", ".woff2": "font/woff2", ".woff": "font/woff", ".ttf": "font/ttf" };
 
 function startServer() {
     const server = createServer(async (req, res) => {
@@ -171,9 +171,56 @@ async function main() {
             "a playground share link must activate the Playground tab",
         );
 
+        // --- LaTeX card: KaTeX preview and third-party links ---------------
+        // Off by default, so enable it via its toggle chip. The links must
+        // be plain anchors (never auto-loaded) with the expected prefixes,
+        // and a formula too long for a practical URL must degrade to a
+        // disabled note rather than a link.
+        await page.evaluate(() => localStorage.clear());
+        await page.goto(`http://localhost:${PORT}/?tool=playground&src=${encodeURIComponent("f(x): return x^2 + 1/x;")}`);
+        await page.waitForSelector(".cm-content", { timeout: 15000 });
+        await page.click(".toggle-chip:text-is('LaTeX')");
+        await page.waitForSelector(".latex-preview .katex", { timeout: 15000 });
+        const links = await page.$$eval(".latex-links a", (as) =>
+            as.map((a) => ({ text: a.textContent, href: a.href, target: a.target, rel: a.rel, title: a.title })),
+        );
+        assert.strictEqual(links.length, 2, "expected CodeCogs and Overleaf links");
+        assert.ok(
+            (await page.$eval(".latex-preview", (el) => el.textContent)).includes("f"),
+            "preview must render the formula",
+        );
+        assert.ok(
+            decodeURIComponent(links[0].href.split("?")[1]).startsWith("f\\left(x\\right) = x^{2}"),
+            "the LaTeX card must reflect the typed ?src= formula, not the default example",
+        );
+        const [cogs, overleaf] = links;
+        assert.ok(cogs.href.startsWith("https://latex.codecogs.com/svg.image?"), `CodeCogs href: ${cogs.href}`);
+        assert.ok(overleaf.href.startsWith("https://www.overleaf.com/docs?snip="), `Overleaf href: ${overleaf.href}`);
+        assert.ok(
+            decodeURIComponent(overleaf.href.split("snip=")[1]).startsWith("\\documentclass{article}"),
+            "Overleaf link must carry the wrap: document source",
+        );
+        assert.ok(
+            !decodeURIComponent(cogs.href.split("?")[1]).includes("\\documentclass"),
+            "CodeCogs link must carry the bare source",
+        );
+        for (const l of links) {
+            assert.strictEqual(l.target, "_blank");
+            assert.ok(l.rel.includes("noopener") && l.rel.includes("noreferrer"), `rel: ${l.rel}`);
+            assert.ok(/third-party/.test(l.title), `title must note the third-party send: ${l.title}`);
+        }
+        const longSource = `f(x): return ${Array.from({ length: 900 }, () => "x").join(" + ")};`;
+        await page.evaluate((src) => localStorage.setItem("exprforge-playground:source", src), longSource);
+        await page.goto(`http://localhost:${PORT}/?tool=playground`);
+        await page.waitForSelector(".cm-content", { timeout: 15000 });
+        if (!(await page.$(".toggle-chip--active:text-is('LaTeX')"))) await page.click(".toggle-chip:text-is('LaTeX')");
+        await page.waitForSelector(".latex-links", { timeout: 15000 });
+        assert.strictEqual(await page.$$eval(".latex-links a", (as) => as.length), 0, "over-long formulas must not render link anchors");
+        assert.strictEqual(await page.$$eval(".latex-link--disabled", (e) => e.length), 2, "both links must render disabled for an over-long formula");
+
         assert.strictEqual(pageErrors.length, 0, `unexpected uncaught page error(s): ${pageErrors.join("; ")}`);
 
-        console.log(`playground e2e regression: all checks passed (${exampleIds.length} examples + stale-content + live-error + share-link-tab checks)`);
+        console.log(`playground e2e regression: all checks passed (${exampleIds.length} examples + stale-content + live-error + share-link-tab + LaTeX preview/link checks)`);
     } finally {
         await browser.close();
         server.close();

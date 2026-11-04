@@ -20,6 +20,7 @@ const emitters = {
     scheme: require("./scheme.js"),
     cobol: require("./cobol.js"),
     expr: require("./exprsyntax.js"),
+    latex: require("./latex.js"),
 };
 
 // Each emitter learns its own registered key here, once -- base.js's
