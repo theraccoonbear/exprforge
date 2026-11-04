@@ -413,7 +413,42 @@ const SAMPLES = {
 // produced NaN/Infinity as an expected reference value: this couldn't
 // have proven it correct even when it was. Special-cased below instead
 // of just hoped never to matter.
-function assertClose(actual, expected, msg) {
+function ulpDistance(a, b) {
+    if (a === b) return 0;
+    const view = new DataView(new ArrayBuffer(16));
+    view.setFloat64(0, a);
+    view.setFloat64(8, b);
+    const ordered = (off) => {
+        const bits = view.getBigInt64(off);
+        return bits < 0n ? -(bits & 0x7fffffffffffffffn) : bits;
+    };
+    const d = ordered(0) - ordered(8);
+    return Number(d < 0n ? -d : d);
+}
+
+const DEFAULT_MAX_ULPS = 64;
+
+function showNum(x) {
+    return Object.is(x, -0) ? "-0" : String(x);
+}
+
+// Comparison policy (see README "Numeric guarantees"): NaN only matches
+// NaN, each infinity only matches itself, and finite values must agree
+// within `maxUlps` units in the last place -- a purely relative bound,
+// so a result near 1e-12 is held to the same precision as one near 1.
+// There is deliberately no absolute floor: an expected value of exactly
+// 0 requires exactly 0 (either sign) unless the call site opts into an
+// explicit `absTol` for a known cancellation-to-zero case.
+// Options:
+//   exact       Object.is on every value (also distinguishes +0 / -0)
+//   signedZero  tolerant comparison, but a zero must match the zero's sign
+//   maxUlps     override the default ULP budget
+//   absTol      explicit absolute tolerance for cancellation-to-zero cases
+function assertClose(actual, expected, msg, opts = {}) {
+    if (opts.exact) {
+        assert.ok(Object.is(actual, expected), `${msg}: got ${showNum(actual)}, expected ${showNum(expected)} (exact, Object.is)`);
+        return;
+    }
     if (Number.isNaN(expected) || Number.isNaN(actual)) {
         assert.ok(
             Number.isNaN(expected) && Number.isNaN(actual),
@@ -422,16 +457,26 @@ function assertClose(actual, expected, msg) {
         return;
     }
     if (!Number.isFinite(expected) || !Number.isFinite(actual)) {
-        // Infinity has no "close enough" -- +Infinity and -Infinity are
-        // not approximately equal to each other, or to any finite value.
         assert.strictEqual(actual, expected, `${msg}: got ${actual}, expected ${expected}`);
         return;
     }
-    const tol = 1e-9 * Math.max(1, Math.abs(expected));
+    if (opts.signedZero && actual === 0 && expected === 0) {
+        assert.ok(Object.is(actual, expected), `${msg}: got ${showNum(actual)}, expected ${showNum(expected)} (signed zero)`);
+        return;
+    }
+    if (opts.absTol !== undefined && Math.abs(actual - expected) <= opts.absTol) return;
+    const maxUlps = opts.maxUlps ?? DEFAULT_MAX_ULPS;
+    const ulps = ulpDistance(actual, expected);
     assert.ok(
-        Math.abs(actual - expected) <= tol,
-        `${msg}: got ${actual}, expected ${expected} (diff ${Math.abs(actual - expected)})`,
+        ulps <= maxUlps,
+        `${msg}: got ${actual}, expected ${expected} (${ulps} ulps apart, budget ${maxUlps}, diff ${Math.abs(actual - expected)})`,
     );
+}
+
+// Number -> CLI argument text. String() renders -0 as "0", which would
+// silently turn a signed-zero probe into a +0 probe on every target.
+function argText(x) {
+    return Object.is(x, -0) ? "-0" : String(x);
 }
 
 function hasTool(cmd, args) {
@@ -545,7 +590,7 @@ function runEval(ast, inputs) {
 //
 // Array-typed params (see ast.js's paramTypes): the CLI-arg side needs no
 // change at all -- String([10, 20, 30]) is already "10,20,30" for free
-// (see args.map(String) below, unchanged from the scalar-only original).
+// (see args.map(argText) below, unchanged from the scalar-only original).
 // Only the per-language HARNESS text generated here needs a real parsing
 // snippet for that one param instead of a bare atof() -- fixed-size
 // buffer (256 elements), strtok() splits on "," in place. c.js's own
@@ -572,11 +617,11 @@ function runC(ast, inputs) {
     const callArgs = ast.params.join(", ");
     const harness =
         `#include <stdio.h>\n#include <stdlib.h>\n#include <string.h>\n#include "fn.c"\n` +
-        `int main(int argc, char **argv) {\n    ${decls}\n    printf("%.17f", ${ast.name}(${callArgs}));\n    return 0;\n}\n`;
+        `int main(int argc, char **argv) {\n    ${decls}\n    printf("%.17g", ${ast.name}(${callArgs}));\n    return 0;\n}\n`;
     fs.writeFileSync(path.join(dir, "main.c"), harness);
     const bin = path.join(dir, "bin");
     execFileSync("gcc", [path.join(dir, "main.c"), "-o", bin, "-lm"]);
-    const results = inputs.map((args) => parseNumericOutput(execFileSync(bin, args.map(String)).toString()));
+    const results = inputs.map((args) => parseNumericOutput(execFileSync(bin, args.map(argText)).toString()));
     fs.rmSync(dir, { recursive: true, force: true });
     return results;
 }
@@ -623,11 +668,11 @@ function runGo(ast, inputs) {
         `package main\n\n` +
         `import (\n\t"fmt"\n${usesMath ? `\t"math"\n` : ""}${hasParams ? `\t"os"\n` : ""}${goUsesArray(ast) ? `\t"strings"\n` : ""}${hasParams ? `\t"strconv"\n` : ""})\n\n` +
         `${funcDecl}\n` +
-        `func main() {\n${parses}\n\tfmt.Printf("%.17f", ${capitalize(ast.name)}(${callArgs}))\n}\n`;
+        `func main() {\n${parses}\n\tfmt.Printf("%.17g", ${capitalize(ast.name)}(${callArgs}))\n}\n`;
     fs.writeFileSync(path.join(dir, "main.go"), mainSrc);
     const bin = path.join(dir, "bin");
     execFileSync("go", ["build", "-o", bin, "."], { cwd: dir });
-    const results = inputs.map((args) => parseNumericOutput(execFileSync(bin, args.map(String)).toString()));
+    const results = inputs.map((args) => parseNumericOutput(execFileSync(bin, args.map(argText)).toString()));
     fs.rmSync(dir, { recursive: true, force: true });
     return results;
 }
@@ -665,13 +710,13 @@ function runRust(ast, inputs) {
         `fn main() {\n` +
         `    let args: Vec<String> = std::env::args().collect();\n` +
         `${parses}\n` +
-        `    print!("{:.17}", ${ast.name}(${callArgs}));\n` +
+        `    print!("{:e}", ${ast.name}(${callArgs}));\n` +
         `}\n`;
     const srcPath = path.join(dir, "main.rs");
     fs.writeFileSync(srcPath, mainSrc);
     const bin = path.join(dir, "bin");
     execFileSync("rustc", ["-O", srcPath, "-o", bin]);
-    const results = inputs.map((args) => parseNumericOutput(execFileSync(bin, args.map(String)).toString()));
+    const results = inputs.map((args) => parseNumericOutput(execFileSync(bin, args.map(argText)).toString()));
     fs.rmSync(dir, { recursive: true, force: true });
     return results;
 }
@@ -705,13 +750,13 @@ function runJava(ast, inputs) {
         `public class Main {\n` +
         `    public static void main(String[] args) {\n` +
         `${parses}\n` +
-        `        System.out.printf("%.17f", ${className}.${ast.name}(${callArgs}));\n` +
+        `        System.out.println(${className}.${ast.name}(${callArgs}));\n` +
         `    }\n` +
         `}\n`;
     fs.writeFileSync(path.join(dir, "Main.java"), mainSrc);
     execFileSync("javac", ["-d", dir, path.join(dir, `${className}.java`), path.join(dir, "Main.java")]);
     const results = inputs.map((args) =>
-        parseNumericOutput(execFileSync("java", ["-cp", dir, "Main", ...args.map(String)]).toString()),
+        parseNumericOutput(execFileSync("java", ["-cp", dir, "Main", ...args.map(argText)]).toString()),
     );
     fs.rmSync(dir, { recursive: true, force: true });
     return results;
@@ -823,7 +868,7 @@ function runQB64(ast, inputs) {
     fs.writeFileSync(srcPath, harness);
     const bin = path.join(dir, "bin");
     execFileSync("qb64pe", ["-x", srcPath, "-o", bin]);
-    const results = inputs.map((args) => qb64ToNumber(execFileSync(bin, args.map(String)).toString().trim()));
+    const results = inputs.map((args) => qb64ToNumber(execFileSync(bin, args.map(argText)).toString().trim()));
     fs.rmSync(dir, { recursive: true, force: true });
     return results;
 }
@@ -850,7 +895,7 @@ function runSuiteQB64(ast, inputs, outputNames) {
     const bin = path.join(dir, "bin");
     execFileSync("qb64pe", ["-x", srcPath, "-o", bin]);
     const results = inputs.map((args) => {
-        const lines = execFileSync(bin, args.map(String)).toString().trim().split("\n");
+        const lines = execFileSync(bin, args.map(argText)).toString().trim().split("\n");
         const record = {};
         outputNames.forEach((name, i) => {
             record[name] = qb64ToNumber(lines[i]);
@@ -919,14 +964,14 @@ function runSuiteC(ast, inputs, outputNames) {
     const decls = cParamDecls(ast);
     const callArgs = ast.params.join(", ");
     const structName = `${capitalize(ast.name)}Result`;
-    const prints = outputNames.map((n) => `printf("%.17f\\n", r.${n});`).join(" ");
+    const prints = outputNames.map((n) => `printf("%.17g\\n", r.${n});`).join(" ");
     const harness =
         `#include <stdio.h>\n#include <stdlib.h>\n#include <string.h>\n#include "fn.c"\n` +
         `int main(int argc, char **argv) {\n    ${decls}\n    ${structName} r = ${ast.name}(${callArgs});\n    ${prints}\n    return 0;\n}\n`;
     fs.writeFileSync(path.join(dir, "main.c"), harness);
     const bin = path.join(dir, "bin");
     execFileSync("gcc", [path.join(dir, "main.c"), "-o", bin, "-lm"]);
-    const results = inputs.map((args) => parseSuiteOutput(execFileSync(bin, args.map(String)), outputNames));
+    const results = inputs.map((args) => parseSuiteOutput(execFileSync(bin, args.map(argText)), outputNames));
     fs.rmSync(dir, { recursive: true, force: true });
     return results;
 }
@@ -940,7 +985,7 @@ function runSuiteGo(ast, inputs, outputNames) {
     const parses = goParamParses(ast);
     const callArgs = ast.params.join(", ");
     const resultVars = outputNames.map((_, i) => `r${i}`).join(", ");
-    const printFmt = outputNames.map(() => "%.17f").join("\\n");
+    const printFmt = outputNames.map(() => "%.17g").join("\\n");
     const mainSrc =
         `package main\n\n` +
         `import (\n\t"fmt"\n${usesMath ? `\t"math"\n` : ""}\t"os"\n${goUsesArray(ast) ? `\t"strings"\n` : ""}\t"strconv"\n)\n\n` +
@@ -949,7 +994,7 @@ function runSuiteGo(ast, inputs, outputNames) {
     fs.writeFileSync(path.join(dir, "main.go"), mainSrc);
     const bin = path.join(dir, "bin");
     execFileSync("go", ["build", "-o", bin, "."], { cwd: dir });
-    const results = inputs.map((args) => parseSuiteOutput(execFileSync(bin, args.map(String)), outputNames));
+    const results = inputs.map((args) => parseSuiteOutput(execFileSync(bin, args.map(argText)), outputNames));
     fs.rmSync(dir, { recursive: true, force: true });
     return results;
 }
@@ -959,7 +1004,7 @@ function runSuiteRust(ast, inputs, outputNames) {
     const dir = tmpDir("ef-rs-");
     const parses = rustParamParses(ast);
     const callArgs = rustCallArgs(ast);
-    const prints = outputNames.map((n) => `println!("{:.17}", r.${n});`).join("\n    ");
+    const prints = outputNames.map((n) => `println!("{:e}", r.${n});`).join("\n    ");
     const mainSrc =
         `${source}\n` +
         `fn main() {\n` +
@@ -972,7 +1017,7 @@ function runSuiteRust(ast, inputs, outputNames) {
     fs.writeFileSync(srcPath, mainSrc);
     const bin = path.join(dir, "bin");
     execFileSync("rustc", ["-O", srcPath, "-o", bin]);
-    const results = inputs.map((args) => parseSuiteOutput(execFileSync(bin, args.map(String)), outputNames));
+    const results = inputs.map((args) => parseSuiteOutput(execFileSync(bin, args.map(argText)), outputNames));
     fs.rmSync(dir, { recursive: true, force: true });
     return results;
 }
@@ -984,20 +1029,19 @@ function runSuiteJava(ast, inputs, outputNames) {
     fs.writeFileSync(path.join(dir, `${className}.java`), source);
     const parses = javaParamParses(ast);
     const callArgs = ast.params.join(", ");
-    const printFmt = outputNames.map(() => "%.17f").join("\\n");
-    const printArgs = outputNames.map((n) => `r.${n}`).join(", ");
+    const printStmts = outputNames.map((n) => `        System.out.println(r.${n});`).join("\n");
     const mainSrc =
         `public class Main {\n` +
         `    public static void main(String[] args) {\n` +
         `${parses}\n` +
         `        ${className}.Result r = ${className}.${ast.name}(${callArgs});\n` +
-        `        System.out.printf("${printFmt}\\n", ${printArgs});\n` +
+        `${printStmts}\n` +
         `    }\n` +
         `}\n`;
     fs.writeFileSync(path.join(dir, "Main.java"), mainSrc);
     execFileSync("javac", ["-d", dir, path.join(dir, `${className}.java`), path.join(dir, "Main.java")]);
     const results = inputs.map((args) =>
-        parseSuiteOutput(execFileSync("java", ["-cp", dir, "Main", ...args.map(String)]), outputNames),
+        parseSuiteOutput(execFileSync("java", ["-cp", dir, "Main", ...args.map(argText)]), outputNames),
     );
     fs.rmSync(dir, { recursive: true, force: true });
     return results;
@@ -1058,7 +1102,7 @@ function runCSharp(ast, inputs) {
     const outDir = path.join(dir, "out");
     execFileSync("dotnet", ["build", "-c", "Release", "-o", outDir], { cwd: dir });
     const dll = path.join(outDir, "app.dll");
-    const results = inputs.map((args) => parseNumericOutput(execFileSync("dotnet", [dll, ...args.map(String)]).toString().trim()));
+    const results = inputs.map((args) => parseNumericOutput(execFileSync("dotnet", [dll, ...args.map(argText)]).toString().trim()));
     fs.rmSync(dir, { recursive: true, force: true });
     return results;
 }
@@ -1077,7 +1121,7 @@ function runSuiteCSharp(ast, inputs, outputNames) {
     const outDir = path.join(dir, "out");
     execFileSync("dotnet", ["build", "-c", "Release", "-o", outDir], { cwd: dir });
     const dll = path.join(outDir, "app.dll");
-    const results = inputs.map((args) => parseSuiteOutput(execFileSync("dotnet", [dll, ...args.map(String)]), outputNames));
+    const results = inputs.map((args) => parseSuiteOutput(execFileSync("dotnet", [dll, ...args.map(argText)]), outputNames));
     fs.rmSync(dir, { recursive: true, force: true });
     return results;
 }
@@ -1110,7 +1154,7 @@ function runPython(ast, inputs) {
     const harness = `${source}\nimport sys\n${parses}\nprint(repr(${ast.name}(${callArgs})))\n`;
     const srcPath = path.join(dir, "main.py");
     fs.writeFileSync(srcPath, harness);
-    const results = inputs.map((args) => parseNumericOutput(execFileSync("python3", [srcPath, ...args.map(String)]).toString().trim()));
+    const results = inputs.map((args) => parseNumericOutput(execFileSync("python3", [srcPath, ...args.map(argText)]).toString().trim()));
     fs.rmSync(dir, { recursive: true, force: true });
     return results;
 }
@@ -1124,7 +1168,7 @@ function runSuitePython(ast, inputs, outputNames) {
     const harness = `${source}\nimport sys\n${parses}\nr = ${ast.name}(${callArgs})\n${prints}\n`;
     const srcPath = path.join(dir, "main.py");
     fs.writeFileSync(srcPath, harness);
-    const results = inputs.map((args) => parseSuiteOutput(execFileSync("python3", [srcPath, ...args.map(String)]), outputNames));
+    const results = inputs.map((args) => parseSuiteOutput(execFileSync("python3", [srcPath, ...args.map(argText)]), outputNames));
     fs.rmSync(dir, { recursive: true, force: true });
     return results;
 }
@@ -1161,7 +1205,7 @@ function runLua(ast, inputs) {
     const harness = `${source}\n${parses}\nprint(string.format("%.17g", ${ast.name}(${callArgs})))\n`;
     const srcPath = path.join(dir, "main.lua");
     fs.writeFileSync(srcPath, harness);
-    const results = inputs.map((args) => parseNumericOutput(execFileSync("lua", [srcPath, ...args.map(String)]).toString().trim()));
+    const results = inputs.map((args) => parseNumericOutput(execFileSync("lua", [srcPath, ...args.map(argText)]).toString().trim()));
     fs.rmSync(dir, { recursive: true, force: true });
     return results;
 }
@@ -1176,7 +1220,7 @@ function runSuiteLua(ast, inputs, outputNames) {
     const harness = `${source}\n${parses}\nlocal ${resultVars} = ${ast.name}(${callArgs})\n${prints}\n`;
     const srcPath = path.join(dir, "main.lua");
     fs.writeFileSync(srcPath, harness);
-    const results = inputs.map((args) => parseSuiteOutput(execFileSync("lua", [srcPath, ...args.map(String)]), outputNames));
+    const results = inputs.map((args) => parseSuiteOutput(execFileSync("lua", [srcPath, ...args.map(argText)]), outputNames));
     fs.rmSync(dir, { recursive: true, force: true });
     return results;
 }
@@ -1210,7 +1254,7 @@ function runPerl(ast, inputs) {
     const harness = `${source}\n${parses}\nprintf("%.17g\\n", ${ast.name}(${callArgs}));\n`;
     const srcPath = path.join(dir, "main.pl");
     fs.writeFileSync(srcPath, harness);
-    const results = inputs.map((args) => parseNumericOutput(execFileSync("perl", [srcPath, ...args.map(String)]).toString().trim()));
+    const results = inputs.map((args) => parseNumericOutput(execFileSync("perl", [srcPath, ...args.map(argText)]).toString().trim()));
     fs.rmSync(dir, { recursive: true, force: true });
     return results;
 }
@@ -1224,7 +1268,7 @@ function runSuitePerl(ast, inputs, outputNames) {
     const harness = `${source}\n${parses}\nmy $r = ${ast.name}(${callArgs});\n${prints}\n`;
     const srcPath = path.join(dir, "main.pl");
     fs.writeFileSync(srcPath, harness);
-    const results = inputs.map((args) => parseSuiteOutput(execFileSync("perl", [srcPath, ...args.map(String)]), outputNames));
+    const results = inputs.map((args) => parseSuiteOutput(execFileSync("perl", [srcPath, ...args.map(argText)]), outputNames));
     fs.rmSync(dir, { recursive: true, force: true });
     return results;
 }
@@ -1272,7 +1316,7 @@ function runPhp(ast, inputs) {
     const harness = `${source}\n${parses}\n$ef_result = ${ast.name}(${callArgs});\n${phpPrintExpr("$ef_result")}\n`;
     const srcPath = path.join(dir, "main.php");
     fs.writeFileSync(srcPath, harness);
-    const results = inputs.map((args) => parseNumericOutput(execFileSync("php", [srcPath, ...args.map(String)]).toString().trim()));
+    const results = inputs.map((args) => parseNumericOutput(execFileSync("php", [srcPath, ...args.map(argText)]).toString().trim()));
     fs.rmSync(dir, { recursive: true, force: true });
     return results;
 }
@@ -1286,7 +1330,7 @@ function runSuitePhp(ast, inputs, outputNames) {
     const harness = `${source}\n${parses}\n$r = ${ast.name}(${callArgs});\n${prints}\n`;
     const srcPath = path.join(dir, "main.php");
     fs.writeFileSync(srcPath, harness);
-    const results = inputs.map((args) => parseSuiteOutput(execFileSync("php", [srcPath, ...args.map(String)]), outputNames));
+    const results = inputs.map((args) => parseSuiteOutput(execFileSync("php", [srcPath, ...args.map(argText)]), outputNames));
     fs.rmSync(dir, { recursive: true, force: true });
     return results;
 }
@@ -1322,7 +1366,7 @@ function runJulia(ast, inputs) {
     const harness = `${source}\n${parses}\nprintln(${ast.name}(${callArgs}))\n`;
     const srcPath = path.join(dir, "main.jl");
     fs.writeFileSync(srcPath, harness);
-    const results = inputs.map((args) => parseNumericOutput(execFileSync("julia", [srcPath, ...args.map(String)]).toString().trim()));
+    const results = inputs.map((args) => parseNumericOutput(execFileSync("julia", [srcPath, ...args.map(argText)]).toString().trim()));
     fs.rmSync(dir, { recursive: true, force: true });
     return results;
 }
@@ -1336,7 +1380,7 @@ function runSuiteJulia(ast, inputs, outputNames) {
     const harness = `${source}\n${parses}\nr = ${ast.name}(${callArgs})\n${prints}\n`;
     const srcPath = path.join(dir, "main.jl");
     fs.writeFileSync(srcPath, harness);
-    const results = inputs.map((args) => parseSuiteOutput(execFileSync("julia", [srcPath, ...args.map(String)]), outputNames));
+    const results = inputs.map((args) => parseSuiteOutput(execFileSync("julia", [srcPath, ...args.map(argText)]), outputNames));
     fs.rmSync(dir, { recursive: true, force: true });
     return results;
 }
@@ -1375,7 +1419,7 @@ function runScheme(ast, inputs) {
     const srcPath = path.join(dir, "main.scm");
     fs.writeFileSync(srcPath, harness);
     const results = inputs.map((args) =>
-        parseNumericOutput(execFileSync(GUILE_BIN, ["--no-auto-compile", srcPath, ...args.map(String)]).toString().trim()),
+        parseNumericOutput(execFileSync(GUILE_BIN, ["--no-auto-compile", srcPath, ...args.map(argText)]).toString().trim()),
     );
     fs.rmSync(dir, { recursive: true, force: true });
     return results;
@@ -1394,7 +1438,7 @@ function runSuiteScheme(ast, inputs, outputNames) {
     const srcPath = path.join(dir, "main.scm");
     fs.writeFileSync(srcPath, harness);
     const results = inputs.map((args) =>
-        parseSuiteOutput(execFileSync(GUILE_BIN, ["--no-auto-compile", srcPath, ...args.map(String)]), outputNames),
+        parseSuiteOutput(execFileSync(GUILE_BIN, ["--no-auto-compile", srcPath, ...args.map(argText)]), outputNames),
     );
     fs.rmSync(dir, { recursive: true, force: true });
     return results;
@@ -1493,12 +1537,12 @@ function runFortran(ast, inputs) {
         fortranArrayDecls(ast) + (fortranArrayNames(ast).length ? "\n" : "") +
         `    character(len=256) :: argstr\n` +
         reads + "\n" +
-        wrapFortranLine(`    write(*, '(F0.17)') ${ast.name}(${callArgs})`) + "\n" +
+        wrapFortranLine(`    write(*, '(ES32.16E3)') ${ast.name}(${callArgs})`) + "\n" +
         `end program main\n`;
     fs.writeFileSync(path.join(dir, "main.f90"), harness);
     const bin = path.join(dir, "bin");
     execFileSync("gfortran", ["-O2", "-o", bin, path.join(dir, "main.f90"), path.join(dir, "fn.f90")]);
-    const results = inputs.map((args) => parseNumericOutput(execFileSync(bin, args.map(String)).toString()));
+    const results = inputs.map((args) => parseNumericOutput(execFileSync(bin, args.map(argText)).toString()));
     fs.rmSync(dir, { recursive: true, force: true });
     return results;
 }
@@ -1510,7 +1554,7 @@ function runSuiteFortran(ast, inputs, outputNames) {
     const varDecl = [...fortranScalarNames(ast), ...outputNames].join(", ");
     const reads = fortranReads(ast);
     const callArgs = [...ast.params, ...outputNames].join(", ");
-    const prints = outputNames.map((n) => `    write(*, '(F0.17)') ${n}`).join("\n");
+    const prints = outputNames.map((n) => `    write(*, '(ES32.16E3)') ${n}`).join("\n");
     const harness =
         `program main\n` +
         `    implicit none\n` +
@@ -1524,7 +1568,7 @@ function runSuiteFortran(ast, inputs, outputNames) {
     fs.writeFileSync(path.join(dir, "main.f90"), harness);
     const bin = path.join(dir, "bin");
     execFileSync("gfortran", ["-O2", "-o", bin, path.join(dir, "main.f90"), path.join(dir, "fn.f90")]);
-    const results = inputs.map((args) => parseSuiteOutput(execFileSync(bin, args.map(String)), outputNames));
+    const results = inputs.map((args) => parseSuiteOutput(execFileSync(bin, args.map(argText)), outputNames));
     fs.rmSync(dir, { recursive: true, force: true });
     return results;
 }
@@ -1591,7 +1635,7 @@ function runZig(ast, inputs) {
     fs.writeFileSync(path.join(dir, "main.zig"), harness);
     const bin = path.join(dir, "bin");
     execFileSync("zig", ["build-exe", path.join(dir, "main.zig"), "-O", "ReleaseFast", `-femit-bin=${bin}`], { cwd: dir });
-    const results = inputs.map((args) => parseNumericOutput(execFileSync(bin, args.map(String)).toString().trim()));
+    const results = inputs.map((args) => parseNumericOutput(execFileSync(bin, args.map(argText)).toString().trim()));
     fs.rmSync(dir, { recursive: true, force: true });
     return results;
 }
@@ -1616,7 +1660,7 @@ function runSuiteZig(ast, inputs, outputNames) {
     fs.writeFileSync(path.join(dir, "main.zig"), harness);
     const bin = path.join(dir, "bin");
     execFileSync("zig", ["build-exe", path.join(dir, "main.zig"), "-O", "ReleaseFast", `-femit-bin=${bin}`], { cwd: dir });
-    const results = inputs.map((args) => parseSuiteOutput(execFileSync(bin, args.map(String)), outputNames));
+    const results = inputs.map((args) => parseSuiteOutput(execFileSync(bin, args.map(argText)), outputNames));
     fs.rmSync(dir, { recursive: true, force: true });
     return results;
 }
@@ -1681,7 +1725,7 @@ function runCobol(ast, inputs) {
     fs.writeFileSync(srcPath, harness);
     const bin = path.join(dir, "bin");
     execFileSync("cobc", ["-x", "-free", "-o", bin, srcPath, path.join(dir, "fn.cob")]);
-    const results = inputs.map((args) => parseNumericOutput(execFileSync(bin, args.map(String)).toString().trim()));
+    const results = inputs.map((args) => parseNumericOutput(execFileSync(bin, args.map(argText)).toString().trim()));
     fs.rmSync(dir, { recursive: true, force: true });
     return results;
 }
@@ -1718,12 +1762,12 @@ function runSuiteCobol(ast, inputs, outputNames) {
     fs.writeFileSync(srcPath, harness);
     const bin = path.join(dir, "bin");
     execFileSync("cobc", ["-x", "-free", "-o", bin, srcPath, path.join(dir, "fn.cob")]);
-    const results = inputs.map((args) => parseSuiteOutput(execFileSync(bin, args.map(String)), outputNames));
+    const results = inputs.map((args) => parseSuiteOutput(execFileSync(bin, args.map(argText)), outputNames));
     fs.rmSync(dir, { recursive: true, force: true });
     return results;
 }
 
-function registerSuiteConformance(sampleName, { ast, inputs, skipTargets = [] }) {
+function registerSuiteConformance(sampleName, { ast, inputs, skipTargets = [], targetCmp = {}, ...cmpOpts }) {
     const outputNames = suiteOutputNames(ast);
     const targets = [
         ["Interpreter", true, runEval],
@@ -1760,6 +1804,7 @@ function registerSuiteConformance(sampleName, { ast, inputs, skipTargets = [] })
                             actual[i][name],
                             expected[i][name],
                             `${label} vs JS at args=${JSON.stringify(inputs[i])}, field "${name}"`,
+                            { ...cmpOpts, ...targetCmp[label] },
                         );
                     }
                 }
@@ -1770,7 +1815,7 @@ function registerSuiteConformance(sampleName, { ast, inputs, skipTargets = [] })
 
 // --- test registration ---------------------------------------------------
 
-function registerConformance(sampleName, { ast, reference, inputs, skipTargets = [] }) {
+function registerConformance(sampleName, { ast, reference, inputs, skipTargets = [], targetCmp = {}, ...cmpOpts }) {
     if (reference) {
         test(`${sampleName}: emitted JS matches an independent reference implementation`, () => {
             const fn = loadJsFn(ast);
@@ -1810,7 +1855,7 @@ function registerConformance(sampleName, { ast, reference, inputs, skipTargets =
                 const actual = run(ast, inputs);
                 assert.strictEqual(actual.length, expected.length);
                 for (let i = 0; i < inputs.length; i++) {
-                    assertClose(actual[i], expected[i], `${label} vs JS at args=${JSON.stringify(inputs[i])}`);
+                    assertClose(actual[i], expected[i], `${label} vs JS at args=${JSON.stringify(inputs[i])}`, { ...cmpOpts, ...targetCmp[label] });
                 }
             },
         );
@@ -1858,7 +1903,17 @@ for (const ast of splineFrameAsts) {
     if (!inputs) {
         throw new Error(`test/conformance.test.js: no sample inputs registered for params ${ast.params.join(",")}`);
     }
-    registerSuiteConformance(`splineFrame.${ast.name}`, { ast, inputs });
+    registerSuiteConformance(`splineFrame.${ast.name}`, {
+        ast,
+        inputs,
+        // Found by the ULP-based comparison (the old 1e-9 absolute floor hid
+        // it): cos(90 degrees) is a near-zero result (~6.1e-17, pure
+        // argument-rounding residue) and GnuCOBOL's FUNCTION COS returns
+        // ~2.8e-16 there. An absolute 1e-15 bound is granted to COBOL for
+        // this cancellation-to-zero residue only; see README "Numeric
+        // guarantees".
+        targetCmp: { COBOL: { absTol: 1e-15 } },
+    });
 }
 
 // --- samples/comparison-ops-demo.js ---------------------------------------
