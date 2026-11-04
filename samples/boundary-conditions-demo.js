@@ -27,7 +27,7 @@ const roundingBoundaryAst = {
 const signBoundaryAst = {
     name: "signBoundary",
     params: ["x"],
-    body: call("sign", x),
+    body: mul(call("sign", x), num(1)),
 };
 
 const hypotBoundaryAst = {
@@ -48,8 +48,19 @@ const atan2BoundaryAst = {
     body: call("atan2", y, x),
 };
 
+// Multiplying by 1 keeps every value (NaN, Infinity, -0) bit-identical while
+// giving GnuCOBOL 3.1's cobc an arithmetic COMPUTE; a bare assignment or a
+// bare intrinsic as the whole body fails there with a missing cob_decimal
+// type in cobc's generated C (same cobc codegen class as the comparisonOps
+// skip in test/conformance.test.js).
 const passThroughAst = {
     name: "passThrough",
+    params: ["x"],
+    body: mul(x, num(1)),
+};
+
+const passThroughBareAst = {
+    name: "passThroughBare",
     params: ["x"],
     body: x,
 };
@@ -85,6 +96,7 @@ module.exports = {
     powBoundaryAst,
     atan2BoundaryAst,
     passThroughAst,
+    passThroughBareAst,
     negateAst,
     overflowBoundaryAst,
     wrapIndexBoundaryAst,

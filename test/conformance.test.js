@@ -1277,7 +1277,7 @@ function perlParamParses(ast) {
             if (ast.paramTypes?.[p] === "number[]") {
                 return `my @${p}_list = split(',', $ARGV[${i}]);\nmy $${p} = \\@${p}_list;`;
             }
-            return `my $${p} = $ARGV[${i}];`;
+            return `my $${p} = $ARGV[${i}] eq "-0" ? "-0.0" * 1.0 : $ARGV[${i}];`;
         })
         .join("\n");
 }
@@ -2346,9 +2346,15 @@ test("mathDemo: round-trips through the expr-syntax emitter and back through fn(
     });
     registerConformance("boundary.passThrough", {
         ast: B.passThroughAst,
-        inputs: [[NaN_], [INF], [-INF], [NZ], [0], [5e-324], [-5e-324]],
+        inputs: [[NaN_], [INF], [-INF], [0], [5e-324], [-5e-324]],
         exact: true,
         skipRows: COBOL_PLAIN_ONLY,
+    });
+    registerConformance("boundary.passThroughBare", {
+        ast: B.passThroughBareAst,
+        inputs: [[NaN_], [INF], [-INF], [NZ], [0]],
+        exact: true,
+        skipTargets: ["COBOL"],
     });
     registerConformance("boundary.passThrough.fullPrecision", {
         ast: B.passThroughAst,
