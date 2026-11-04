@@ -47,6 +47,10 @@ const EXPECTED = {
     qb64: { eq: "=", ne: "<>", forbidEq: "==", forbidNe: "!=" },
     fortran: { eq: "==", ne: "/=", forbidNe: "!=" },
     lua: { eq: "==", ne: "~=", forbidNe: "!=" },
+    r: { eq: "isTRUE(x == 5)", ne: "!isTRUE(x == 5)", forbidNe: "!=" },
+    // r: a comparison involving NaN is NA in R and `if (NA)` is an error,
+    // so every operator goes through isTRUE(); "!=" is the negated "=="
+    // because NaN != x is true in JS but NA in R.
     // scheme: prefix notation, not an infix token -- "(=" for equality,
     // "(not (=" for inequality (R7RS has no single not-equal procedure).
     // Already correct before this file existed (see scheme.js's own
