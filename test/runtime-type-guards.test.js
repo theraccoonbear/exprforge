@@ -39,7 +39,7 @@ const DYNAMIC_TARGETS = {
 // no-op for every one of these: the compiled ones already enforce this
 // at compile time, cobol doesn't support array params at all, and expr
 // (the source-text printer) has no typeGuard configured either way.
-const NO_GUARD_TARGETS = ["c", "java", "go", "rust", "csharp", "fortran", "zig", "qb64", "cobol", "expr"];
+const NO_GUARD_TARGETS = ["c", "java", "go", "rust", "csharp", "fortran", "zig", "qb64", "cobol", "expr", "latex"];
 
 test("addTypeGuards defaults to false -- output is byte-for-byte unchanged when omitted", () => {
     for (const lang of Object.keys(DYNAMIC_TARGETS)) {

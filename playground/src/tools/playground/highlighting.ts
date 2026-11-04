@@ -31,6 +31,7 @@ import { fortran as legacyFortran } from "@codemirror/legacy-modes/mode/fortran"
 import { scheme as legacyScheme } from "@codemirror/legacy-modes/mode/scheme";
 import { cobol as legacyCobol } from "@codemirror/legacy-modes/mode/cobol";
 import { vb as legacyVB } from "@codemirror/legacy-modes/mode/vb";
+import { stexMath as legacyStexMath } from "@codemirror/legacy-modes/mode/stex";
 import type { Extension } from "@codemirror/state";
 import { exprForgeLanguage } from "./exprForgeMode";
 
@@ -50,6 +51,9 @@ const COBOL = StreamLanguage.define(legacyCobol);
 // no highlighting at all -- unlike Zig, where nothing close enough
 // exists to be worth approximating.
 const QB64 = StreamLanguage.define(legacyVB);
+// emitters/latex.js output is math-mode content, so the math-mode
+// variant of legacy-modes' TeX mode, not the document-level one.
+const LATEX = StreamLanguage.define(legacyStexMath);
 
 // Keyed by emitters/registry.js's own language keys (see
 // languageMeta.ts), so this stays a single lookup rather than a second
@@ -75,6 +79,7 @@ const HIGHLIGHT: Record<string, Extension> = {
     expr: exprForgeLanguage,
     qb64: QB64,
     zig: zig(),
+    latex: LATEX,
 };
 
 export function highlightExtensionFor(languageId: string): Extension[] {
