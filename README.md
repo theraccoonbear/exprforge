@@ -1519,6 +1519,7 @@ change that also updates this table.
 | QB64 | QB64-PE (tested release) | v4.7.0-GLFW (exact tag) | Built from the release source bundle in CI. |
 | Scheme | Guile 3.0 | guile-3.0 (Ubuntu 24.04) | |
 | COBOL | GnuCOBOL 3.x | `gnucobol3` (3.1.2) | Not 4.x early-dev: confirmed `cob_decimal` codegen issue. To bump: run the full COBOL suite on the new series, re-check the skipped samples, update this table. |
+| LaTeX | LaTeX2e with `amsmath` (`wrap: "document"` loads it; other wraps need it in the host document). KaTeX 0.16+ or MathJax for web rendering. | KaTeX 0.16 strict parse; `pdflatex` from Ubuntu 24.04 `texlive-latex-base` | Output is typeset math, never executed. `document` output compiles standalone; long one-line formulas can run past the margin (overfull boxes are reported, not failures). |
 
 Adding a target, or raising a minimum, requires updating this table and
 the matching workflow.
