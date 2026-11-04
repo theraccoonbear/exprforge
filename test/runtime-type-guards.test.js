@@ -2,7 +2,7 @@
 //
 // Unit coverage for the opt-in addTypeGuards option (see
 // docs/runtime-type-guards.md) -- emit()/emitMany()'s 4th argument, and
-// each of the 8 dynamic-language emitters' `typeGuard` config. Static/
+// each of the 9 dynamic-language emitters' `typeGuard` config. Static/
 // string-level checks here (does the right guard text show up, does it
 // stay absent by default, do targets with no typeGuard ignore the
 // option silently); real interpreter execution (does a wrong-type call

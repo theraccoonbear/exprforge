@@ -28,7 +28,7 @@
 
 ExprForge authors a math formula once, as a small AST, and emits
 verified, identical-behavior implementations in JavaScript, TypeScript,
-Python, C#, Lua, QB64, C, Java, Go, Rust, Perl, PHP, Julia, Fortran, Zig,
+Python, C#, Lua, QB64, C, Java, Go, Rust, Perl, PHP, Julia, R, Fortran, Zig,
 Scheme (Guile), and COBOL (GnuCOBOL) — plus a native in-process
 evaluator, a printer for its own readable syntax, and typeset LaTeX
 output for documenting the formula itself. No required dependencies.
@@ -375,6 +375,7 @@ rounding function directly:
 | **Scheme/Guile** (`round`) | ties to even | same pattern as Python |
 | **QB64** (`_ROUND`) | ties to even | same pattern as Python (confirmed against a real compile) |
 | **C#** (`Math.Round(double)`) | ties to even (default) | same pattern as Python |
+| **R** (`round()`) | ties to even (IEC 60559) | same pattern as Python; emitted as `sign(x) * floor(abs(x) + 0.5)` |
 
 The other 9 targets (C, Rust, Go, Perl, Zig, Fortran, COBOL, Julia, PHP)
 already tie away from zero natively, so ExprForge's `round()` matches
@@ -437,6 +438,10 @@ number":
   would need, and not worth risking reintroducing that crash for a
   target whose math intrinsics are already documented elsewhere as not
   fully reliable.
+- **R**: `sqrt`/`log`/`log2`/`log10`/`asin`/`acos` (and `sin`/`cos`/`tan`
+  of an infinite argument) return `NaN` but also signal a "NaNs
+  produced" warning on stderr. Emitted calls are wrapped in
+  `suppressWarnings()` so output stays clean; the value is unchanged.
 - Every other target (JS, TypeScript, C, Rust, Go, Java, Lua, PHP, Zig,
   C#) was already correct — clean IEEE754 NaN/Infinity, never throws.
 
@@ -477,8 +482,9 @@ argument order, not any documented rule):
   above: a real fix needs a new helper `FUNCTION-ID`, the exact shape
   already confirmed to crash GnuCOBOL's codegen when piled up with
   others.
-- Every other target (JS, TypeScript, Go, Java, C#, Julia, Scheme,
-  Fortran) already propagated NaN correctly.
+- Every other target (JS, TypeScript, Go, Java, C#, Julia, R, Scheme,
+  Fortran) already propagated NaN correctly (R's base `min`/`max`
+  return `NaN` in either argument order).
 
 See `samples/math-edge-cases-demo.js`'s own header comment for the
 full, directly-verified breakdown, `test/conformance.test.js`'s
@@ -930,7 +936,7 @@ Nothing stops a *caller* of emitted code from passing a plain number
 where an array-typed parameter (`paramTypes`) declared an array —
 `evaluate()` already guards this itself, and every statically-typed
 target's own compiler already rejects the mismatch, but plain emitted
-JS/TypeScript/Python/PHP/Lua/Perl/Scheme/Julia source shipped with no
+JS/TypeScript/Python/PHP/Lua/Perl/Scheme/Julia source (and, since it was added, R) shipped with no
 check at all. Opt in with a 4th argument to `emit()`/`emitMany()`:
 
 ```js
@@ -1420,6 +1426,7 @@ multi-value idiom it has, since none of them agree:
 | JS | object literal |
 | Go, Lua, Scheme | native multiple return values (`(values ...)` in Scheme) |
 | C#, Julia | a native named value tuple / named tuple |
+| R | a named list (`list(rx = ..., ry = ...)`, read with `result$rx`) |
 | C / Rust / Zig | a small `...Result` struct, returned by value |
 | Java, Python | a nested/local `Result` class |
 | QB64, Fortran | a `SUB`/`subroutine` with the outputs as trailing by-reference (`intent(out)`) parameters |
@@ -1526,7 +1533,7 @@ Runs `node --test`. For each sample, that's three kinds of check:
 The compiled/interpreted-language checks need their toolchain on `PATH`
 and skip (not fail) when it's missing, so `npm test` degrades gracefully
 on any one machine. Every one of `tsc`/`qb64pe`/`dotnet`/`python3`/`lua`/
-`perl`/`php`/`julia`/`gfortran`/`zig`/`guile3.0`/`cobc` is treated exactly
+`perl`/`php`/`julia`/`Rscript`/`gfortran`/`zig`/`guile3.0`/`cobc` is treated exactly
 like gcc/go/rustc/javac: looked up on `PATH`, never a project
 dependency — exprforge only ever generates source text for these, it
 doesn't execute or type-check any of it itself. `package.json` has zero
@@ -1611,6 +1618,20 @@ compiling/running against a real toolchain rather than assumed to work:
   not just avoid the untested case. `sign(-0.0)` returns `-0.0`, which is
   numerically equal to `0.0` for the tolerance-based comparisons this
   project uses, so it isn't a real divergence.
+- **R**: emitted as a plain `name <- function(...) { ... }`. Vectors are
+  1-indexed, so an `index` node emits `arr[[round(i) + 1]]`; `[[ ]]` makes
+  an out-of-range index an error instead of a silent `NA` (or, for a
+  negative index, an element-dropping subset). `round()` is overridden
+  (R's own is ties-to-even), `%%` is already floor-mod (`wrapIndex`), and
+  `ceil` is `ceiling`. Any comparison against `NaN` is `NA` in R and
+  `if (NA)` is an error, so `select()` conditions are wrapped in
+  `isTRUE()` (and `!=` is emitted as `!isTRUE(a == b)`), which matches the
+  other targets: every comparison with a `NaN` operand is false except
+  `!=`. Division is IEEE (`x/0` is `Inf`/`-Inf`, `0/0` is `NaN`). A `NaN`
+  result is the numeric `NaN` (`is.nan()` is true), printed as `NaN` --
+  never `NA`; `Inf`/`-Inf` print as such. Multi-output suites return a
+  named list. Domain-error warnings are suppressed with
+  `suppressWarnings()`.
 - **Fortran**: a literal without the `D0` exponent marker is parsed as
   *single*-precision first, then widened — silently losing precision
   before it reaches a `real(8)` variable, unlike every other target's
