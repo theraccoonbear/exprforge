@@ -760,6 +760,10 @@ function qb64ToNumber(str) {
     // (confirmed against a real compile) -- parseNumericOutput handles
     // both, same as every other target's own spelling; only a genuine
     // finite value ever needs the D-exponent rewrite below at all.
+    // QB64-PE 4.7.0 pads a non-finite PRINT with NUL bytes and a stray
+    // "D" (e.g. "INF\0\0...D\0\0"); only the leading token is the value.
+    const nonFinite = /^\s*([+-]?(?:inf|nan))/i.exec(str);
+    if (nonFinite) return parseNumericOutput(nonFinite[1]);
     return parseNumericOutput(str.replace(/D([+-]?\d+)/i, "E$1"));
 }
 
