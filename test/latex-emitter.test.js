@@ -189,6 +189,38 @@ test("identifiers", () => {
     for (const [name, expected] of cases) assert.strictEqual(tex(v(name), [name]), expected, name);
 });
 
+test("greekLetters: false renders Greek names as ordinary identifiers", () => {
+    assert.strictEqual(tex(v("theta"), ["theta"], { greekLetters: false }), "\\mathit{theta}");
+    assert.strictEqual(tex(v("pi_0"), ["pi_0"], { greekLetters: false }), "\\mathit{pi}_{0}");
+    assert.strictEqual(tex(v("theta"), ["theta"], { greekLetters: true }), "\\theta");
+    assert.strictEqual(tex(v("theta"), ["theta"]), "\\theta");
+});
+
+test("greekLetters must be a boolean", () => {
+    assert.throws(() => tex(v("x"), ["x"], { greekLetters: "no" }), /greekLetters must be true or false/);
+});
+
+test("names that would render identically fall back to their literal spelling", () => {
+    // x1 and x_1 would both be x_{1}: both spelled out instead, everywhere
+    // they appear (signature and body), so they stay distinguishable.
+    assert.strictEqual(
+        latex.emitFunction({ name: "f", params: ["x1", "x_1"], body: add(v("x1"), v("x_1")) }),
+        "f\\left(\\mathit{x1}, \\mathit{x\\_1}\\right) = \\mathit{x1} + \\mathit{x\\_1}\n",
+    );
+    // Non-colliding names in the same function keep their usual rendering.
+    assert.strictEqual(
+        tex(add(add(v("x1"), v("x_1")), v("y2")), ["x1", "x_1", "y2"]),
+        "\\mathit{x1} + \\mathit{x\\_1} + y_{2}",
+    );
+    // A let name colliding with a param is caught too.
+    assert.strictEqual(
+        latex.emitFunction({ name: "f", params: ["theta1"], body: letIn("theta_1", mul(num(2), v("theta1")), v("theta_1")) }),
+        "\\begin{aligned}\n  \\mathit{theta\\_1} &= 2 \\cdot \\mathit{theta1} \\\\\n  f\\left(\\mathit{theta1}\\right) &= \\mathit{theta\\_1}\n\\end{aligned}\n",
+    );
+    // No collision, no change.
+    assert.strictEqual(tex(v("x1"), ["x1"]), "x_{1}");
+});
+
 test("function names: single letter plain, otherwise \\operatorname", () => {
     assert.strictEqual(latex.emitFunction({ name: "g", params: ["x"], body: x }), "g\\left(x\\right) = x\n");
     assert.strictEqual(

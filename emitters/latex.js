@@ -23,6 +23,11 @@
 // test-latex.yml installs one), a real KaTeX parse of every sample's
 // output -- the closest thing this target has to "compiled conformance".
 //
+// `opts.greekLetters` (default true): names like alpha/theta/Gamma render
+// as Greek symbols, the usual convention in math and physics writing
+// (SymPy's latex() does the same). false renders them as ordinary
+// multi-letter names (\mathit{theta}).
+//
 // `opts.mulSymbol` (passed through emitFunction's opts, same as
 // addTypeGuards): "implicit" (default) | "cdot" | "times". "implicit"
 // juxtaposes factors the way published math does (2x, ab) but still
@@ -62,31 +67,37 @@ function escapeText(s) {
     return s.replace(/[\\$_{}&%#^~]/g, (c) => `\\${c}`);
 }
 
-function formatIdentBase(name) {
-    if (GREEK.has(name)) return { s: `\\${name}`, multi: false };
+// x -> x, alpha -> \alpha, x1 -> x_{1}, v_max -> v_{\mathrm{max}},
+// rate -> \mathit{rate}. `multi` marks a multi-letter rendering, which
+// implicit multiplication must never juxtapose against another factor.
+// `greek: false` turns the Greek-letter mapping off; `literal: true`
+// renders the name exactly as written (used for names that would
+// otherwise collide with another name in the same function).
+function formatIdentBase(name, greek) {
+    if (greek && GREEK.has(name)) return { s: `\\${name}`, multi: false };
     const digits = /^([A-Za-z]+)(\d+)$/.exec(name);
     if (digits) {
-        const base = formatIdentBase(digits[1]);
+        const base = formatIdentBase(digits[1], greek);
         return { s: `${base.s}_{${digits[2]}}`, multi: base.multi };
     }
     if (/^[A-Za-z]$/.test(name)) return { s: name, multi: false };
     return { s: `\\mathit{${escapeText(name)}}`, multi: true };
 }
 
-// x -> x, alpha -> \alpha, x1 -> x_{1}, v_max -> v_{\mathrm{max}},
-// rate -> \mathit{rate}. `multi` marks a multi-letter rendering, which
-// implicit multiplication must never juxtapose against another factor.
-function formatIdent(name) {
+function formatIdent(name, { greek = true, literal = false } = {}) {
+    if (literal) {
+        return /^[A-Za-z]$/.test(name) ? { s: name, multi: false } : { s: `\\mathit{${escapeText(name)}}`, multi: true };
+    }
     const us = name.indexOf("_");
     if (us > 0 && us < name.length - 1) {
-        const base = formatIdentBase(name.slice(0, us));
+        const base = formatIdentBase(name.slice(0, us), greek);
         if (!base.s.includes("_")) {
             const sub = name.slice(us + 1);
             const subStr = /^\d+$/.test(sub) || /^[A-Za-z]$/.test(sub) ? sub : `\\mathrm{${escapeText(sub)}}`;
             return { s: `${base.s}_{${subStr}}`, multi: base.multi };
         }
     }
-    return formatIdentBase(name);
+    return formatIdentBase(name, greek);
 }
 
 function formatFnName(name) {
@@ -127,6 +138,12 @@ function args(rs) {
 }
 
 class LatexEmitter extends Emitter {
+    // Two distinct identifiers can render identically (x1 and x_1 both as
+    // x_{1}; theta1 and theta_1 both as \theta_{1}). Every rendered name
+    // is recorded during a pass; if any rendering was produced by more
+    // than one name, the function is rendered again with those names
+    // spelled literally (\mathit{x1}, \mathit{x\_1}) so they stay
+    // distinguishable.
     emitFunction(fn, registry = undefined, opts = {}) {
         const mulSymbol = opts.mulSymbol ?? "implicit";
         if (!Object.hasOwn(MUL_SYMBOLS, mulSymbol)) {
@@ -134,13 +151,30 @@ class LatexEmitter extends Emitter {
                 `emitter for .${this.ext}: unknown mulSymbol "${mulSymbol}" -- expected one of: ${Object.keys(MUL_SYMBOLS).join(", ")}`,
             );
         }
-        const prev = this._mulSymbol;
-        this._mulSymbol = mulSymbol;
+        const greekLetters = opts.greekLetters ?? true;
+        if (typeof greekLetters !== "boolean") {
+            throw new Error(`emitter for .${this.ext}: greekLetters must be true or false, got ${JSON.stringify(greekLetters)}`);
+        }
+        const prev = this._state;
         try {
+            this._state = { mulSymbol, greek: greekLetters, literal: new Set(), seen: new Map() };
+            const first = super.emitFunction(fn, registry, opts);
+            const colliding = [...this._state.seen.values()].filter((names) => names.size > 1);
+            if (colliding.length === 0) return first;
+            const literal = new Set(colliding.flatMap((names) => [...names]));
+            this._state = { mulSymbol, greek: greekLetters, literal, seen: new Map() };
             return super.emitFunction(fn, registry, opts);
         } finally {
-            this._mulSymbol = prev;
+            this._state = prev;
         }
+    }
+
+    _ident(name) {
+        const st = this._state ?? { greek: true, literal: new Set(), seen: new Map() };
+        const id = formatIdent(name, { greek: st.greek, literal: st.literal.has(name) });
+        if (!st.seen.has(id.s)) st.seen.set(id.s, new Set());
+        st.seen.get(id.s).add(name);
+        return id;
     }
 
     emitExpr(node) {
@@ -152,7 +186,7 @@ class LatexEmitter extends Emitter {
             case "num":
                 return formatNumberParts(node.value);
             case "var": {
-                const id = formatIdent(node.name);
+                const id = this._ident(node.name);
                 const kind = id.multi ? "word" : "letter";
                 return { s: id.s, prec: PREC.ATOM, neg: false, first: kind, last: kind };
             }
@@ -207,7 +241,7 @@ class LatexEmitter extends Emitter {
     }
 
     _mulSep(l, r) {
-        const explicit = MUL_SYMBOLS[this._mulSymbol ?? "implicit"];
+        const explicit = MUL_SYMBOLS[this._state?.mulSymbol ?? "implicit"];
         if (explicit) return explicit;
         const needsDot =
             r.first === "digit" ||
@@ -315,33 +349,40 @@ class LatexEmitter extends Emitter {
     }
 }
 
-function signature(fn) {
-    return `${formatFnName(fn.name)}${args(fn.params.map((p) => ({ s: formatIdent(p).s })))}`;
+function signature(emitter, fn) {
+    return `${formatFnName(fn.name)}${paramArgs(emitter, fn)}`;
+}
+
+function paramArgs(emitter, fn) {
+    return args(fn.params.map((p) => emitter._ident(p)));
 }
 
 function aligned(lines) {
     return `\\begin{aligned}\n${lines.map((l) => `  ${l}`).join(" \\\\\n")}\n\\end{aligned}\n`;
 }
 
-function letLines(letBindings) {
-    return letBindings.map(({ name, valueStr }) => `${formatIdent(name).s} &= ${valueStr}`);
+function letLines(emitter, letBindings) {
+    return letBindings.map(({ name, valueStr }) => `${emitter._ident(name).s} &= ${valueStr}`);
 }
 
+// Both callbacks are plain functions (not arrows): base.js calls them as
+// methods, so `this` is the emitter and identifier rendering goes
+// through its per-call collision tracking.
 const emitter = new LatexEmitter({
     ext: "tex",
     formatNumber: (v) => formatNumberParts(v).s,
-    formatFunction: (fn, bodyStr, letBindings = []) => {
-        if (letBindings.length === 0) return `${signature(fn)} = ${bodyStr}\n`;
-        return aligned([...letLines(letBindings), `${signature(fn)} &= ${bodyStr}`]);
+    formatFunction: function (fn, bodyStr, letBindings = []) {
+        if (letBindings.length === 0) return `${signature(this, fn)} = ${bodyStr}\n`;
+        return aligned([...letLines(this, letBindings), `${signature(this, fn)} &= ${bodyStr}`]);
     },
     // Each output renders as its own function of the parameters, e.g.
     // \mathit{tangent}\left(t\right) = ..., after any shared definitions.
-    formatSuite: (fn, outputStrs, letBindings = []) => {
-        const params = args(fn.params.map((p) => ({ s: formatIdent(p).s })));
+    formatSuite: function (fn, outputStrs, letBindings = []) {
+        const params = paramArgs(this, fn);
         const outLines = Object.entries(outputStrs).map(
-            ([name, valueStr]) => `${formatIdent(name).s}${params} &= ${valueStr}`,
+            ([name, valueStr]) => `${this._ident(name).s}${params} &= ${valueStr}`,
         );
-        return aligned([...letLines(letBindings), ...outLines]);
+        return aligned([...letLines(this, letBindings), ...outLines]);
     },
 });
 
