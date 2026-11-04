@@ -1,0 +1,26 @@
+name: LaTeX
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch: {}
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+      # LaTeX output can't be executed, so the closest thing to a real
+      # toolchain check is a strict KaTeX parse of every sample's output
+      # (see test/latex-emitter.test.js). katex is a system tool here
+      # exactly like tsc is for TypeScript -- not a project dependency.
+      - name: Install katex
+        run: npm install -g katex@0.16
+      - run: EXPRFORGE_TEST_TARGETS=LaTeX npm test
