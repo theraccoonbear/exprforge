@@ -47,6 +47,8 @@ const EXPECTED = {
     qb64: { eq: "=", ne: "<>", forbidEq: "==", forbidNe: "!=" },
     fortran: { eq: "==", ne: "/=", forbidNe: "!=" },
     lua: { eq: "==", ne: "~=", forbidNe: "!=" },
+    // ruby: same spelling as JS/C for every operator (ternary select).
+    ruby: { eq: "==", ne: "!=" },
     // scheme: prefix notation, not an infix token -- "(=" for equality,
     // "(not (=" for inequality (R7RS has no single not-equal procedure).
     // Already correct before this file existed (see scheme.js's own

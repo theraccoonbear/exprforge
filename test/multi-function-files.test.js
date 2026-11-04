@@ -16,7 +16,7 @@
 // confirmed-against-a-real-compiler failure when concatenated, and each
 // has its own real fix (see the doc comment on emitFunction's own
 // `opts.includeHelpers` in emitters/base.js, and each affected emitter's
-// own comment on its specific fix). C, Rust, Python, Perl, Lua, Julia,
+// own comment on its specific fix). C, Rust, Python, Perl, Ruby, Lua, Julia,
 // Scheme, TypeScript, Fortran, and C# were all confirmed ALREADY correct
 // (no shared file-level declaration repeated per function) -- verified
 // here too, not just assumed, so a future change that accidentally
@@ -64,6 +64,7 @@ const TOOLS = {
     python: hasTool("python3", ["--version"]),
     lua: LUA_BIN !== null,
     perl: hasTool("perl", ["-v"]),
+    ruby: hasTool("ruby", ["-v"]),
     php: hasTool("php", ["--version"]),
     julia: hasTool("julia", ["--version"]),
     gfortran: hasTool("gfortran", ["--version"]),
@@ -324,6 +325,19 @@ test("multi-function file: Perl -- concatenating 2 functions runs correctly", { 
     const fnsPath = path.join(dir, "fns.pl");
     fs.writeFileSync(fnsPath, out1 + "\n" + out2);
     const output = execFileSync("perl", ["-e", `require "${fnsPath}"; print f1(${F1_ARG}), "\\n", f2(${F2_ARG}), "\\n";`])
+        .toString().trim().split("\n");
+    assertClose(parseFloat(output[0]), F1_EXPECT, "f1");
+    assertClose(parseFloat(output[1]), F2_EXPECT, "f2");
+    fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test("multi-function file: Ruby -- concatenating 2 functions runs correctly", { skip: !TOOLS.ruby && "ruby not available" }, () => {
+    const out1 = emitters.ruby.emitFunction(fn1);
+    const out2 = emitters.ruby.emitFunction(fn2);
+    const dir = tmpDir("ef-multi-rb-");
+    const fnsPath = path.join(dir, "fns.rb");
+    fs.writeFileSync(fnsPath, out1 + "\n" + out2);
+    const output = execFileSync("ruby", ["-e", `require "${fnsPath}"; puts f1(${F1_ARG}); puts f2(${F2_ARG})`])
         .toString().trim().split("\n");
     assertClose(parseFloat(output[0]), F1_EXPECT, "f1");
     assertClose(parseFloat(output[1]), F2_EXPECT, "f2");

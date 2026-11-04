@@ -31,6 +31,7 @@ const DYNAMIC_TARGETS = {
     php: "is_array($arr)",
     lua: 'type(arr) ~= "table"',
     perl: "ref($arr) eq 'ARRAY'",
+    ruby: "arr.is_a?(Array)",
     julia: "arr isa AbstractVector",
     scheme: "(vector? arr)",
 };
@@ -125,6 +126,7 @@ const LENGTH_GUARD_TARGETS = {
     php: "count($arr) !== $m",
     lua: "#arr ~= m",
     perl: "scalar(@$arr) == $m",
+    ruby: "arr.length != m",
     julia: "length(arr) != m",
     scheme: "(vector-length arr) m",
 };

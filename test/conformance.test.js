@@ -476,6 +476,7 @@ const TOOLS = {
     python: hasTool("python3", ["--version"]),
     lua: hasTool("lua", ["-v"]),
     perl: hasTool("perl", ["-v"]),
+    ruby: hasTool("ruby", ["-v"]),
     php: hasTool("php", ["--version"]),
     julia: hasTool("julia", ["--version"]),
     gfortran: hasTool("gfortran", ["--version"]),
@@ -1229,6 +1230,51 @@ function runSuitePerl(ast, inputs, outputNames) {
     return results;
 }
 
+// --- Ruby --------------------------------------------------------------
+//
+// No compile step -- ruby interprets the emitted source directly. Args
+// come in via ARGV (0-indexed). Array-typed params: comma-joined CLI
+// string -> an Array of Floats. Scalar params are passed as the raw ARGV
+// String on purpose: the emitted function coerces them with Float() on
+// entry (see emitters/ruby.js), so this also exercises that coercion.
+function rubyParamParses(ast) {
+    return ast.params
+        .map((p, i) => {
+            if (ast.paramTypes?.[p] === "number[]") {
+                return `${p} = ARGV[${i}].split(',').map { |s| Float(s) }`;
+            }
+            return `${p} = ARGV[${i}]`;
+        })
+        .join("\n");
+}
+
+function runRuby(ast, inputs) {
+    const source = emitters.ruby.emitFunction(ast);
+    const dir = tmpDir("ef-rb-");
+    const parses = rubyParamParses(ast);
+    const callArgs = ast.params.join(", ");
+    const harness = `${source}\n${parses}\nputs format("%.17g", ${ast.name}(${callArgs}))\n`;
+    const srcPath = path.join(dir, "main.rb");
+    fs.writeFileSync(srcPath, harness);
+    const results = inputs.map((args) => parseNumericOutput(execFileSync("ruby", [srcPath, ...args.map(String)]).toString().trim()));
+    fs.rmSync(dir, { recursive: true, force: true });
+    return results;
+}
+
+function runSuiteRuby(ast, inputs, outputNames) {
+    const source = emitters.ruby.emitFunction(ast);
+    const dir = tmpDir("ef-rb-");
+    const parses = rubyParamParses(ast);
+    const callArgs = ast.params.join(", ");
+    const prints = outputNames.map((n) => `puts format("%.17g", r[:${n}])`).join("\n");
+    const harness = `${source}\n${parses}\nr = ${ast.name}(${callArgs})\n${prints}\n`;
+    const srcPath = path.join(dir, "main.rb");
+    fs.writeFileSync(srcPath, harness);
+    const results = inputs.map((args) => parseSuiteOutput(execFileSync("ruby", [srcPath, ...args.map(String)]), outputNames));
+    fs.rmSync(dir, { recursive: true, force: true });
+    return results;
+}
+
 // --- PHP -------------------------------------------------------------------
 //
 // No compile step -- php interprets the emitted source directly. The
@@ -1737,6 +1783,7 @@ function registerSuiteConformance(sampleName, { ast, inputs, skipTargets = [] })
         ["Python", TOOLS.python, runSuitePython],
         ["Lua", TOOLS.lua, runSuiteLua],
         ["Perl", TOOLS.perl, runSuitePerl],
+        ["Ruby", TOOLS.ruby, runSuiteRuby],
         ["PHP", TOOLS.php, runSuitePhp],
         ["Julia", TOOLS.julia, runSuiteJulia],
         ["Fortran", TOOLS.gfortran, runSuiteFortran],
@@ -1792,6 +1839,7 @@ function registerConformance(sampleName, { ast, reference, inputs, skipTargets =
         ["Python", TOOLS.python, runPython],
         ["Lua", TOOLS.lua, runLua],
         ["Perl", TOOLS.perl, runPerl],
+        ["Ruby", TOOLS.ruby, runRuby],
         ["PHP", TOOLS.php, runPhp],
         ["Julia", TOOLS.julia, runJulia],
         ["Fortran", TOOLS.gfortran, runFortran],

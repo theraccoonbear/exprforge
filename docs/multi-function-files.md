@@ -32,7 +32,7 @@ identical to before this existed.
 
 ## Already correct — verified, not assumed
 
-C, Rust, Python, Perl, Lua, Julia, Scheme, TypeScript, Fortran, and C#
+C, Rust, Python, Perl, Ruby, Lua, Julia, Scheme, TypeScript, Fortran, and C#
 have no file-level declaration that repeats per function (multiple
 `def`/`function`/`fn`/`sub`/`class` in one file is each language's own
 normal, unremarkable structure). Verified directly against a real
