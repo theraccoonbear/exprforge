@@ -33,6 +33,7 @@ const os = require("node:os");
 const path = require("node:path");
 const { v, num, call, add, sub } = require("../ast.js");
 const emitters = require("../emitters/registry.js");
+const { DOTNET_TFM } = require("./dotnet-tfm.js");
 
 function hasTool(cmd, args) {
     try {
@@ -410,17 +411,14 @@ test("multi-function file: C# -- concatenating 2 classes into one file compiles 
     const out1 = emitters.csharp.emitFunction(fn1);
     const out2 = emitters.csharp.emitFunction(fn2);
     const dir = tmpDir("ef-multi-cs-");
-    // net9.0 -- matches test/conformance.test.js's own CSPROJ constant;
-    // a net8.0 target failed to LAUNCH (not compile) in a real container
-    // whose only installed runtime is 9.0.16 ("You must install or
-    // update .NET") -- a real environment-matching issue, not something
-    // to chase per-environment, so this just mirrors the value already
-    // confirmed to work in every environment this project's CI runs in.
+    // TargetFramework from test/dotnet-tfm.js (highest installed SDK, or
+    // EXPRFORGE_DOTNET_TFM). Fns.cs deliberately has NO using directive:
+    // the emitted classes must stand alone.
     fs.writeFileSync(
         path.join(dir, "csproj.csproj"),
-        `<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net9.0</TargetFramework></PropertyGroup></Project>\n`,
+        `<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><OutputType>Exe</OutputType><TargetFramework>${DOTNET_TFM}</TargetFramework><ImplicitUsings>disable</ImplicitUsings></PropertyGroup></Project>\n`,
     );
-    fs.writeFileSync(path.join(dir, "Fns.cs"), `using System;\n${out1}\n${out2}\n`);
+    fs.writeFileSync(path.join(dir, "Fns.cs"), `${out1}\n${out2}\n`);
     fs.writeFileSync(
         path.join(dir, "Program.cs"),
         `using System;\nclass Program { static void Main() {\n` +
