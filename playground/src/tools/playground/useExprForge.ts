@@ -108,10 +108,10 @@ export function useExprForge(source: string): ExprForgeResult {
         for (const def of Object.values(defs)) {
             // Checked once, up front, per function -- same tier as a
             // parse error -- rather than left to surface per-emitter
-            // below. Every one of the 18 targets would throw the
+            // below. Every registered target would throw the
             // IDENTICAL "unbound variable" message (checkUnboundVars
             // runs inside every emitter's own emitFunction() too, see
-            // ast.js), which would otherwise render as 18 duplicate
+            // ast.js), which would otherwise render as one duplicate per target
             // error cards instead of one clear message next to the
             // editor. One bad definition blanks the WHOLE buffer's
             // results, not just its own -- consistent with
