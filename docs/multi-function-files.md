@@ -28,11 +28,13 @@ identical to before this existed.
 | Go | `package exprforge` + `import "math"` | `opts.includeHelpers: false` on every call after the first; `opts.forceMathImport: true` on the FIRST call if ANY of the concatenated functions use a math primitive (Go requires every import before any other declaration — a later function's own usage can't add one after the fact) | Found proactively |
 | Zig | `const std = @import("std");` | `opts.includeHelpers: false` on every call after the first (safe unconditionally — confirmed an unused top-level `const`, unlike a local one, isn't an error in Zig) | Found proactively |
 | PHP | the `<?php` opening tag | `opts.includeHelpers: false` on every call after the first | Found proactively |
+| Python | `_exprforge_div` helper `def` (see ADR 0004) | `opts.includeHelpers: false` on every call after the first (a repeat is harmless but redundant) | Added with the division-by-zero fix |
+| Perl | `_exprforge_div` helper `sub` (see ADR 0004) | `opts.includeHelpers: false` on every call after the first (a repeat triggers a "Subroutine redefined" warning) | Added with the division-by-zero fix |
 | Java | `public final class <Name>` | `opts.publicClass: false` on every call except ONE (Java allows at most one *public* top-level type per file; a package-private class is still fully callable from another class in the same file/package) | Found proactively |
 
 ## Already correct — verified, not assumed
 
-C, Rust, Python, Perl, Lua, Julia, Scheme, TypeScript, Fortran, and C#
+C, Rust, Lua, Julia, Scheme, TypeScript, Fortran, and C#
 have no file-level declaration that repeats per function (multiple
 `def`/`function`/`fn`/`sub`/`class` in one file is each language's own
 normal, unremarkable structure). Verified directly against a real

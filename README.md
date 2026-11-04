@@ -451,6 +451,34 @@ directly-verified breakdown and exactly how each fix works, and
 `test/conformance.test.js`'s `domainSafety` entry for the permanent
 regression test.
 
+### Division by zero: also unified
+
+Dividing by a runtime zero follows IEEE 754 on every target, matching
+the native evaluator: `x/0` is `+Infinity` or `-Infinity` (the sign
+comes from both operands, including a `-0` denominator), and `0/0` and
+`NaN/0` are `NaN`. This was not true before:
+
+- **Python** raised `ZeroDivisionError`, **Perl** died with "Illegal
+  division by zero", and **PHP 8** threw `DivisionByZeroError`. Now
+  fixed: PHP emits `fdiv()`; Python and Perl emit a small
+  `_exprforge_div` helper (once per file, so each operand is still
+  evaluated exactly once). A nonzero literal denominator keeps the
+  plain `/`. For concatenated files, pass `{ includeHelpers: false }`
+  on every call after the first (see below).
+- Every other target except COBOL (JS, TypeScript, C, Go, Rust, Java,
+  Lua, C#, Zig, Julia, Fortran, Scheme, QB64) already returned IEEE
+  results and is unchanged.
+- **GnuCOBOL** is a documented, unfixed exception: `COMPUTE` is decimal
+  arithmetic with no Infinity or NaN, so a zero denominator leaves the
+  target field unchanged.
+- Go and Fortran reject a division by a *literal* constant zero at
+  compile time (a loud, avoidable error); a runtime zero is fine.
+
+See `docs/adr/0004-division-by-zero.md` for the decision record,
+`samples/division-by-zero-demo.js` for the fixture, and
+`test/conformance.test.js`'s `divisionByZero` entry for the permanent
+regression test.
+
 ### `min()`/`max()` with a NaN argument: also unified
 
 `min`/`max` given a NaN argument now return NaN on every target,
@@ -992,7 +1020,7 @@ target and concatenating them into ONE file (one `.bi`/`.cob`/`.go`
 file per *program*, not per function). Several targets have some kind
 of always-on preamble per function (QB64's math-safety helpers,
 COBOL's comparison helpers, Go's `package`/`import`, Zig's `@import`,
-PHP's `<?php` tag, Java's one-public-class-per-file rule) that's fine
+PHP's `<?php` tag, Python's and Perl's division helper, Java's one-public-class-per-file rule) that's fine
 in isolation but becomes a duplicate/conflicting declaration once two
 functions' outputs are concatenated as-is — confirmed directly (a real
 consumer report, then the same bug class found in 5 more targets by
