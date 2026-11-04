@@ -492,6 +492,58 @@ are tracked as a running decision log in
 you're debugging something that looks like a cross-target behavior
 mismatch.
 
+## Numeric guarantees
+
+The reference is the native evaluator (`evaluate`, JS semantics). Every
+emitted target is compared against it with real compilers/interpreters,
+using a ULP-based comparison (no absolute floor) and 17-significant-digit
+output. The decision log is in [`docs/adr/`](docs/adr/README.md); the
+boundary audit is
+[`0004`](docs/adr/0004-boundary-conditions.md).
+
+**Unified on every target (with the one set of exceptions below):**
+
+- `round()` ties away from zero; out-of-domain `sqrt`/`log*`/`asin`/
+  `acos`/`pow` give NaN or Infinity; `min`/`max` propagate NaN (0001-0003).
+- `floor`/`ceil`/`trunc`/`round` of NaN, ±Infinity and huge values
+  (including above 2^63 and 2^53) return the argument or the exact
+  integer, never raise or saturate.
+- `sign(NaN)` is NaN.
+- `hypot` does not overflow or underflow early, and handles ±Infinity
+  and NaN (`hypot(Infinity, NaN)` is Infinity).
+- `exp` overflows to Infinity; `pow` handles ±0, infinite operands and
+  overflow without raising.
+- `atan2(±0, ±0)` and infinite operands agree.
+- `wrapIndex(i, m)` is `((i % m) + m) % m` with a truncating `%`:
+  `m = 0` is NaN, negative `m` and fractional operands follow the same
+  formula.
+- Overflow to ±Infinity and subnormal results follow IEEE 754.
+
+**Documented exceptions** (each is tested and listed with its reason in
+ADR 0004):
+
+| Target | Exception |
+|---|---|
+| **GnuCOBOL** | No NaN/Infinity representation: domain errors and `min`/`max` NaN return 0 (0002, 0003), `pow(0, negative)` and `wrapIndex(i, 0)` return 0, `pow` with an enormous integer exponent aborts at runtime, numeric literals over 38 digits are rejected at generation time, and arguments given as NaN, Infinity, `-0` or exponent notation cannot be passed through `NUMVAL`. `cos` near zero can differ by about 1e-16 absolute. |
+| **Fortran** | An out-of-domain expression made only of literal constants fails to compile (0002). |
+| **QB64** | About 15-16 significant digits through `PRINT`/`VAL`; values near the double limits do not round-trip. |
+| **Perl** | `pow(-0, odd/negative integer)` returns `+0`/`+Infinity`. |
+| **Zig** | `pow(-2, 1e300)` is NaN, not Infinity. |
+| **Go** | `exp(709.5)` is `+Infinity` on the tested amd64 toolchain. |
+| JS, TypeScript, Java vs. the rest | `pow(1, NaN)` and `pow(±1, ±Infinity)` are NaN; every other target returns 1 (IEEE 754-2008). |
+| Reference formula | `round()` is off by one at `0.49999999999999994` and above 2^52 on targets built from the 0001 formula (open decision). |
+
+**Not guaranteed:** the sign of a zero result (`floor(-0.4)`, `sign(-0)`,
+`wrapIndex` landing on zero) may be `-0` on some targets and `+0` on
+others (`sign(-0)` is an open decision); `wrapIndex` with non-finite
+operands is unspecified; in Lua, arguments must be floats (an integer
+argument makes `%` by zero an error and lets `*` wrap).
+
+**What ExprForge does not do:** it never clamps, validates or
+sanitizes inputs. A NaN, Infinity, `-0` or enormous argument reaches the
+formula as given. Clamping happens only where the formula itself says so:
+`clampIndex`, and `clamp`/`safeDiv` in `exprforge/math`.
+
 ## Symbolic differentiation (`differentiate`)
 
 ```js
