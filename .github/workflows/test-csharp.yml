@@ -7,17 +7,30 @@ on:
     branches: [main]
   workflow_dispatch: {}
 
+# Matrix per Microsoft's .NET support policy
+# (https://dotnet.microsoft.com/en-us/platform/support/policy/dotnet-core),
+# checked 2026-11-04: .NET 8 (LTS) is supported through 2026-11-10 and is the
+# oldest supported LTS; .NET 10 (LTS, released 2025-11-11) is the newest
+# release; .NET 9 (STS) ends the same day as .NET 8. When .NET 8 drops out,
+# replace it with the then-oldest supported LTS. The harness targets the
+# highest installed SDK major (test/dotnet-tfm.js); EXPRFORGE_DOTNET_TFM pins it.
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        dotnet: ["8.0.x", "10.0.x"]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
           cache: npm
+      - run: node --version
       - run: npm ci
       - uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: "9.0.x"
+          dotnet-version: ${{ matrix.dotnet }}
+      - run: dotnet --info
       - run: EXPRFORGE_TEST_TARGETS=C# npm test

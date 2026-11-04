@@ -9,16 +9,18 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
           cache: npm
+      - run: node --version
       - run: npm ci
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: "21"
+      - run: javac -version
       - run: EXPRFORGE_TEST_TARGETS=Java npm test
