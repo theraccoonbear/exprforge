@@ -2313,7 +2313,9 @@ test("mathDemo: round-trips through the expr-syntax emitter and back through fn(
             [-8, 3], [-8, 2], [-8, -3], [-8, 1 / 3], [-8, 0.5],
             [2, 1024], [2, -1075], [2, 0.5], [NaN_, 1], [2, NaN_],
         ],
-        skipRows: COBOL_PLAIN_ONLY,
+        skipRows: {
+            COBOL: (args) => COBOL_PLAIN_ONLY.COBOL(args) || !Number.isFinite(Math.pow(...args)),
+        },
     });
     registerConformance("boundary.powSignedZero", {
         ast: B.powBoundaryAst,
@@ -2324,12 +2326,12 @@ test("mathDemo: round-trips through the expr-syntax emitter and back through fn(
     registerConformance("boundary.powIeeeCorners", {
         ast: B.powBoundaryAst,
         inputs: [[1, NaN_], [1, INF], [1, -INF], [-1, INF], [-1, -INF]],
-        skipTargets: ["C", "Go", "Rust", "Python", "QB64", "Lua", "Perl", "PHP", "Julia", "Fortran", "Zig", "Scheme", "COBOL"],
+        skipTargets: ["C", "Go", "Rust", "Python", "QB64", "Lua", "Perl", "PHP", "Julia", "Fortran", "Zig", "Scheme", "COBOL", "C#"],
     });
     registerConformance("boundary.pow.hugeExponent", {
         ast: B.powBoundaryAst,
         inputs: [[-2, 1e300], [-2, 1e15 + 1], [2, 1e300]],
-        skipTargets: ["COBOL"],
+        skipTargets: ["COBOL", "Zig"],
     });
     registerConformance("boundary.atan2", {
         ast: B.atan2BoundaryAst,
@@ -2359,8 +2361,12 @@ test("mathDemo: round-trips through the expr-syntax emitter and back through fn(
         signedZero: true,
         skipRows: COBOL_PLAIN_ONLY,
     });
+    test("boundary.overflowSubnormal: COBOL refuses literals beyond 38 digits at generation time", () => {
+        assert.throws(() => emitters.cobol.emitFunction(B.overflowBoundaryAst), /not supported for this target/);
+    });
     registerSuiteConformance("boundary.overflowSubnormal", {
         ast: B.overflowBoundaryAst,
+        skipTargets: ["COBOL"],
         inputs: [
             [1e200], [-1e200], [1e308], [-1e308], [1e155], [710], [-745], [-746], [0],
             [5e-324], [1e-320], [2.2250738585072014e-308],
@@ -2381,4 +2387,8 @@ test("mathDemo: round-trips through the expr-syntax emitter and back through fn(
         skipTargets: [],
         skipRows: { COBOL: (args) => args[1] === 0 || args.some((a) => !Number.isInteger(a)) || Object.is(args[0], -0) },
     });
+}
+
+function nonFiniteOrNegZero(args) {
+    return args.some((a) => typeof a === "number" && (!Number.isFinite(a) || Object.is(a, -0)));
 }

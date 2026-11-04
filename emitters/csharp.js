@@ -48,8 +48,8 @@ const emitter = new Emitter({
         // multiplication -- no explicit cast needed the way the sign:
         // entry above needs one on its own (there, the WHOLE expression
         // needs to already read as a double, since nothing else in it is).
-        round: ([x]) => `(Math.Sign(${x}) * Math.Floor(Math.Abs(${x}) + 0.5))`,
-        // No Math.Hypot in .NET -- same manual formula as QB64's/C's.
+        round: ([x]) => `Math.Round(${x}, MidpointRounding.AwayFromZero)`,
+        // double.Hypot (.NET 7+) avoids the overflow/underflow of sqrt(a*a + b*b).
         hypot: ([a, b]) => `double.Hypot(${a}, ${b})`,
         wrapIndex: ([i, m]) => `(((${i} % ${m}) + ${m}) % ${m})`,
         // Math.Clamp (.NET Core 2.0+) is a direct stdlib match for

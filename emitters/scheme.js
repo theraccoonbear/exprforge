@@ -101,7 +101,11 @@ const emitter = new SchemeEmitter({
         // way, `truncate` (a standard R7RS procedure) checks "is this
         // already a whole number".
         pow: ([base, exp]) =>
-            `(if (and (< ${base} 0.0) (not (= ${exp} (truncate ${exp})))) (/ 0.0 0.0) (expt ${base} ${exp}))`,
+            `(let ((ef-b ${base}) (ef-e ${exp})) ` +
+            `(cond ((and (= ef-b 0.0) (< ef-e 0.0)) ` +
+            `(if (and (eqv? ef-b -0.0) (= (abs (truncate-remainder ef-e 2.0)) 1.0)) -inf.0 +inf.0)) ` +
+            `((and (< ef-b 0.0) (not (= ef-e (truncate ef-e)))) +nan.0) ` +
+            `(else (expt ef-b ef-e))))`,
         // R7RS's 2-argument atan IS atan2 -- no separate name for it.
         atan2: fn2("atan"),
         // No log2/log10 procedure in R7RS or Guile's core -- derive both

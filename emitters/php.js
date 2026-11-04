@@ -29,7 +29,7 @@ const emitter = new PhpEmitter({
         sqrt: fn1("sqrt"), abs: fn1("abs"), sin: fn1("sin"), cos: fn1("cos"), tan: fn1("tan"),
         asin: fn1("asin"), acos: fn1("acos"), atan: fn1("atan"), atan2: fn2("atan2"),
         log: fn1("log"), log10: fn1("log10"), exp: fn1("exp"), pow: fn2("pow"),
-        floor: fn1("floor"), ceil: fn1("ceil"), round: fn1("round"),
+        floor: fn1("floor"), ceil: fn1("ceil"),
         hypot: fn2("hypot"),
         // NOT bare min()/max(): confirmed directly that whichever
         // argument comes SECOND silently wins whenever either is NaN
@@ -44,6 +44,12 @@ const emitter = new PhpEmitter({
         // log() takes an optional base argument -- covers log2 without a
         // separate function (PHP has no log2() of its own).
         log2: ([x]) => `log(${x}, 2)`,
+        // Not bare round(): PHP's round() pre-rounds its argument and
+        // returns round(4503599627370496.0) as 4503599627370497.0 on 8.5
+        // (found by samples/boundary-conditions-demo.js). Ties away from
+        // zero, exact for every finite double, NaN/Infinity pass through.
+        round: ([x]) =>
+            `(${x} >= 0 ? floor(${x}) + (((${x}) - floor(${x})) >= 0.5 ? 1.0 : 0.0) : ceil(${x}) - ((ceil(${x}) - (${x})) >= 0.5 ? 1.0 : 0.0))`,
         // No trunc() anywhere in PHP core. floor for non-negatives, ceil
         // for negatives -- avoids an (int) cast, which would silently
         // misbehave outside PHP's platform integer range.
