@@ -19,6 +19,7 @@ const emitters = {
     zig: require("./zig.js"),
     scheme: require("./scheme.js"),
     cobol: require("./cobol.js"),
+    matlab: require("./matlab.js"),
     expr: require("./exprsyntax.js"),
     latex: require("./latex.js"),
 };

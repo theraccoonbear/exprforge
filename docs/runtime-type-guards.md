@@ -66,6 +66,7 @@ target's real idiom for "is this actually an array-shaped value":
 | Lua | `type(arr) == "table"` |
 | Julia | `arr isa AbstractVector` |
 | Perl | `ref($arr) eq 'ARRAY'` — Perl's own array-param convention is an ARRAYREF (`$arr->[i]`), not a plain `@array` (see `emitters/perl.js`'s own comment), so the check is on the reference, not the value |
+| MATLAB / Octave | `~isnumeric(arr) \|\| ~isvector(arr)` |
 | Scheme | `(vector? arr)` — `emitters/scheme.js`'s own `emitIndex` uses `vector-ref`, so this checks for a vector specifically, not a list |
 
 Every other target (every statically-typed one, plus COBOL, which
@@ -77,12 +78,12 @@ array-typed parameter at all.
 ## Implementation
 
 `emitters/base.js`'s `Emitter` constructor reads an optional
-`config.typeGuard: (paramName, fnName) => string` — present only on the 8
+`config.typeGuard: (paramName, fnName) => string` — present only on the 9
 dynamic-language emitters. `emitFunction(fn, registry, opts)` computes
 `guardLines` (one string per array-typed parameter, empty array
 otherwise) and passes it as a 4th argument to `formatFunctionImpl`/
 `formatSuiteImpl`. Every emitter's `formatFunction`/`formatSuite`
-accepts (and, for the 8 that need it, splices in) `guardLines = []` —
+accepts (and, for the 9 that need it, splices in) `guardLines = []` —
 harmless as an unused trailing argument for the ~10 targets that never
 receive a non-empty array.
 
@@ -138,11 +139,11 @@ BOTH `arrayLengths` declares the pairing for that parameter AND the
 named length parameter is a real parameter of the function; a
 typo'd/stale entry is silently a no-op, same "never a surprise" spirit
 as `addTypeGuards` itself, rather than throwing over what's still just
-documentation. Same 8-target availability as `typeGuard`, using each
+documentation. Same 9-target availability as `typeGuard`, using each
 target's own length-of-array idiom, checked AFTER the type guard (so
 it's always safe to call): `.length` (JS/TS), `len()` (Python),
 `count()` (PHP), `#` (Lua), `scalar(@$arr)` (Perl — dereferencing the
-arrayref), `length()` (Julia), `(vector-length ...)` (Scheme).
+arrayref), `length()` (Julia), `numel()` (MATLAB/Octave), `(vector-length ...)` (Scheme).
 
 **This is deliberately not a complete fix** — a caller can still pass a
 mismatched array and a WRONG `m` that happens to agree with its actual
