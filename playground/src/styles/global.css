@@ -664,3 +664,25 @@ pre,
         grid-template-columns: 1fr;
     }
 }
+
+/* ---- LaTeX card: rendered preview and external links ------------------ */
+
+.latex-preview {
+    padding: 0.5rem 0.75rem;
+    overflow-x: auto;
+    border-bottom: 1px solid var(--border);
+}
+
+.latex-links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    padding: 0.4rem 0.75rem;
+    font-size: 0.75rem;
+    border-bottom: 1px solid var(--border);
+}
+
+.latex-link--disabled {
+    color: var(--text-dim);
+    cursor: not-allowed;
+}

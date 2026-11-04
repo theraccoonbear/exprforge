@@ -4,11 +4,13 @@ import { oneDark } from "@codemirror/theme-one-dark";
 import { EditorView } from "@codemirror/view";
 import { highlightExtensionFor } from "./highlighting";
 import type { CardResult } from "./useExprForge";
+import { LatexExtras } from "./LatexExtras";
 
 interface LanguageCardProps {
     languageId: string;
     label: string;
     result: CardResult;
+    latexDocument?: string | null;
 }
 
 // A read-only, unpadded CodeMirror instance rather than a plain
@@ -23,7 +25,7 @@ const READONLY_THEME = EditorView.theme({
     ".cm-scroller": { maxHeight: "320px" },
 });
 
-export function LanguageCard({ languageId, label, result }: LanguageCardProps) {
+export function LanguageCard({ languageId, label, result, latexDocument = null }: LanguageCardProps) {
     const [copied, setCopied] = useState(false);
 
     async function handleCopy() {
@@ -52,6 +54,7 @@ export function LanguageCard({ languageId, label, result }: LanguageCardProps) {
                     )}
                 </div>
             </header>
+            {result.ok && languageId === "latex" && <LatexExtras source={result.source} documentSource={latexDocument} />}
             {result.ok ? (
                 <CodeMirror
                     value={result.source}

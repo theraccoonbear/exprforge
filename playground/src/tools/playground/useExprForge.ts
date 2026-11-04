@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { ExprForge } from "../../lib/exprforge";
 import type { EmitResult, FnDef } from "../../lib/exprforgeTypes";
 
-const { fn, loadExprSource, emitMany, checkUnboundVars } = ExprForge;
+const { fn, loadExprSource, emit, emitMany, checkUnboundVars } = ExprForge;
 
 function isFnDef(x: unknown): x is FnDef {
     return (
@@ -21,6 +21,10 @@ export type CardResult = ({ ok: true } & EmitResult) | { ok: false; error: strin
 export interface FunctionResult {
     def: FnDef;
     outputs: Record<string, CardResult>;
+    // The LaTeX target's standalone-document form (opts.wrap =
+    // "document"), used only for the "Open in Overleaf" link. Null when
+    // the LaTeX target itself errored for this definition.
+    latexDocument: string | null;
 }
 
 export interface ExprForgeResult {
@@ -31,6 +35,14 @@ export interface ExprForgeResult {
     // doesn't parse as a runnable definition at all (an unsigned bare
     // expression, or a genuine error -- see `error` above).
     functions: FunctionResult[];
+}
+
+function emitLatexDocument(def: FnDef): string | null {
+    try {
+        return emit(def, "latex", undefined, { wrap: "document" }).source;
+    } catch {
+        return null;
+    }
 }
 
 function emitOutputs(def: FnDef): Record<string, CardResult> {
@@ -110,7 +122,7 @@ export function useExprForge(source: string): ExprForgeResult {
             } catch (e) {
                 return { error: e instanceof Error ? e.message : String(e), functions: [] };
             }
-            functions.push({ def, outputs: emitOutputs(def) });
+            functions.push({ def, outputs: emitOutputs(def), latexDocument: emitLatexDocument(def) });
         }
 
         return { error: null, functions };
