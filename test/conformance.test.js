@@ -800,6 +800,7 @@ function runTS(ast, inputs) {
 // that and silently gives NaN, so this is needed on every value QB64
 // prints, not just ones near the E/D-notation-vs-fixed threshold.
 function qb64ToNumber(str) {
+    if (str.includes("QB64-RUNTIME-ERROR")) throw new Error(`QB64 runtime error: ${str}`);
     // QB64 prints "-NAN"/"NAN" for NaN and "inf"/"-inf" for Infinity
     // (confirmed against a real compile) -- parseNumericOutput handles
     // both, same as every other target's own spelling; only a genuine
@@ -863,12 +864,12 @@ function runQB64(ast, inputs) {
     // this call site never hit the empty case before.
     const callExpr = callArgs ? `${ast.name}#(${callArgs})` : `${ast.name}#`;
     const harness =
-        `$CONSOLE:ONLY\n${source}\n${argReads}\nPRINT ${callExpr}\nSYSTEM\n`;
+        `$CONSOLE:ONLY\n${source}\nON ERROR GOTO ef_fail\n${argReads}\nPRINT ${callExpr}\nSYSTEM\nef_fail:\nPRINT "QB64-RUNTIME-ERROR"; ERR\nSYSTEM\n`;
     const srcPath = path.join(dir, "main.bas");
     fs.writeFileSync(srcPath, harness);
     const bin = path.join(dir, "bin");
     execFileSync("qb64pe", ["-x", srcPath, "-o", bin]);
-    const results = inputs.map((args) => qb64ToNumber(execFileSync(bin, args.map(argText)).toString().trim()));
+    const results = inputs.map((args) => qb64ToNumber(execFileSync(bin, args.map(argText), { timeout: 30000 }).toString().trim()));
     fs.rmSync(dir, { recursive: true, force: true });
     return results;
 }
@@ -888,14 +889,14 @@ function runSuiteQB64(ast, inputs, outputNames) {
     // stays correct if one ever does.
     const allCallArgs = [callArgs, outputNames.join(", ")].filter(Boolean).join(", ");
     const harness =
-        `$CONSOLE:ONLY\n${source}\n${argReads}\n${outDecl}\n` +
-        `CALL ${ast.name}(${allCallArgs})\n${prints}\nSYSTEM\n`;
+        `$CONSOLE:ONLY\n${source}\nON ERROR GOTO ef_fail\n${argReads}\n${outDecl}\n` +
+        `CALL ${ast.name}(${allCallArgs})\n${prints}\nSYSTEM\nef_fail:\nPRINT "QB64-RUNTIME-ERROR"; ERR\nSYSTEM\n`;
     const srcPath = path.join(dir, "main.bas");
     fs.writeFileSync(srcPath, harness);
     const bin = path.join(dir, "bin");
     execFileSync("qb64pe", ["-x", srcPath, "-o", bin]);
     const results = inputs.map((args) => {
-        const lines = execFileSync(bin, args.map(argText)).toString().trim().split("\n");
+        const lines = execFileSync(bin, args.map(argText), { timeout: 30000 }).toString().trim().split("\n");
         const record = {};
         outputNames.forEach((name, i) => {
             record[name] = qb64ToNumber(lines[i]);
@@ -1767,6 +1768,19 @@ function runSuiteCobol(ast, inputs, outputNames) {
     return results;
 }
 
+function collect(list, fn) {
+    try {
+        fn();
+    } catch (e) {
+        list.push(e.message);
+    }
+}
+
+function jsonNum(_k, x) {
+    if (typeof x !== "number") return x;
+    return Object.is(x, -0) ? "-0" : Number.isFinite(x) ? x : String(x);
+}
+
 function registerSuiteConformance(sampleName, { ast, inputs, skipTargets = [], targetCmp = {}, ...cmpOpts }) {
     const outputNames = suiteOutputNames(ast);
     const targets = [
@@ -1798,16 +1812,20 @@ function registerSuiteConformance(sampleName, { ast, inputs, skipTargets = [], t
                 const expected = inputs.map((args) => jsFn(...args));
                 const actual = run(ast, inputs, outputNames);
                 assert.strictEqual(actual.length, expected.length);
+                const mismatches = [];
                 for (let i = 0; i < inputs.length; i++) {
                     for (const name of outputNames) {
-                        assertClose(
-                            actual[i][name],
-                            expected[i][name],
-                            `${label} vs JS at args=${JSON.stringify(inputs[i])}, field "${name}"`,
-                            { ...cmpOpts, ...targetCmp[label] },
+                        collect(mismatches, () =>
+                            assertClose(
+                                actual[i][name],
+                                expected[i][name],
+                                `${label} vs JS at args=${JSON.stringify(inputs[i], jsonNum)}, field "${name}"`,
+                                { ...cmpOpts, ...targetCmp[label] },
+                            ),
                         );
                     }
                 }
+                assert.ok(mismatches.length === 0, `${mismatches.length} mismatch(es):\n${mismatches.join("\n")}`);
             },
         );
     }
@@ -1854,9 +1872,13 @@ function registerConformance(sampleName, { ast, reference, inputs, skipTargets =
                 const expected = inputs.map((args) => jsFn(...args));
                 const actual = run(ast, inputs);
                 assert.strictEqual(actual.length, expected.length);
+                const mismatches = [];
                 for (let i = 0; i < inputs.length; i++) {
-                    assertClose(actual[i], expected[i], `${label} vs JS at args=${JSON.stringify(inputs[i])}`, { ...cmpOpts, ...targetCmp[label] });
+                    collect(mismatches, () =>
+                        assertClose(actual[i], expected[i], `${label} vs JS at args=${JSON.stringify(inputs[i], jsonNum)}`, { ...cmpOpts, ...targetCmp[label] }),
+                    );
                 }
+                assert.ok(mismatches.length === 0, `${mismatches.length} mismatch(es):\n${mismatches.join("\n")}`);
             },
         );
     }
