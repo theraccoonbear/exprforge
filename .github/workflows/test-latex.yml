@@ -23,4 +23,11 @@ jobs:
       # exactly like tsc is for TypeScript -- not a project dependency.
       - name: Install katex
         run: npm install -g katex@0.16
+      # wrap: "document" output is compiled with a real pdflatex. The
+      # minimal package: texlive-latex-base ships pdflatex and amsmath,
+      # which is all the document preamble needs.
+      - name: Install TeX Live (minimal)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends texlive-latex-base
       - run: EXPRFORGE_TEST_TARGETS=LaTeX npm test
