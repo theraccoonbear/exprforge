@@ -1,0 +1,25 @@
+name: Ruby
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch: {}
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.3"
+      - run: npm ci
+      - run: ruby -v
+      - run: node -v
+      - run: EXPRFORGE_TEST_TARGETS=Ruby npm test
