@@ -478,6 +478,7 @@ const TOOLS = {
     perl: hasTool("perl", ["-v"]),
     php: hasTool("php", ["--version"]),
     julia: hasTool("julia", ["--version"]),
+    octave: hasTool("octave-cli", ["--version"]),
     gfortran: hasTool("gfortran", ["--version"]),
     zig: hasTool("zig", ["version"]),
     guile: GUILE_BIN !== null,
@@ -1341,6 +1342,50 @@ function runSuiteJulia(ast, inputs, outputNames) {
     return results;
 }
 
+// --- MATLAB / Octave ---------------------------------------------------------
+//
+// Run with octave-cli (never the GUI binary) against the emitted .m file,
+// which must be named after its function. MATLAB itself is not exercised
+// anywhere in CI -- see emitters/matlab.js's header comment. One Octave
+// process per sample: a driver script calls the function once per input
+// with the argument values written as literals and prints every result
+// with %.17g (Octave prints Inf/NaN as "Inf"/"NaN", which
+// parseNumericOutput already understands). Array-typed params are passed
+// as plain row vectors.
+
+function octaveLiteral(value) {
+    if (Array.isArray(value)) return `[${value.map(octaveLiteral).join(", ")}]`;
+    if (Number.isNaN(value)) return "NaN";
+    if (value === Infinity) return "Inf";
+    if (value === -Infinity) return "-Inf";
+    return String(value);
+}
+
+function runOctaveDriver(ast, inputs, outputNames) {
+    const source = emitters.matlab.emitFunction(ast);
+    const dir = tmpDir("ef-oct-");
+    fs.writeFileSync(path.join(dir, `${ast.name}.m`), source);
+    const resultVars = outputNames.map((_, i) => `ef_o${i}`);
+    const lhs = outputNames.length === 1 ? resultVars[0] : `[${resultVars.join(", ")}]`;
+    const calls = inputs.map((args) => {
+        const prints = resultVars.map((r) => `printf("%.17g\\n", ${r});`).join(" ");
+        return `${lhs} = ${ast.name}(${args.map(octaveLiteral).join(", ")}); ${prints}`;
+    });
+    fs.writeFileSync(path.join(dir, "ef_driver.m"), calls.join("\n") + "\n");
+    const stdout = execFileSync("octave-cli", ["--norc", "ef_driver.m"], { cwd: dir }).toString().trim().split("\n");
+    fs.rmSync(dir, { recursive: true, force: true });
+    return inputs.map((_, i) => outputNames.map((__, j) => parseNumericOutput(stdout[i * outputNames.length + j])));
+}
+
+function runOctave(ast, inputs) {
+    return runOctaveDriver(ast, inputs, ["result"]).map(([r]) => r);
+}
+
+function runSuiteOctave(ast, inputs, outputNames) {
+    return runOctaveDriver(ast, inputs, outputNames).map((row) =>
+        Object.fromEntries(outputNames.map((n, i) => [n, row[i]])));
+}
+
 // --- Scheme (Guile) --------------------------------------------------------
 //
 // No compile step -- guile3.0 interprets the emitted source directly
@@ -1739,6 +1784,7 @@ function registerSuiteConformance(sampleName, { ast, inputs, skipTargets = [] })
         ["Perl", TOOLS.perl, runSuitePerl],
         ["PHP", TOOLS.php, runSuitePhp],
         ["Julia", TOOLS.julia, runSuiteJulia],
+        ["Octave", TOOLS.octave, runSuiteOctave],
         ["Fortran", TOOLS.gfortran, runSuiteFortran],
         ["Zig", TOOLS.zig, runSuiteZig],
         ["Scheme", TOOLS.guile, runSuiteScheme],
@@ -1794,6 +1840,7 @@ function registerConformance(sampleName, { ast, reference, inputs, skipTargets =
         ["Perl", TOOLS.perl, runPerl],
         ["PHP", TOOLS.php, runPhp],
         ["Julia", TOOLS.julia, runJulia],
+        ["Octave", TOOLS.octave, runOctave],
         ["Fortran", TOOLS.gfortran, runFortran],
         ["Zig", TOOLS.zig, runZig],
         ["Scheme", TOOLS.guile, runScheme],

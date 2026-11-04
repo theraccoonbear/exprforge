@@ -66,6 +66,7 @@ const TOOLS = {
     perl: hasTool("perl", ["-v"]),
     php: hasTool("php", ["--version"]),
     julia: hasTool("julia", ["--version"]),
+    octave: hasTool("octave-cli", ["--version"]),
     gfortran: hasTool("gfortran", ["--version"]),
     zig: hasTool("zig", ["version"]),
     guile: GUILE_BIN !== null,
@@ -351,6 +352,46 @@ test("multi-function file: Julia -- concatenating 2 functions runs correctly", {
     fs.writeFileSync(fnsPath, out1 + "\n" + out2);
     const output = execFileSync("julia", ["-e", `include("${fnsPath}"); println(f1(${F1_ARG})); println(f2(${F2_ARG}))`])
         .toString().trim().split("\n");
+    assertClose(parseFloat(output[0]), F1_EXPECT, "f1");
+    assertClose(parseFloat(output[1]), F2_EXPECT, "f2");
+    fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test("multi-function file: MATLAB/Octave -- one concatenated file (helpers once) runs correctly", { skip: !TOOLS.octave && "octave-cli not available" }, () => {
+    const out1 = emitters.matlab.emitFunction(fn1, undefined, { includeHelpers: true });
+    const out2 = emitters.matlab.emitFunction(fn2, undefined, { includeHelpers: false });
+    const dir = tmpDir("ef-multi-octave-");
+    // Octave only runs a file's later functions after source() when the
+    // file is a script file; a leading "1;" statement makes it one. MATLAB
+    // has no equivalent: only the first function of a file is callable from
+    // outside it, so a MATLAB consumer uses one file per public function.
+    fs.writeFileSync(path.join(dir, "fns.m"), "1;\n" + out1 + "\n" + out2);
+    fs.writeFileSync(
+        path.join(dir, "ef_driver.m"),
+        `source("fns.m");\nprintf("%.17g\\n", f1(${F1_ARG}));\nprintf("%.17g\\n", f2(${F2_ARG}));\n`,
+    );
+    const output = execFileSync("octave-cli", ["--norc", "ef_driver.m"], { cwd: dir }).toString().trim().split("\n");
+    assertClose(parseFloat(output[0]), F1_EXPECT, "f1");
+    assertClose(parseFloat(output[1]), F2_EXPECT, "f2");
+    fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test("multi-function file: MATLAB/Octave -- includeHelpers defaults to true and false omits every helper", () => {
+    const out1 = emitters.matlab.emitFunction(fn1);
+    const out2 = emitters.matlab.emitFunction(fn2);
+    assert.ok(out1.includes("function ef_r = ef_select") && out2.includes("function ef_r = ef_select"));
+    assert.ok(!emitters.matlab.emitFunction(fn2, undefined, { includeHelpers: false }).includes("ef_select"));
+});
+
+test("multi-function file: MATLAB/Octave -- one function per file, each self-contained (the MATLAB layout)", { skip: !TOOLS.octave && "octave-cli not available" }, () => {
+    const dir = tmpDir("ef-multi-octave-files-");
+    fs.writeFileSync(path.join(dir, "f1.m"), emitters.matlab.emitFunction(fn1));
+    fs.writeFileSync(path.join(dir, "f2.m"), emitters.matlab.emitFunction(fn2));
+    fs.writeFileSync(
+        path.join(dir, "ef_driver.m"),
+        `printf("%.17g\\n", f1(${F1_ARG}));\nprintf("%.17g\\n", f2(${F2_ARG}));\n`,
+    );
+    const output = execFileSync("octave-cli", ["--norc", "ef_driver.m"], { cwd: dir }).toString().trim().split("\n");
     assertClose(parseFloat(output[0]), F1_EXPECT, "f1");
     assertClose(parseFloat(output[1]), F2_EXPECT, "f2");
     fs.rmSync(dir, { recursive: true, force: true });
