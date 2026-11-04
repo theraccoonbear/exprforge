@@ -36,7 +36,9 @@ const Emitter = require("./base.js");
 
 const MUL_SYMBOLS = { implicit: null, cdot: "\\cdot", times: "\\times" };
 
-const PREC = { MOD: 0, ADD: 1, MUL: 2, FRAC: 2.5, POW: 3, CASES: 3.5, ATOM: 4 };
+// NEG: a negated literal or a unary minus applied to a tighter-binding
+// term -- fine as a product's left factor (-5 x), never as its right.
+const PREC = { MOD: 0, ADD: 1, NEG: 1.5, MUL: 2, FRAC: 2.5, POW: 3, CASES: 3.5, ATOM: 4 };
 
 const CMP_LATEX = { ">": ">", "<": "<", ">=": "\\geq", "<=": "\\leq", "==": "=", "!=": "\\neq" };
 
@@ -92,23 +94,20 @@ function formatFnName(name) {
 }
 
 function formatNumberParts(value) {
-    if (Number.isNaN(value)) return { s: "\\mathrm{NaN}", prec: PREC.ATOM, neg: false, first: "word", last: "word" };
-    if (value === Infinity) return { s: "\\infty", prec: PREC.ATOM, neg: false, first: "cmd", last: "cmd" };
-    if (value === -Infinity) return { s: "-\\infty", prec: PREC.ADD, neg: true, first: "minus", last: "cmd" };
     const str = String(value);
     const neg = str.startsWith("-");
     const m = /^(-?)([\d.]+)e([+-]?)(\d+)$/.exec(str);
     if (!m) {
-        return { s: str, prec: neg ? PREC.ADD : PREC.ATOM, neg, first: neg ? "minus" : "digit", last: "digit" };
+        return { s: str, prec: neg ? PREC.NEG : PREC.ATOM, neg, first: neg ? "minus" : "digit", last: "digit" };
     }
     const [, sign, mantissa, expSign, expDigits] = m;
     const exponent = `${expSign === "-" ? "-" : ""}${expDigits}`;
     if (mantissa === "1") {
-        return { s: `${sign}10^{${exponent}}`, prec: neg ? PREC.ADD : PREC.POW, neg, first: neg ? "minus" : "digit", last: "pow" };
+        return { s: `${sign}10^{${exponent}}`, prec: neg ? PREC.NEG : PREC.POW, neg, first: neg ? "minus" : "digit", last: "pow" };
     }
     return {
         s: `${sign}${mantissa} \\times 10^{${exponent}}`,
-        prec: neg ? PREC.ADD : PREC.MUL,
+        prec: neg ? PREC.NEG : PREC.MUL,
         neg,
         first: neg ? "minus" : "digit",
         last: "pow",
@@ -186,7 +185,7 @@ class LatexEmitter extends Emitter {
         if (op === "-" && node.left.type === "num" && Object.is(node.left.value, 0)) {
             let x = this._r(node.right);
             if (x.prec < PREC.MUL || x.neg) x = paren(x);
-            return { s: `-${x.s}`, prec: PREC.ADD, neg: true, first: "minus", last: x.last };
+            return { s: `-${x.s}`, prec: PREC.NEG, neg: true, first: "minus", last: x.last };
         }
         if (op === "+" || op === "-") {
             let l = this._r(node.left);
@@ -199,7 +198,7 @@ class LatexEmitter extends Emitter {
         if (op === "*") {
             let l = this._r(node.left);
             let r = this._r(node.right);
-            if (l.prec < PREC.MUL) l = paren(l);
+            if (l.prec < PREC.NEG) l = paren(l);
             if (r.prec < PREC.MUL || r.neg) r = paren(r);
             const sep = this._mulSep(l, r);
             return { s: `${l.s} ${sep ? `${sep} ` : ""}${r.s}`, prec: PREC.MUL, neg: l.neg, first: l.first, last: r.last };
