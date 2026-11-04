@@ -1939,6 +1939,38 @@ registerSuiteConformance("comparisonOps", {
     skipTargets: ["COBOL"],
 });
 
+// MATLAB/Octave has no conditional expression, so emitters/matlab.js picks
+// with an `if` inside a helper function rather than arithmetic emulation.
+// Octave-only on purpose: a value from the untaken branch (Inf here, from
+// 1/x at x == 0) must not leak into the result, which arithmetic select
+// (QB64's c*a + (1-c)*b) cannot guarantee and other targets handle under
+// their own rules.
+test(
+    "selectNoLeak: Octave select does not leak Inf/NaN from the untaken branch",
+    { skip: (!TOOLS.octave && "Octave toolchain not available") || (!targetAllowed("Octave") && "Octave filtered out") },
+    () => {
+        const { v, num, cmp, select, call, bin } = require("../ast.js");
+        const ast = {
+            name: "selectNoLeak",
+            params: ["x"],
+            body: select(cmp(v("x"), "==", num(0)), num(7), bin("/", num(1), v("x"))),
+        };
+        const nanBranch = {
+            name: "selectNoLeakNaN",
+            params: ["x"],
+            body: select(cmp(v("x"), ">=", num(0)), call("sqrt", v("x")), num(-1)),
+        };
+        const inputs = [[0], [4], [-4], [0.25]];
+        const jsFn = loadJsFn(ast);
+        const actual = runOctave(ast, inputs);
+        inputs.forEach((args, i) => assertClose(actual[i], jsFn(...args), `selectNoLeak at ${JSON.stringify(args)}`));
+        assert.strictEqual(actual[0], 7);
+        const jsNan = loadJsFn(nanBranch);
+        const actualNan = runOctave(nanBranch, inputs);
+        inputs.forEach((args, i) => assertClose(actualNan[i], jsNan(...args), `selectNoLeakNaN at ${JSON.stringify(args)}`));
+    },
+);
+
 // Proves sqrt/log/asin/acos/pow/log2/log10 return NaN/Infinity for an
 // out-of-domain argument identically on every target -- see
 // samples/domain-safety-demo.js's own header comment for the full,
