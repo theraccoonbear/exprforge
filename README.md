@@ -1307,8 +1307,9 @@ emit(root, "latex").source;
 \end{aligned}
 ```
 
-The output is bare math-mode content with no `$$...$$` or `\[...\]`
-wrapper, so it works with KaTeX, MathJax, or a real LaTeX document.
+By default the output is bare math-mode content with no `$$...$$` or
+`\[...\]` wrapper, so it works with KaTeX, MathJax, or a real LaTeX
+document; the `wrap` option (below) adds a wrapper when one is wanted.
 Rendering choices:
 
 - **Parentheses** appear only where the notation needs them. The
@@ -1324,6 +1325,14 @@ Rendering choices:
   becomes `v_{\mathrm{max}}`, and other multi-letter names use
   `\mathit{}`.
 - **Numbers** in scientific notation render as `1.5 \times 10^{-9}`.
+
+In the [live playground](https://theraccoonbear.github.io/exprforge/),
+the LaTeX card also shows a rendered KaTeX preview. It has two links,
+opened only on click and never fetched in the background: "Open in
+CodeCogs" (the formula rendered as an SVG) and "Open in Overleaf" (the
+`wrap: "document"` form as a new Overleaf project, which needs an
+Overleaf account). Both send the formula to a third-party site, and are
+disabled for formulas whose URL would exceed 6000 characters.
 
 ### Multiplication: `mulSymbol`
 
@@ -1342,6 +1351,45 @@ never `23`), a number after a variable (`x \cdot 2`), a number before a
 fraction (`2 \cdot \frac{1}{3}`, never a mixed number), a multi-letter
 identifier on either side, or a `cases` block on either side.
 Scientific-notation literals always use `\times`.
+
+### Wrapping: `wrap`
+
+Pass `{ wrap }` in `emit()`'s options (alongside `mulSymbol`) to wrap the
+output for a particular destination. It applies to single-line
+functions, `aligned` blocks and multi-output suites alike, and every
+form ends with a trailing newline. An unknown value throws.
+
+| `wrap` | Output | Use for |
+|---|---|---|
+| `"none"` (default) | bare math-mode content | any renderer that supplies its own delimiters |
+| `"inline"` | `$...$` | math inside a sentence |
+| `"display"` | `$$` on its own line, the math, `$$` on its own line | Markdown, KaTeX, MathJax |
+| `"equation"` | `\begin{equation}` ... `\end{equation}` | numbered equations in a LaTeX document |
+| `"document"` | a complete standalone file | compiling directly with `pdflatex` |
+
+```js
+emit(fn`area(w, h): return w * h;`, "latex", undefined, { wrap: "document" }).source;
+```
+
+```latex
+\documentclass{article}
+\usepackage{amsmath}
+\begin{document}
+\[
+\operatorname{area}\left(w, h\right) = w h
+\]
+\end{document}
+```
+
+`"document"` loads `amsmath`, which provides the `aligned`, `cases`,
+`\operatorname`, `\text` and `\lvert` the output uses; it compiles with
+a minimal TeX Live install (Ubuntu's `texlive-latex-base`). A document
+holds exactly one preamble and one `document` environment, so
+**concatenating several `"document"` outputs is not valid LaTeX**. To put
+several functions in one file, emit each with `"none"` or `"display"` and
+join those (or wrap them in your own document). Unlike the per-target
+fixes in [docs/multi-function-files.md](docs/multi-function-files.md),
+there is no flag that makes `"document"` output concatenable.
 
 ## Multiple named outputs
 
@@ -1450,10 +1498,15 @@ Runs `node --test`. For each sample, that's three kinds of check:
   inputs as arguments (catches an emitter bug).
 - The LaTeX emitter (`emitters/latex.js`) can't be run, so it gets
   exact-output checks for every primitive, node type, comparison
-  operator and `mulSymbol` value, plus a strict KaTeX parse of every
-  sample's output when a `katex` CLI is on PATH (`npm install -g
-  katex`; CI's `test-latex.yml` does this). Like `tsc`, katex is a
-  system tool, not a project dependency.
+  operator, `mulSymbol` value and `wrap` value, plus a strict KaTeX
+  parse of every sample's output (and of the unwrapped content of the
+  math `wrap` modes) when a `katex` CLI is on PATH (`npm install -g
+  katex`), and a real `pdflatex` compile of every sample in
+  `wrap: "document"` mode when `pdflatex` is on PATH. CI's
+  `test-latex.yml` installs both. Like `tsc`, katex and TeX Live are
+  system tools, not project dependencies. Overfull-box warnings from
+  long one-line formulas are reported but do not fail the compile
+  check.
 - The `expr`-syntax printer (`emitters/exprsyntax.js`) vs. `fn`'s own
   parser: every sample AST in this suite is printed back out as `fn`/
   `expr` source text, reparsed, and evaluated (via `evaluate()`) to

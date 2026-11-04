@@ -40,6 +40,15 @@ compiler/interpreter (see `test/multi-function-files.test.js`), not
 just assumed from reading the emitter source — the whole point of this
 audit was that "obviously fine" isn't evidence.
 
+## LaTeX
+
+The LaTeX target's default output (`wrap: "none"`) and the `"inline"`,
+`"display"` and `"equation"` wrappers concatenate fine: each is
+self-contained math. `wrap: "document"` is a complete file with its own
+`\documentclass` and `document` environment, so concatenating several
+of them is not valid LaTeX. Use `"none"` or `"display"` for multi-function
+files. See the README's "Typeset output (LaTeX)" section.
+
 ## Example (QB64)
 
 ```js
