@@ -19,6 +19,7 @@
 [![Zig](https://github.com/theraccoonbear/exprforge/actions/workflows/test-zig.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test-zig.yml)
 [![Scheme](https://github.com/theraccoonbear/exprforge/actions/workflows/test-scheme.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test-scheme.yml)
 [![COBOL](https://github.com/theraccoonbear/exprforge/actions/workflows/test-cobol.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test-cobol.yml)
+[![LaTeX](https://github.com/theraccoonbear/exprforge/actions/workflows/test-latex.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test-latex.yml)
 [![Test Coverage](https://github.com/theraccoonbear/exprforge/actions/workflows/test-coverage.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test-coverage.yml)
 [![VS Code Syntax](https://github.com/theraccoonbear/exprforge/actions/workflows/test-vscode-syntax.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test-vscode-syntax.yml)
 
@@ -28,8 +29,8 @@ ExprForge authors a math formula once, as a small AST, and emits
 verified, identical-behavior implementations in JavaScript, TypeScript,
 Python, C#, Lua, QB64, C, Java, Go, Rust, Perl, PHP, Julia, Fortran, Zig,
 Scheme (Guile), and COBOL (GnuCOBOL) — plus a native in-process
-evaluator and a printer for its own readable syntax. No required
-dependencies.
+evaluator, a printer for its own readable syntax, and typeset LaTeX
+output for documenting the formula itself. No required dependencies.
 
 **[▶ Try it live](https://theraccoonbear.github.io/exprforge/)** — write
 a formula in the browser and watch it emitted across every target
@@ -1282,6 +1283,66 @@ editor uses it exactly this way to let one buffer hold several
 definitions. `label` (default `"loadExprSource()"`) identifies the source
 in error messages, the way a file path does for `loadExpr`.
 
+## Typeset output (LaTeX)
+
+`emitters.latex` renders a formula as LaTeX math-mode source, for
+putting the formula itself in docs, papers, or a README next to the
+code generated from it. It is documentation, not an implementation:
+LaTeX typesets math, it never evaluates it.
+
+```js
+const { emit, fn } = require("exprforge");
+
+const root = fn`root(a, b, c):
+  let disc = b*b - 4*a*c;
+  return disc >= 0 ? (-b + sqrt(disc)) / (2*a) : 0;`;
+
+emit(root, "latex").source;
+```
+
+```latex
+\begin{aligned}
+  \mathit{disc} &= b b - 4 a c \\
+  \operatorname{root}\left(a, b, c\right) &= \begin{cases} \frac{-b + \sqrt{\mathit{disc}}}{2 a} & \text{if } \mathit{disc} \geq 0 \\ 0 & \text{otherwise} \end{cases}
+\end{aligned}
+```
+
+The output is bare math-mode content with no `$$...$$` or `\[...\]`
+wrapper, so it works with KaTeX, MathJax, or a real LaTeX document.
+Rendering choices:
+
+- **Parentheses** appear only where the notation needs them. The
+  explicit parens every other target puts around every operation exist
+  to pin down floating-point evaluation order, which typeset math
+  doesn't have.
+- **Division** is `\frac`, `pow` is a superscript, `sqrt`/`abs`/`floor`/
+  `ceil` use their usual notation, `log` is `\ln`, and `select` is a
+  `cases` block (an else-chain of selects flattens into one block). Lets
+  and multiple outputs become an `aligned` block of definitions.
+- **Identifiers:** single letters stay as-is, Greek names (`alpha`,
+  `Gamma`, ...) become symbols, `x1`/`x_1` become `x_{1}`, `v_max`
+  becomes `v_{\mathrm{max}}`, and other multi-letter names use
+  `\mathit{}`.
+- **Numbers** in scientific notation render as `1.5 \times 10^{-9}`.
+
+### Multiplication: `mulSymbol`
+
+Pass `{ mulSymbol }` in `emit()`'s options (the same options object as
+`addTypeGuards`):
+
+| `mulSymbol` | `2*a*c` renders as |
+|---|---|
+| `"implicit"` (default) | `2 a c` |
+| `"cdot"` | `2 \cdot a \cdot c` |
+| `"times"` | `2 \times a \times c` |
+
+`"implicit"` follows published-math convention, but still switches to
+`\cdot` wherever juxtaposition would misread: two numbers (`2 \cdot 3`,
+never `23`), a number after a variable (`x \cdot 2`), a number before a
+fraction (`2 \cdot \frac{1}{3}`, never a mixed number), a multi-letter
+identifier on either side, or a `cases` block on either side.
+Scientific-notation literals always use `\times`.
+
 ## Multiple named outputs
 
 `outputs({ name: Node, ... })` computes several named values from ONE
@@ -1387,6 +1448,12 @@ Runs `node --test`. For each sample, that's three kinds of check:
 - Every other emitted target vs. that same JS, compiled (and, for
   TypeScript, also type-checked under `--strict`) and run, with the sample
   inputs as arguments (catches an emitter bug).
+- The LaTeX emitter (`emitters/latex.js`) can't be run, so it gets
+  exact-output checks for every primitive, node type, comparison
+  operator and `mulSymbol` value, plus a strict KaTeX parse of every
+  sample's output when a `katex` CLI is on PATH (`npm install -g
+  katex`; CI's `test-latex.yml` does this). Like `tsc`, katex is a
+  system tool, not a project dependency.
 - The `expr`-syntax printer (`emitters/exprsyntax.js`) vs. `fn`'s own
   parser: every sample AST in this suite is printed back out as `fn`/
   `expr` source text, reparsed, and evaluated (via `evaluate()`) to

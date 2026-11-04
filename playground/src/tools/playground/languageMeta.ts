@@ -32,4 +32,6 @@ export const LANGUAGE_META: Record<string, LanguageMeta> = {
     // round-trips back through fn() itself. Labeled distinctly from the
     // others since it's not a third-party language.
     expr: { label: "ExprForge syntax (printer)", defaultOn: false, defaultOnMobile: false },
+    // emitters/latex.js -- typeset math-mode source, not executable code.
+    latex: { label: "LaTeX", defaultOn: false, defaultOnMobile: false },
 };
