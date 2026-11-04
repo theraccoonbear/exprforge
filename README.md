@@ -140,6 +140,8 @@ to whichever depth you actually plan to trust.
 npm install exprforge
 ```
 
+Requires Node 22 or later. See [Supported toolchain versions](#supported-toolchain-versions) for every target's tested versions.
+
 ## Examples, flashiest first
 
 The showcase feature: several function definitions in one buffer, a
@@ -1391,9 +1393,9 @@ change that also updates this table.
 
 | Target | Minimum | Tested in CI | Notes |
 |---|---|---|---|
-| Node (library + JS target) | Node 18 (`engines`) | 18, 20, 22, 24 (`test-node.yml`); 22 for all other workflows | Node 18 and 20 are end-of-life; see the open decision in the PR that introduced this table. |
+| Node (library + JS target) | Node 22 (`engines`) | 22, 24, 26 (`test-node.yml`); 22 for all other workflows | Every supported Node line is tested. Node 18 and 20 are end-of-life and no longer supported. |
 | C | C99 | gcc from Ubuntu 24.04 (13.x), default `-std` | Needs `fmin`/`fmax`/`isnan`/`log2`/`hypot`/`trunc`/`round` from C99 `math.h` and compound literals; link with `-lm`. |
-| C# | C# 7.0; .NET Core 3.0 / .NET 5+ when `log2` is used (`Math.Log2`) | .NET 8.0.x and 10.0.x (SDK-matched target framework) | Output is standalone: no `using` needed, `Math` is emitted as `global::System.Math`. Value tuples (C# 7) are used only for multi-output suites; on .NET Framework they need `System.ValueTuple`. Everything else used (`Math.Sign/Floor/Ceiling/Truncate/Abs/Sqrt/Pow/Atan2/Min/Max/Log/Log10/Exp`, trig) exists on every .NET version. Lower versions than the tested ones are not exercised by CI. |
+| C# | C# 7.0; .NET Core 3.0 / .NET 5+ when `log2` is used (`Math.Log2`) | .NET 10.0.x (SDK-matched target framework) | Output is standalone: no `using` needed, `Math` is emitted as `global::System.Math`. Value tuples (C# 7) are used only for multi-output suites; on .NET Framework they need `System.ValueTuple`. Everything else used (`Math.Sign/Floor/Ceiling/Truncate/Abs/Sqrt/Pow/Atan2/Min/Max/Log/Log10/Exp`, trig) exists on every .NET version. Lower versions than the tested ones are not exercised by CI. |
 | Go | any Go 1.x (`math` only) | 1.26 | |
 | Rust | 1.50 (`f64::clamp`; `rem_euclid` needs 1.38) | 1.99.1 | Not rewritten to `max`/`min`: Rust's `f64::max`/`min` ignore NaN, which would change results. |
 | Java | Java 8 (only `Math.*`) | 21 (Temurin) | |
@@ -1418,7 +1420,7 @@ C# output carries no `using` directives and refers to `global::System.Math`
 throughout, so it compiles with `ImplicitUsings` off and cannot be
 shadowed by a consumer's own `Math` type or `System` namespace. The test
 harness targets the highest installed .NET SDK major (`net<major>.0`),
-with `EXPRFORGE_DOTNET_TFM` (e.g. `net8.0`) as an override, and builds
+with `EXPRFORGE_DOTNET_TFM` (e.g. `net10.0`) as an override, and builds
 with `ImplicitUsings` disabled. `clampIndex` is emitted as
 `Max(lo, Min(hi, i))` rather than `Math.Clamp`, matching `evaluate()` and
 the other targets (`Math.Clamp` throws when `lo > hi`).

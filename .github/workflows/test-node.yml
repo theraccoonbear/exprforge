@@ -11,16 +11,15 @@ on:
 # installed; conformance tests skip) across Node versions. Node release
 # schedule: https://github.com/nodejs/Release/blob/main/schedule.json
 # (checked 2026-11-04): 18 and 20 are end-of-life; 22 is in maintenance until
-# 2027-04-30; 24 is LTS; 26 is Current/LTS from 2026-10-28.
-# package.json "engines" declares >=18, so 18 stays in the matrix until
-# engines is raised.
+# 2027-04-30; 24 is LTS; 26 is LTS from 2026-10-28. The matrix covers every
+# supported line, starting at package.json's "engines" floor (>=22).
 jobs:
   test:
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
-        node: ["18", "20", "22", "24"]
+        node: ["22", "24", "26"]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

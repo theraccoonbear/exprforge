@@ -9,10 +9,11 @@ on:
 
 # Matrix per Microsoft's .NET support policy
 # (https://dotnet.microsoft.com/en-us/platform/support/policy/dotnet-core),
-# checked 2026-11-04: .NET 8 (LTS) is supported through 2026-11-10 and is the
-# oldest supported LTS; .NET 10 (LTS, released 2025-11-11) is the newest
-# release; .NET 9 (STS) ends the same day as .NET 8. When .NET 8 drops out,
-# replace it with the then-oldest supported LTS. The harness targets the
+# checked 2026-11-04: .NET 8 (LTS) and .NET 9 (STS) both reach end of support
+# on 2026-11-10, leaving .NET 10 (LTS, released 2025-11-11, supported through
+# 2028-11-14) as the only supported release. Add .NET 11 once it is generally
+# available, and keep the oldest still-supported LTS in the matrix after
+# that. The harness targets the
 # highest installed SDK major (test/dotnet-tfm.js); EXPRFORGE_DOTNET_TFM pins it.
 jobs:
   test:
@@ -20,7 +21,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        dotnet: ["8.0.x", "10.0.x"]
+        dotnet: ["10.0.x"]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
