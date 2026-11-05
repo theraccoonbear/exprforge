@@ -16,6 +16,12 @@ function fn2(name) {
     return ([a, b]) => `Math.${name}(${a}, ${b})`;
 }
 
+// See js.js's powCall: Math.pow differs from IEEE 754 at pow(1, y) and
+// pow(-1, +-Infinity).
+function powCall([x, y]) {
+    return `((a: number, b: number): number => (a === 1 || (a === -1 && Math.abs(b) === Infinity)) ? 1 : Math.pow(a, b))(${x}, ${y})`;
+}
+
 const emitter = new Emitter({
     ext: "ts",
     formatNumber: (v) => String(v),
@@ -28,7 +34,7 @@ const emitter = new Emitter({
         // runtime (Math.*).
         round: ([x]) =>
             `((a: number): number => { const f = Math.floor(Math.abs(a)); return Math.sign(a) * (f + (Math.abs(a) - f >= 0.5 ? 1 : 0)); })(${x})`,
-        pow: fn2("pow"), atan2: fn2("atan2"), min: fn2("min"), max: fn2("max"), hypot: fn2("hypot"),
+        pow: powCall, atan2: fn2("atan2"), min: fn2("min"), max: fn2("max"), hypot: fn2("hypot"),
         wrapIndex: ([i, m]) => `(((${i} % ${m}) + ${m}) % ${m})`,
         clampIndex: ([i, lo, hi]) => `Math.max(${lo}, Math.min(${hi}, ${i}))`,
     },

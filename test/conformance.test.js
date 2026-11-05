@@ -2495,8 +2495,8 @@ test("mathDemo: round-trips through the expr-syntax emitter and back through fn(
     });
     registerConformance("boundary.powIeeeCorners", {
         ast: B.powBoundaryAst,
-        inputs: [[1, NaN_], [1, INF], [1, -INF], [-1, INF], [-1, -INF]],
-        skipTargets: ["C", "Go", "Rust", "Python", "QB64", "Lua", "Perl", "PHP", "Julia", "Fortran", "Zig", "Scheme", "COBOL", "C#"],
+        inputs: [[1, NaN_], [1, INF], [1, -INF], [-1, INF], [-1, -INF], [1, 2], [-1, 3], [-1, NaN_], [NaN_, 0]],
+        skipTargets: ["COBOL"],
     });
     registerConformance("boundary.pow.hugeExponent", {
         ast: B.powBoundaryAst,

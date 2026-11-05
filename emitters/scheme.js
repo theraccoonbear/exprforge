@@ -104,6 +104,7 @@ const emitter = new SchemeEmitter({
             `(let ((ef-b ${base}) (ef-e ${exp})) ` +
             `(cond ((and (= ef-b 0.0) (< ef-e 0.0)) ` +
             `(if (and (eqv? ef-b -0.0) (= (abs (truncate-remainder ef-e 2.0)) 1.0)) -inf.0 +inf.0)) ` +
+            `((and (= ef-b -1.0) (= (abs ef-e) +inf.0)) 1.0) ` +
             `((and (< ef-b 0.0) (not (= ef-e (truncate ef-e)))) +nan.0) ` +
             `(else (expt ef-b ef-e))))`,
         // R7RS's 2-argument atan IS atan2 -- no separate name for it.

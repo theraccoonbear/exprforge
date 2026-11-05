@@ -38,11 +38,12 @@ const emitter = new Emitter({
         log10: fn1("log10"),
         exp: ([x]) => `exp(${x})`,
         // R's ^ ignores the sign of a zero base: (-0)^-1 is +Inf and (-0)^3
-        // is +0. For -0 raised to an odd integer the result is taken from
-        // |base| and negated, as IEEE 754 requires.
+        // is +0, and (-1)^+-Inf is NaN. For -0 raised to an odd integer the
+        // result is taken from |base| and negated, and (-1)^+-Inf is 1, as
+        // IEEE 754 requires.
         pow: ([x, y]) =>
             `(function(a, b) if (!is.na(a) && !is.na(b) && a == 0 && 1 / a < 0 && is.finite(b) && ` +
-            `b == floor(b) && b %% 2 == 1) -(abs(a) ^ b) else a ^ b)(${x}, ${y})`,
+            `b == floor(b) && b %% 2 == 1) -(abs(a) ^ b) else if (!is.na(a) && a == -1 && is.infinite(b)) 1 else a ^ b)(${x}, ${y})`,
         floor: ([x]) => `floor(${x})`,
         ceil: ([x]) => `ceiling(${x})`,
         trunc: ([x]) => `trunc(${x})`,

@@ -29,7 +29,9 @@ const emitter = new Emitter({
         asin: fn1("asin"), acos: fn1("acos"), atan: fn1("atan"), log: fn1("log"),
         log10: fn1("log10"), exp: fn1("exp"), floor: fn1("floor"), ceil: fn1("ceil"),
         signum: fn1("signum"),
-        pow: fn2("pow"), atan2: fn2("atan2"), min: fn2("min"), max: fn2("max"), hypot: fn2("hypot"),
+        pow: ([x, y]) =>
+            `((java.util.function.DoubleBinaryOperator) (a, b) -> (a == 1.0 || (a == -1.0 && Math.abs(b) == Double.POSITIVE_INFINITY)) ? 1.0 : Math.pow(a, b)).applyAsDouble(${x}, ${y})`,
+        atan2: fn2("atan2"), min: fn2("min"), max: fn2("max"), hypot: fn2("hypot"),
         // Math has no log2; Java also lacks round-to-double and trunc directly.
         log2: ([x]) => `(Math.log(${x}) / Math.log(2.0))`,
         // Math.round ties toward +Infinity, NOT this project's standardized

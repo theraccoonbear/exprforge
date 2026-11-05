@@ -53,7 +53,9 @@ const CALLS = {
         const f = Math.floor(m);
         return Math.sign(x) * (f + (m - f >= 0.5 ? 1 : 0));
     },
-    pow: Math.pow, atan2: Math.atan2, min: Math.min, max: Math.max, hypot: Math.hypot,
+    // IEEE 754 / C99 Annex F: pow(1, y) is 1 for every y (NaN included) and
+    // pow(-1, +-Infinity) is 1. Math.pow returns NaN for these.
+    pow: (a, b) => (a === 1 || (a === -1 && Math.abs(b) === Infinity) ? 1 : Math.pow(a, b)), atan2: Math.atan2, min: Math.min, max: Math.max, hypot: Math.hypot,
     // See primitives.js's own comment -- ((i % m) + m) % m rather than a
     // plain `i % m`, so a negative `i` still wraps into [0, m) instead of
     // JS's sign-of-the-dividend `%` returning a negative result.
