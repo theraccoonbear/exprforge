@@ -1,7 +1,7 @@
 {
   "name": "exprforge",
   "version": "0.9.0",
-  "description": "Author a math expression once as an AST (or readable infix text via expr/fn), emit identical-behavior implementations in 17 programming languages (JS, TypeScript, Python, C#, Lua, QB64, C, Java, Go, Rust, Perl, PHP, Julia, Fortran, Zig, Scheme, and COBOL), plus a native evaluator, typeset LaTeX output, and a printer for its own readable syntax.",
+  "description": "Author a math expression once as an AST (or readable infix text via expr/fn), emit identical-behavior implementations in 18 programming languages (JS, TypeScript, Python, C#, Lua, QB64, C, Java, Go, Rust, Perl, PHP, Julia, MATLAB/Octave, Fortran, Zig, Scheme, and COBOL), plus a native evaluator, typeset LaTeX output, and a printer for its own readable syntax.",
   "main": "index.js",
   "type": "commonjs",
   "exports": {
@@ -42,6 +42,8 @@
     "latex",
     "cobol",
     "fortran",
+    "matlab",
+    "octave",
     "differentiation",
     "calculus"
   ],

@@ -42,3 +42,9 @@ tie-breaking convention should compose it from `floor`/`ceil`/`sign`/
   permanent regression test.
 - Root `README.md`'s "`round()` at exact `.5` boundaries" section — the
   user-facing summary and per-language table.
+
+## Addendum: MATLAB/Octave
+
+MATLAB/Octave `round` ties away from zero natively (verified in Octave:
+`round(-2.5)` is `-3`), so the emitter uses it directly, with no
+derivation. It is covered by `roundTieBoundary` under the "Octave" label.
