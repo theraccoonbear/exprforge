@@ -19,6 +19,8 @@
 [![Zig](https://github.com/theraccoonbear/exprforge/actions/workflows/test-zig.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test-zig.yml)
 [![Scheme](https://github.com/theraccoonbear/exprforge/actions/workflows/test-scheme.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test-scheme.yml)
 [![COBOL](https://github.com/theraccoonbear/exprforge/actions/workflows/test-cobol.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test-cobol.yml)
+[![Octave](https://github.com/theraccoonbear/exprforge/actions/workflows/test-octave.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test-octave.yml)
+[![LaTeX](https://github.com/theraccoonbear/exprforge/actions/workflows/test-latex.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test-latex.yml)
 [![Test Coverage](https://github.com/theraccoonbear/exprforge/actions/workflows/test-coverage.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test-coverage.yml)
 [![VS Code Syntax](https://github.com/theraccoonbear/exprforge/actions/workflows/test-vscode-syntax.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test-vscode-syntax.yml)
 
@@ -26,10 +28,10 @@
 
 ExprForge authors a math formula once, as a small AST, and emits
 verified, identical-behavior implementations in JavaScript, TypeScript,
-Python, C#, Lua, QB64, C, Java, Go, Rust, Perl, PHP, Julia, Fortran, Zig,
-Scheme (Guile), and COBOL (GnuCOBOL) — plus a native in-process
-evaluator and a printer for its own readable syntax. No required
-dependencies.
+Python, C#, Lua, QB64, C, Java, Go, Rust, Perl, PHP, Julia, MATLAB/Octave,
+Fortran, Zig, Scheme (Guile), and COBOL (GnuCOBOL) — plus a native in-process
+evaluator, a printer for its own readable syntax, and typeset LaTeX
+output for documenting the formula itself. No required dependencies.
 
 **[▶ Try it live](https://theraccoonbear.github.io/exprforge/)** — write
 a formula in the browser and watch it emitted across every target
@@ -139,6 +141,8 @@ to whichever depth you actually plan to trust.
 ```
 npm install exprforge
 ```
+
+Requires Node 22 or later. See [Supported toolchain versions](#supported-toolchain-versions) for every target's tested versions.
 
 ## Examples, flashiest first
 
@@ -435,6 +439,10 @@ number":
   would need, and not worth risking reintroducing that crash for a
   target whose math intrinsics are already documented elsewhere as not
   fully reliable.
+- **MATLAB/Octave**: like Scheme, `sqrt`/`log`/`log2`/`log10`/`asin`/
+  `acos` and `pow` with a negative base silently return a **complex
+  number** for an out-of-domain real argument (`sqrt(-1)` ⇒ `0 + 1i`).
+  Fixed with real `if` guards in local helper functions.
 - Every other target (JS, TypeScript, C, Rust, Go, Java, Lua, PHP, Zig,
   C#) was already correct — clean IEEE754 NaN/Infinity, never throws.
 
@@ -449,6 +457,34 @@ above — not fixed.
 See `samples/domain-safety-demo.js`'s own header comment for the full,
 directly-verified breakdown and exactly how each fix works, and
 `test/conformance.test.js`'s `domainSafety` entry for the permanent
+regression test.
+
+### Division by zero: also unified
+
+Dividing by a runtime zero follows IEEE 754 on every target, matching
+the native evaluator: `x/0` is `+Infinity` or `-Infinity` (the sign
+comes from both operands, including a `-0` denominator), and `0/0` and
+`NaN/0` are `NaN`. This was not true before:
+
+- **Python** raised `ZeroDivisionError`, **Perl** died with "Illegal
+  division by zero", and **PHP 8** threw `DivisionByZeroError`. Now
+  fixed: PHP emits `fdiv()`; Python and Perl emit a small
+  `_exprforge_div` helper (once per file, so each operand is still
+  evaluated exactly once). A nonzero literal denominator keeps the
+  plain `/`. For concatenated files, pass `{ includeHelpers: false }`
+  on every call after the first (see below).
+- Every other target except COBOL (JS, TypeScript, C, Go, Rust, Java,
+  Lua, C#, Zig, Julia, Fortran, Scheme, QB64) already returned IEEE
+  results and is unchanged.
+- **GnuCOBOL** is a documented, unfixed exception: `COMPUTE` is decimal
+  arithmetic with no Infinity or NaN, so a zero denominator leaves the
+  target field unchanged.
+- Go and Fortran reject a division by a *literal* constant zero at
+  compile time (a loud, avoidable error); a runtime zero is fine.
+
+See `docs/adr/0004-division-by-zero.md` for the decision record,
+`samples/division-by-zero-demo.js` for the fixture, and
+`test/conformance.test.js`'s `divisionByZero` entry for the permanent
 regression test.
 
 ### `min()`/`max()` with a NaN argument: also unified
@@ -475,6 +511,9 @@ argument order, not any documented rule):
   above: a real fix needs a new helper `FUNCTION-ID`, the exact shape
   already confirmed to crash GnuCOBOL's codegen when piled up with
   others.
+- **MATLAB/Octave** (`min`/`max`): NaN-**ignoring** by default —
+  `min(NaN, 5)` is `5` in either argument position. Fixed with a
+  self-inequality NaN check in a local helper function.
 - Every other target (JS, TypeScript, Go, Java, C#, Julia, Scheme,
   Fortran) already propagated NaN correctly.
 
@@ -499,7 +538,7 @@ emitted target is compared against it with real compilers/interpreters,
 using a ULP-based comparison (no absolute floor) and 17-significant-digit
 output. The decision log is in [`docs/adr/`](docs/adr/README.md); the
 boundary audit is
-[`0004`](docs/adr/0004-boundary-conditions.md).
+[`0005`](docs/adr/0005-boundary-conditions.md).
 
 **Unified on every target (with the one set of exceptions below):**
 
@@ -520,7 +559,7 @@ boundary audit is
 - Overflow to ±Infinity and subnormal results follow IEEE 754.
 
 **Documented exceptions** (each is tested and listed with its reason in
-ADR 0004):
+ADR 0005):
 
 | Target | Exception |
 |---|---|
@@ -811,6 +850,50 @@ session.evaluate(doubled, [21]); // 42
   a fresh `createSession()` instead of trying to unregister one
   macro/extern out of an existing one.
 
+## MATLAB / Octave target
+
+`emitters/matlab.js` (registry key `matlab`, extension `.m`) emits code
+restricted to the subset that behaves identically in MATLAB and GNU
+Octave. **CI exercises Octave only** (`test-octave.yml`: Ubuntu 24.04's
+`octave` package from apt, `octave-cli --version` is printed in the log,
+tests run through `octave-cli`, never the GUI). MATLAB itself is not
+installed in CI, so MATLAB compatibility is by construction (shared
+syntax subset: `end`-terminated functions, `~=`, `||` on scalars, no
+Octave-only extensions) and is not machine-verified.
+
+How each cross-target behavior is handled:
+
+| Behavior | Handling |
+|---|---|
+| `round` | native `round`, which ties away from zero in both |
+| Domain errors | `sqrt`/`log`/`log2`/`log10`/`asin`/`acos`/`pow` call `ef_*` helper functions with a real `if` guard, returning `NaN` (or `-Inf` for `log*(0)`) instead of a complex number |
+| `min`/`max` | `ef_min`/`ef_max` return `NaN` if either operand is NaN; the native functions ignore NaN |
+| Division | native IEEE (`1/0` is `Inf`, `0/0` is `NaN`) |
+| `wrapIndex` | native `mod` (floor-mod). Exception: `mod(i, 0)` is `i`, where the interpreter yields NaN |
+| `clampIndex` | `ef_max(lo, ef_min(hi, i))`, so NaN propagates like `evaluate()` |
+| Comparisons | all six; `!=` is `~=` (MATLAB has no `!=`) |
+| `select` | `ef_select(cond, then, else)`, a helper with a real `if` |
+| Arrays | caller-side 0-based index, `arr(round(i) + 1)` |
+| Outputs | `function [a, b] = f(...)` |
+| Literals | JS shortest round-trip rendering (full double precision) |
+
+**Why a helper for `select`.** MATLAB has no conditional expression.
+Arithmetic emulation (`c*a + (1-c)*b`, the QB64 approach) turns an
+untaken-branch `Inf`/`NaN` into `NaN` (`0*Inf`). Indexing a literal
+(`[b, a](1 + c)`) is Octave-only. A helper function with an `if` returns
+the chosen value exactly, so an `Inf`/`NaN` in the untaken branch cannot
+leak (covered by the `selectNoLeak` test). Both branches are still
+evaluated as arguments, matching the "select is not a branch" contract.
+
+**File layout.** Each emitted function is followed by its local helper
+functions (all prefixed `ef_`), so one emitted function is one
+self-contained `.m` file, which must be saved as `<function name>.m`.
+To put several functions in one file, pass `{ includeHelpers: false }` for
+every call after the first (see `docs/multi-function-files.md`). In
+MATLAB only the first function of a file is callable from outside it; in
+Octave, a file loaded with `source()` needs a leading `1;` line to define
+all of its functions.
+
 ## Adding a language
 
 Write `emitters/<lang>.js` exporting an `Emitter` instance (see any
@@ -898,7 +981,10 @@ expression model without introducing control flow:
   number is always truthy, so this never mis-selects at zero), an
   immediately-invoked function in Go (which has neither ternary nor an
   `if`-expression), and the equivalent arithmetic expression in QB64
-  (which has no conditional expression syntax whatsoever).
+  (which has no conditional expression syntax whatsoever), and a small
+  local helper function with a real `if` statement in MATLAB/Octave
+  (see "MATLAB / Octave target" below for why that, and not arithmetic
+  emulation or an indexing idiom).
 
   **`select` is not a branch** — modeled as if both `then` and `else`
   are always evaluated, matching the three real targets where that's
@@ -1044,7 +1130,7 @@ target and concatenating them into ONE file (one `.bi`/`.cob`/`.go`
 file per *program*, not per function). Several targets have some kind
 of always-on preamble per function (QB64's math-safety helpers,
 COBOL's comparison helpers, Go's `package`/`import`, Zig's `@import`,
-PHP's `<?php` tag, Java's one-public-class-per-file rule) that's fine
+PHP's `<?php` tag, Python's and Perl's division helper, Java's one-public-class-per-file rule) that's fine
 in isolation but becomes a duplicate/conflicting declaration once two
 functions' outputs are concatenated as-is — confirmed directly (a real
 consumer report, then the same bug class found in 5 more targets by
@@ -1334,6 +1420,114 @@ editor uses it exactly this way to let one buffer hold several
 definitions. `label` (default `"loadExprSource()"`) identifies the source
 in error messages, the way a file path does for `loadExpr`.
 
+## Typeset output (LaTeX)
+
+`emitters.latex` renders a formula as LaTeX math-mode source, for
+putting the formula itself in docs, papers, or a README next to the
+code generated from it. It is documentation, not an implementation:
+LaTeX typesets math, it never evaluates it.
+
+```js
+const { emit, fn } = require("exprforge");
+
+const root = fn`root(a, b, c):
+  let disc = b*b - 4*a*c;
+  return disc >= 0 ? (-b + sqrt(disc)) / (2*a) : 0;`;
+
+emit(root, "latex").source;
+```
+
+```latex
+\begin{aligned}
+  \mathit{disc} &= b b - 4 a c \\
+  \operatorname{root}\left(a, b, c\right) &= \begin{cases} \frac{-b + \sqrt{\mathit{disc}}}{2 a} & \text{if } \mathit{disc} \geq 0 \\ 0 & \text{otherwise} \end{cases}
+\end{aligned}
+```
+
+By default the output is bare math-mode content with no `$$...$$` or
+`\[...\]` wrapper, so it works with KaTeX, MathJax, or a real LaTeX
+document; the `wrap` option (below) adds a wrapper when one is wanted.
+Rendering choices:
+
+- **Parentheses** appear only where the notation needs them. The
+  explicit parens every other target puts around every operation exist
+  to pin down floating-point evaluation order, which typeset math
+  doesn't have.
+- **Division** is `\frac`, `pow` is a superscript, `sqrt`/`abs`/`floor`/
+  `ceil` use their usual notation, `log` is `\ln`, and `select` is a
+  `cases` block (an else-chain of selects flattens into one block). Lets
+  and multiple outputs become an `aligned` block of definitions.
+- **Identifiers:** single letters stay as-is, Greek names (`alpha`,
+  `Gamma`, ...) become symbols, `x1`/`x_1` become `x_{1}`, `v_max`
+  becomes `v_{\mathrm{max}}`, and other multi-letter names use
+  `\mathit{}`.
+- **Numbers** in scientific notation render as `1.5 \times 10^{-9}`.
+
+In the [live playground](https://theraccoonbear.github.io/exprforge/),
+the LaTeX card also shows a rendered KaTeX preview. It has two links,
+opened only on click and never fetched in the background: "Open in
+CodeCogs" (the formula rendered as an SVG) and "Open in Overleaf" (the
+`wrap: "document"` form as a new Overleaf project, which needs an
+Overleaf account). Both send the formula to a third-party site, and are
+disabled for formulas whose URL would exceed 6000 characters.
+
+### Multiplication: `mulSymbol`
+
+Pass `{ mulSymbol }` in `emit()`'s options (the same options object as
+`addTypeGuards`):
+
+| `mulSymbol` | `2*a*c` renders as |
+|---|---|
+| `"implicit"` (default) | `2 a c` |
+| `"cdot"` | `2 \cdot a \cdot c` |
+| `"times"` | `2 \times a \times c` |
+
+`"implicit"` follows published-math convention, but still switches to
+`\cdot` wherever juxtaposition would misread: two numbers (`2 \cdot 3`,
+never `23`), a number after a variable (`x \cdot 2`), a number before a
+fraction (`2 \cdot \frac{1}{3}`, never a mixed number), a multi-letter
+identifier on either side, or a `cases` block on either side.
+Scientific-notation literals always use `\times`.
+
+### Wrapping: `wrap`
+
+Pass `{ wrap }` in `emit()`'s options (alongside `mulSymbol`) to wrap the
+output for a particular destination. It applies to single-line
+functions, `aligned` blocks and multi-output suites alike, and every
+form ends with a trailing newline. An unknown value throws.
+
+| `wrap` | Output | Use for |
+|---|---|---|
+| `"none"` (default) | bare math-mode content | any renderer that supplies its own delimiters |
+| `"inline"` | `$...$` | math inside a sentence |
+| `"display"` | `$$` on its own line, the math, `$$` on its own line | Markdown, KaTeX, MathJax |
+| `"equation"` | `\begin{equation}` ... `\end{equation}` | numbered equations in a LaTeX document |
+| `"document"` | a complete standalone file | compiling directly with `pdflatex` |
+
+```js
+emit(fn`area(w, h): return w * h;`, "latex", undefined, { wrap: "document" }).source;
+```
+
+```latex
+\documentclass{article}
+\usepackage{amsmath}
+\begin{document}
+\[
+\operatorname{area}\left(w, h\right) = w h
+\]
+\end{document}
+```
+
+`"document"` loads `amsmath`, which provides the `aligned`, `cases`,
+`\operatorname`, `\text` and `\lvert` the output uses; it compiles with
+a minimal TeX Live install (Ubuntu's `texlive-latex-base`). A document
+holds exactly one preamble and one `document` environment, so
+**concatenating several `"document"` outputs is not valid LaTeX**. To put
+several functions in one file, emit each with `"none"` or `"display"` and
+join those (or wrap them in your own document). Unlike the per-target
+fixes in [docs/multi-function-files.md](docs/multi-function-files.md),
+there is no flag that makes `"document"` output concatenable.
+
 ## Multiple named outputs
 
 `outputs({ name: Node, ... })` computes several named values from ONE
@@ -1364,6 +1558,7 @@ multi-value idiom it has, since none of them agree:
 | C#, Julia | a native named value tuple / named tuple |
 | C / Rust / Zig | a small `...Result` struct, returned by value |
 | Java, Python | a nested/local `Result` class |
+| MATLAB/Octave | native multiple return values, `function [rx, ry] = f(...)`, called as `[rx, ry] = f(...)` |
 | QB64, Fortran | a `SUB`/`subroutine` with the outputs as trailing by-reference (`intent(out)`) parameters |
 | Perl | a hash ref (`{ rx => ..., ry => ... }`) |
 | PHP | an associative array (`['rx' => ..., 'ry' => ...]`) |
@@ -1426,11 +1621,64 @@ every target you provide a mapping for (see "Macros and externs" above).
 That risk is inherent to what an extern *is*, not something a validation
 layer could close without also closing off the feature itself.
 
+## Supported toolchain versions
+
+Emitted code never needs anything newer than the "Minimum" column.
+"Minimum" is the floor the emitter's constructs require; where the
+"Tested in CI" column does not cover it, the minimum is derived from the
+language/library documentation and is not exercised by CI. Toolchains are
+never project dependencies: they are looked up on `PATH`, and conformance
+tests skip a target whose toolchain is absent.
+
+All CI workflows run on `ubuntu-24.04` (not `ubuntu-latest`), so
+distro-provided toolchains (gcc, gfortran, PHP, Perl, GnuCOBOL, Guile)
+have the version that image ships. Every workflow prints its resolved
+toolchain version. Bump pinned versions deliberately, in a reviewed
+change that also updates this table.
+
+| Target | Minimum | Tested in CI | Notes |
+|---|---|---|---|
+| Node (library + JS target) | Node 22 (`engines`) | 22, 24, 26 (`test-node.yml`); 22 for all other workflows | Every supported Node line is tested. Node 18 and 20 are end-of-life and no longer supported. |
+| C | C99 | gcc from Ubuntu 24.04 (13.x), default `-std` | Needs `fmin`/`fmax`/`isnan`/`log2`/`hypot`/`trunc`/`round` from C99 `math.h` and compound literals; link with `-lm`. |
+| C# | C# 7.0; .NET Core 3.0 / .NET 5+ when `log2` is used (`Math.Log2`) | .NET 10.0.x (SDK-matched target framework) | Output is standalone: no `using` needed, `Math` is emitted as `global::System.Math`. Value tuples (C# 7) are used only for multi-output suites; on .NET Framework they need `System.ValueTuple`. Everything else used (`Math.Sign/Floor/Ceiling/Truncate/Abs/Sqrt/Pow/Atan2/Min/Max/Log/Log10/Exp`, trig) exists on every .NET version. Lower versions than the tested ones are not exercised by CI. |
+| Go | any Go 1.x (`math` only) | 1.26 | |
+| Rust | 1.50 (`f64::clamp`; `rem_euclid` needs 1.38) | 1.99.1 | Not rewritten to `max`/`min`: Rust's `f64::max`/`min` ignore NaN, which would change results. |
+| Java | Java 8 (only `Math.*`) | 21 (Temurin) | |
+| Python | 3.3 (`math.log2`) | 3.13 | Python 3 only. |
+| TypeScript | tsc accepting `--strict --target es2020 --module commonjs` | 5.9.3 | Source text is only generated; type-checked in tests. |
+| Lua | 5.3 (two-argument `math.atan`, no `math.pow`/`math.atan2`) | 5.3 and 5.4 | Not valid on 5.1/LuaJIT without compatibility. |
+| Perl | Perl 5 with core `POSIX` | 5.38 (Ubuntu 24.04) | |
+| PHP | PHP 7 (believed; no version-specific features found) | 8.3 (Ubuntu 24.04 `php-cli`) | |
+| Julia | 1.0 (`clamp`, `RoundNearestTiesAway`) | 1.11.5 (exact) | |
+| Fortran | Fortran 2008 (`HYPOT`, `MODULO`) | gfortran 13.x (Ubuntu 24.04), `-O2`, default `-std` | |
+| Zig | 0.14.1 exactly | 0.14.1 (exact) | Builtins and `std` change between releases. To bump: edit `test-zig.yml`, run the Zig suite, fix `emitters/zig.js`, update this table. |
+| QB64 | QB64-PE (tested release) | v4.7.0-GLFW (exact tag) | Built from the release source bundle in CI. |
+| Scheme | Guile 3.0 | guile-3.0 (Ubuntu 24.04) | |
+| COBOL | GnuCOBOL 3.x | `gnucobol3` (3.1.2) | Not 4.x early-dev: confirmed `cob_decimal` codegen issue. To bump: run the full COBOL suite on the new series, re-check the skipped samples, update this table. |
+| LaTeX | LaTeX2e with `amsmath` (`wrap: "document"` loads it; other wraps need it in the host document). KaTeX 0.16+ or MathJax for web rendering. | KaTeX 0.16 strict parse; `pdflatex` from Ubuntu 24.04 `texlive-latex-base` | Output is typeset math, never executed. `document` output compiles standalone; long one-line formulas can run past the margin (overfull boxes are reported, not failures). |
+
+Adding a target, or raising a minimum, requires updating this table and
+the matching workflow.
+
+### C# notes
+
+C# output carries no `using` directives and refers to `global::System.Math`
+throughout, so it compiles with `ImplicitUsings` off and cannot be
+shadowed by a consumer's own `Math` type or `System` namespace. The test
+harness targets the highest installed .NET SDK major (`net<major>.0`),
+with `EXPRFORGE_DOTNET_TFM` (e.g. `net10.0`) as an override, and builds
+with `ImplicitUsings` disabled. `clampIndex` is emitted as
+`Max(lo, Min(hi, i))` rather than `Math.Clamp`, matching `evaluate()` and
+the other targets (`Math.Clamp` throws when `lo > hi`).
+
 ## Testing
 
 ```
 npm test
 ```
+
+Toolchain versions that CI tests, and the minimums emitted code needs,
+are listed in [Supported toolchain versions](#supported-toolchain-versions).
 
 Runs `node --test`. For each sample, that's three kinds of check:
 
@@ -1439,6 +1687,17 @@ Runs `node --test`. For each sample, that's three kinds of check:
 - Every other emitted target vs. that same JS, compiled (and, for
   TypeScript, also type-checked under `--strict`) and run, with the sample
   inputs as arguments (catches an emitter bug).
+- The LaTeX emitter (`emitters/latex.js`) can't be run, so it gets
+  exact-output checks for every primitive, node type, comparison
+  operator, `mulSymbol` value and `wrap` value, plus a strict KaTeX
+  parse of every sample's output (and of the unwrapped content of the
+  math `wrap` modes) when a `katex` CLI is on PATH (`npm install -g
+  katex`), and a real `pdflatex` compile of every sample in
+  `wrap: "document"` mode when `pdflatex` is on PATH. CI's
+  `test-latex.yml` installs both. Like `tsc`, katex and TeX Live are
+  system tools, not project dependencies. Overfull-box warnings from
+  long one-line formulas are reported but do not fail the compile
+  check.
 - The `expr`-syntax printer (`emitters/exprsyntax.js`) vs. `fn`'s own
   parser: every sample AST in this suite is printed back out as `fn`/
   `expr` source text, reparsed, and evaluated (via `evaluate()`) to
@@ -1457,7 +1716,7 @@ Runs `node --test`. For each sample, that's three kinds of check:
 The compiled/interpreted-language checks need their toolchain on `PATH`
 and skip (not fail) when it's missing, so `npm test` degrades gracefully
 on any one machine. Every one of `tsc`/`qb64pe`/`dotnet`/`python3`/`lua`/
-`perl`/`php`/`julia`/`gfortran`/`zig`/`guile3.0`/`cobc` is treated exactly
+`perl`/`php`/`julia`/`octave-cli`/`gfortran`/`zig`/`guile3.0`/`cobc` is treated exactly
 like gcc/go/rustc/javac: looked up on `PATH`, never a project
 dependency — exprforge only ever generates source text for these, it
 doesn't execute or type-check any of it itself. `package.json` has zero
@@ -1513,7 +1772,8 @@ compiling/running against a real toolchain rather than assumed to work:
   headless via the `$CONSOLE:ONLY` metacommand, so no display (real or
   virtual) is needed — no `xvfb-run` required for these console-only test
   programs, unlike a typical QB64 build.
-- **C#**: forbids a member sharing its enclosing type's *exact* name
+- **C#**: output is standalone (fully qualified `global::System.Math`, no
+  `using` needed). Forbids a member sharing its enclosing type's *exact* name
   (`CS0542`) — every SpEf-prefixed sample name here is already
   capitalized, so the obvious `capitalize(fn.name)` wrapper-class name
   collided with the method name outright; see `wrapperClassName` in

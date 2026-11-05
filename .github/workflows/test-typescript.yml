@@ -9,17 +9,19 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
           cache: npm
+      - run: node --version
       - run: npm ci
       # tsc is a system tool here exactly like gcc/go/rustc/javac -- exprforge
       # only ever generates .ts source text, never executes or type-checks it
       # itself, so this is not a project dependency.
       - name: Install tsc
-        run: npm install -g typescript
+        run: npm install -g typescript@5.9.3 # bump deliberately
+      - run: tsc --version
       - run: EXPRFORGE_TEST_TARGETS=TypeScript npm test

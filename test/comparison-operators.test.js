@@ -6,7 +6,7 @@
 // JS/C-spelled token inside their emitSelect (the only place a cmp() op is
 // ever actually printed -- see ast.js's own comment: cmp is never a general
 // boolean expression, only select()'s cond). ">" "<" ">=" "<=" happen to be
-// spelled identically in every one of this project's 18 targets, so those
+// spelled identically in every one of this project's registered targets, so those
 // four masked the bug completely; QB64 has no "==" or "!=" at all (needs
 // "=" / "<>"), Fortran has no "!=" (needs "/="), and Lua has no "!=" (needs
 // "~="). Every one of those is a real compile error on a real compiler
@@ -47,6 +47,7 @@ const EXPECTED = {
     qb64: { eq: "=", ne: "<>", forbidEq: "==", forbidNe: "!=" },
     fortran: { eq: "==", ne: "/=", forbidNe: "!=" },
     lua: { eq: "==", ne: "~=", forbidNe: "!=" },
+    matlab: { eq: "==", ne: "~=", forbidNe: "!=" },
     // scheme: prefix notation, not an infix token -- "(=" for equality,
     // "(not (=" for inequality (R7RS has no single not-equal procedure).
     // Already correct before this file existed (see scheme.js's own
@@ -57,6 +58,15 @@ const EXPECTED = {
     // inline at all -- see CMP_HELPERS in emitters/cobol.js. Already
     // correct before this file existed, included for the same reason.
     cobol: { eq: "ef-cmp-eq", ne: "ef-cmp-ne" },
+    // latex: typeset math, not code -- "=" and "\neq" inside a cases
+    // block's "\text{if }" row. Neither JS token may leak through.
+    latex: { eq: "x = 5", ne: "x \\neq 5", forbidEq: "==", forbidNe: "!=" },
+};
+
+// Same idea for the four operators every CODE target spells identically:
+// only targets whose spelling differs are listed.
+const SHARED_OP_SPELLING = {
+    latex: { ">": "x > 5", "<": "x < 5", ">=": "x \\geq 5", "<=": "x \\leq 5" },
 };
 
 function expectedFor(lang) {
@@ -101,7 +111,7 @@ test("every registered emitter prints a real, valid comparison operator for == a
 
 test("every registered emitter prints the four operators shared identically across every target (>, <, >=, <=)", () => {
     // Unlike ==/!=, these four really are spelled the same everywhere in
-    // this project's 18 targets (confirmed by the per-language audit that
+    // this project's registered targets (confirmed by the per-language audit that
     // found the ==/!= bug in the first place) -- this just locks that in,
     // so a FUTURE target with different spelling (rare, but not
     // impossible) fails here immediately instead of joining qb64/fortran/
@@ -109,9 +119,10 @@ test("every registered emitter prints the four operators shared identically acro
     for (const op of [">", "<", ">=", "<="]) {
         for (const [lang, emitter] of Object.entries(emitters)) {
             const source = emitter.emitFunction(makeFn(op));
+            const spelled = SHARED_OP_SPELLING[lang]?.[op] ?? op;
             assert.ok(
-                source.includes(op),
-                `${lang}: "${op}" should appear unchanged in the emitted source -- got:\n${source}`,
+                source.includes(spelled),
+                `${lang}: "${op}" should appear as "${spelled}" in the emitted source -- got:\n${source}`,
             );
         }
     }

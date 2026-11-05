@@ -248,7 +248,7 @@ export function PlaygroundTool() {
                     languageIds
                         .filter((id) => enabled.has(id))
                         .map((id) => (
-                            <LanguageCard key={id} languageId={id} label={LANGUAGE_META[id].label} result={selectedFunction.outputs[id]} />
+                            <LanguageCard key={id} languageId={id} label={LANGUAGE_META[id].label} result={selectedFunction.outputs[id]} latexDocument={selectedFunction.latexDocument} />
                         ))}
             </div>
         </div>

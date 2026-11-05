@@ -9,13 +9,14 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
           cache: npm
+      - run: node --version
       - run: npm ci
       # gnucobol4 (Ubuntu's default `gnucobol` candidate too) is an
       # early-dev snapshot ("cobc (GnuCOBOL) 4.0-early-dev.0", built 2024
@@ -30,6 +31,10 @@ jobs:
       # samples' own skipTargets: ["COBOL"] comments for the actual
       # pattern (confirmed via real CI runs, not local reproduction,
       # which proved unreliable for this specific question).
+      # Series pin (gnucobol3), deliberately not 4.x. To bump: run the full
+      # COBOL conformance suite on the new series, re-check the cob_decimal
+      # skipTargets samples, and update README "Supported toolchain
+      # versions". The runner image (ubuntu-24.04) fixes the exact 3.x patch.
       - name: Install GnuCOBOL
         run: |
           sudo apt-get update -qq

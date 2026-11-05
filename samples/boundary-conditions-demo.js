@@ -7,7 +7,7 @@
 // (JS semantics) on exactly those inputs. NaN, Infinity and -0 are passed
 // as ordinary command-line arguments, which also exercises each target
 // harness's own text-to-double parsing. See README "Numeric guarantees"
-// and docs/adr/0004-boundary-conditions.md for the outcome per behavior.
+// and docs/adr/0005-boundary-conditions.md for the outcome per behavior.
 const { v, num, call, add, mul, neg, outputs } = require("../ast.js");
 
 const x = v("x");

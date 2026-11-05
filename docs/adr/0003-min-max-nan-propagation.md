@@ -99,7 +99,7 @@ sign-bit-sensitive check. Not pursued further: no confirmed real-world
 impact found, unlike the min/max divergence above.
 
 Update: `sign(NaN)` has since been unified to NaN on every target
-(0004). `sign(-0)` remains an open decision listed there.
+(0005). `sign(-0)` remains an open decision listed there.
 
 ## Evidence
 
@@ -113,3 +113,10 @@ Update: `sign(NaN)` has since been unified to NaN on every target
   rationale, next to the code.
 - `emitters/cobol.js`'s own `min:`/`max:` comment — the unfixed-target
   rationale.
+
+## Addendum: MATLAB/Octave
+
+MATLAB/Octave `min`/`max` ignore a NaN operand by default
+(`min(NaN, 5)` is `5`). The emitter routes both through local helper
+functions that return NaN when either operand is NaN, and `clampIndex`
+is built from those helpers so NaN propagates there too.

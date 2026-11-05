@@ -73,7 +73,9 @@ declare module "exprforge" {
     // One target, explicit -- throws if `lang` is unknown or if that one
     // emitter fails for this def (nothing to isolate a single target's
     // own error from).
-    export function emit(def: FnDef, lang: string): EmitResult;
+    // `registry` is the macro registry (undefined = the default one); `opts`
+    // is the per-emitter option bag, e.g. { wrap: "document" } for latex.
+    export function emit(def: FnDef, lang: string, registry?: unknown, opts?: Record<string, unknown>): EmitResult;
     // Several targets (default: every registered one), each isolated from
     // the others' failures -- see BatchEmitResult above. This is what
     // useExprForge.ts actually calls now, replacing the hand-rolled

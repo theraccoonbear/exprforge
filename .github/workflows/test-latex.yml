@@ -1,0 +1,35 @@
+name: LaTeX
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch: {}
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: node --version
+      - run: npm ci
+      # LaTeX output can't be executed, so the closest thing to a real
+      # toolchain check is a strict KaTeX parse of every sample's output
+      # (see test/latex-emitter.test.js). katex is a system tool here
+      # exactly like tsc is for TypeScript -- not a project dependency.
+      - name: Install katex
+        run: npm install -g katex@0.16
+      # wrap: "document" output is compiled with a real pdflatex. The
+      # minimal package: texlive-latex-base ships pdflatex and amsmath,
+      # which is all the document preamble needs.
+      - name: Install TeX Live (minimal)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends texlive-latex-base
+      - run: katex --version && pdflatex --version | head -1
+      - run: EXPRFORGE_TEST_TARGETS=LaTeX npm test

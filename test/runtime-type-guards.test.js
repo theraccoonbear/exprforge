@@ -2,7 +2,7 @@
 //
 // Unit coverage for the opt-in addTypeGuards option (see
 // docs/runtime-type-guards.md) -- emit()/emitMany()'s 4th argument, and
-// each of the 8 dynamic-language emitters' `typeGuard` config. Static/
+// each of the 9 dynamic-language emitters' `typeGuard` config. Static/
 // string-level checks here (does the right guard text show up, does it
 // stay absent by default, do targets with no typeGuard ignore the
 // option silently); real interpreter execution (does a wrong-type call
@@ -33,13 +33,14 @@ const DYNAMIC_TARGETS = {
     perl: "ref($arr) eq 'ARRAY'",
     julia: "arr isa AbstractVector",
     scheme: "(vector? arr)",
+    matlab: "~isnumeric(arr)",
 };
 
 // Every OTHER registered target -- addTypeGuards should be a silent
 // no-op for every one of these: the compiled ones already enforce this
 // at compile time, cobol doesn't support array params at all, and expr
 // (the source-text printer) has no typeGuard configured either way.
-const NO_GUARD_TARGETS = ["c", "java", "go", "rust", "csharp", "fortran", "zig", "qb64", "cobol", "expr"];
+const NO_GUARD_TARGETS = ["c", "java", "go", "rust", "csharp", "fortran", "zig", "qb64", "cobol", "expr", "latex"];
 
 test("addTypeGuards defaults to false -- output is byte-for-byte unchanged when omitted", () => {
     for (const lang of Object.keys(DYNAMIC_TARGETS)) {
@@ -127,6 +128,7 @@ const LENGTH_GUARD_TARGETS = {
     perl: "scalar(@$arr) == $m",
     julia: "length(arr) != m",
     scheme: "(vector-length arr) m",
+    matlab: "numel(arr) ~= m",
 };
 
 test("arrayLengths has no effect without addTypeGuards, even when declared", () => {

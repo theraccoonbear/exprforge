@@ -1,4 +1,4 @@
-# 0004: Boundary-condition conformance (huge, non-finite, signed-zero, degenerate operands)
+# 0005: Boundary-condition conformance (huge, non-finite, signed-zero, degenerate operands)
 
 **Status:** Accepted (shipped), with open decisions listed below
 

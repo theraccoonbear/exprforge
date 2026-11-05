@@ -9,17 +9,23 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        lua: ["5.3", "5.4"]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
           cache: npm
+      - run: node --version
       - run: npm ci
-      - name: Install lua
+      - name: Install lua ${{ matrix.lua }}
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y lua5.4
-          sudo ln -sf /usr/bin/lua5.4 /usr/local/bin/lua
+          sudo apt-get install -y lua${{ matrix.lua }}
+          sudo ln -sf /usr/bin/lua${{ matrix.lua }} /usr/local/bin/lua
+      - run: lua -v
       - run: EXPRFORGE_TEST_TARGETS=Lua npm test

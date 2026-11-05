@@ -22,6 +22,10 @@ class PhpEmitter extends Emitter {
 
 const emitter = new PhpEmitter({
     ext: "php",
+    // PHP 8 throws DivisionByZeroError for "/" with a zero denominator.
+    // fdiv() (PHP 8.0+) is exact IEEE 754 division. See
+    // docs/adr/0004-division-by-zero.md.
+    emitDiv: (l, r) => `fdiv(${l}, ${r})`,
     // PHP accepts JS-style numeric literal syntax directly, including
     // exponential notation ("1e-9") -- no suffix or conversion needed.
     formatNumber: (v) => String(v),

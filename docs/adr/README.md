@@ -25,7 +25,8 @@ their own README section.
 | [0001](0001-round-tie-breaking.md) | `round()` ties away from zero on every target |
 | [0002](0002-domain-error-handling.md) | Out-of-domain math primitives return NaN/Infinity on every target |
 | [0003](0003-min-max-nan-propagation.md) | `min()`/`max()` propagate NaN on every target |
-| [0004](0004-boundary-conditions.md) | Huge, non-finite, signed-zero and degenerate operands: what is unified, what is documented, what is open |
+| [0004](0004-division-by-zero.md) | Division by zero follows IEEE 754 on every target where achievable |
+| [0005](0005-boundary-conditions.md) | Huge, non-finite, signed-zero and degenerate operands: what is unified, what is documented, what is open |
 
 When a new one of these is found and fixed, add a new numbered file
 here (next sequential number, never reused even if a later decision

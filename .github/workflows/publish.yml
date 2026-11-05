@@ -38,8 +38,14 @@ jobs:
             exit 1
           fi
       - run: npm ci
-      # Also runs via the "prepublishOnly" script below, but a named step
-      # here gives a clear, separately-attributed CI failure if it's the
-      # tests (not the publish itself) that break.
-      - run: npm test
+      # No separate "npm test" step here -- package.json's own
+      # "prepublishOnly": "npm test" already runs the exact same command
+      # as part of "npm publish" itself, right below. A prior version of
+      # this file ran it twice in the same job (once explicitly, once
+      # via the hook) for "clearer CI attribution" -- not worth doubling
+      # the run for, especially given the real testing already happened
+      # per-language, against real toolchains, in this repo's 16 separate
+      # test-*.yml jobs on the PR that got merged before this release was
+      # even created. prepublishOnly stays: it's what protects a manual
+      # "npm publish" run from someone's own machine, not just CI.
       - run: npm publish --provenance

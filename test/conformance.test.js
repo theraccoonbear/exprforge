@@ -21,6 +21,7 @@ const test = require("node:test");
 const assert = require("node:assert");
 const { execFileSync } = require("node:child_process");
 const fs = require("node:fs");
+const { DOTNET_TFM } = require("./dotnet-tfm.js");
 const os = require("node:os");
 const path = require("node:path");
 
@@ -50,6 +51,7 @@ const {
     arraySuiteAst,
     arrayMacroDemoAst,
     mathEdgeCasesAst,
+    divisionByZeroAst,
     differentiateDemoAst,
     zeroParamDemoAst,
     cyclicElemAst,
@@ -526,6 +528,7 @@ const TOOLS = {
     perl: hasTool("perl", ["-v"]),
     php: hasTool("php", ["--version"]),
     julia: hasTool("julia", ["--version"]),
+    octave: hasTool("octave-cli", ["--version"]),
     gfortran: hasTool("gfortran", ["--version"]),
     zig: hasTool("zig", ["version"]),
     guile: GUILE_BIN !== null,
@@ -831,6 +834,10 @@ function qb64ToNumber(str) {
     // (confirmed against a real compile) -- parseNumericOutput handles
     // both, same as every other target's own spelling; only a genuine
     // finite value ever needs the D-exponent rewrite below at all.
+    // QB64-PE 4.7.0 pads a non-finite PRINT with NUL bytes and a stray
+    // "D" (e.g. "INF\0\0...D\0\0"); only the leading token is the value.
+    const nonFinite = /^\s*([+-]?(?:inf|nan))/i.exec(str);
+    if (nonFinite) return parseNumericOutput(nonFinite[1]);
     return parseNumericOutput(str.replace(/D([+-]?\d+)/i, "E$1"));
 }
 
@@ -1083,12 +1090,19 @@ function runSuiteJava(ast, inputs, outputNames) {
 // as C/Go/Rust. InvariantGlobalization avoids any locale-dependent decimal
 // separator surprises when parsing argv.
 
+//
+// ImplicitUsings is OFF on purpose: the emitted source must compile with
+// no `using` directives at all (csharp.js fully qualifies global::System.Math).
+// Only the harness's own Program.cs imports System. TargetFramework comes
+// from test/dotnet-tfm.js (EXPRFORGE_DOTNET_TFM override, else the highest
+// installed SDK major).
+
 const CSPROJ = `<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFramework>net9.0</TargetFramework>
+    <TargetFramework>${DOTNET_TFM}</TargetFramework>
     <Nullable>disable</Nullable>
-    <ImplicitUsings>enable</ImplicitUsings>
+    <ImplicitUsings>disable</ImplicitUsings>
     <InvariantGlobalization>true</InvariantGlobalization>
   </PropertyGroup>
 </Project>
@@ -1124,7 +1138,7 @@ function runCSharp(ast, inputs) {
     fs.writeFileSync(path.join(dir, "app.csproj"), CSPROJ);
     const parses = csharpParamParses(ast);
     const callArgs = ast.params.join(", ");
-    const mainSrc = `${parses}\nConsole.WriteLine(${className}.${ast.name}(${callArgs}).ToString("G17"));\n`;
+    const mainSrc = `using System;\n${parses}\nConsole.WriteLine(${className}.${ast.name}(${callArgs}).ToString("G17"));\n`;
     fs.writeFileSync(path.join(dir, "Program.cs"), mainSrc);
     const outDir = path.join(dir, "out");
     execFileSync("dotnet", ["build", "-c", "Release", "-o", outDir], { cwd: dir });
@@ -1143,7 +1157,7 @@ function runSuiteCSharp(ast, inputs, outputNames) {
     const parses = csharpParamParses(ast);
     const callArgs = ast.params.join(", ");
     const prints = outputNames.map((n) => `Console.WriteLine(r.${n}.ToString("G17"));`).join("\n");
-    const mainSrc = `${parses}\nvar r = ${className}.${ast.name}(${callArgs});\n${prints}\n`;
+    const mainSrc = `using System;\n${parses}\nvar r = ${className}.${ast.name}(${callArgs});\n${prints}\n`;
     fs.writeFileSync(path.join(dir, "Program.cs"), mainSrc);
     const outDir = path.join(dir, "out");
     execFileSync("dotnet", ["build", "-c", "Release", "-o", outDir], { cwd: dir });
@@ -1425,6 +1439,50 @@ function runSuiteJulia(ast, inputs, outputNames) {
     const results = inputs.map((args) => parseSuiteOutput(execFileSync("julia", [srcPath, ...args.map(argText)]), outputNames));
     fs.rmSync(dir, { recursive: true, force: true });
     return results;
+}
+
+// --- MATLAB / Octave ---------------------------------------------------------
+//
+// Run with octave-cli (never the GUI binary) against the emitted .m file,
+// which must be named after its function. MATLAB itself is not exercised
+// anywhere in CI -- see emitters/matlab.js's header comment. One Octave
+// process per sample: a driver script calls the function once per input
+// with the argument values written as literals and prints every result
+// with %.17g (Octave prints Inf/NaN as "Inf"/"NaN", which
+// parseNumericOutput already understands). Array-typed params are passed
+// as plain row vectors.
+
+function octaveLiteral(value) {
+    if (Array.isArray(value)) return `[${value.map(octaveLiteral).join(", ")}]`;
+    if (Number.isNaN(value)) return "NaN";
+    if (value === Infinity) return "Inf";
+    if (value === -Infinity) return "-Inf";
+    return String(value);
+}
+
+function runOctaveDriver(ast, inputs, outputNames) {
+    const source = emitters.matlab.emitFunction(ast);
+    const dir = tmpDir("ef-oct-");
+    fs.writeFileSync(path.join(dir, `${ast.name}.m`), source);
+    const resultVars = outputNames.map((_, i) => `ef_o${i}`);
+    const lhs = outputNames.length === 1 ? resultVars[0] : `[${resultVars.join(", ")}]`;
+    const calls = inputs.map((args) => {
+        const prints = resultVars.map((r) => `printf("%.17g\\n", ${r});`).join(" ");
+        return `${lhs} = ${ast.name}(${args.map(octaveLiteral).join(", ")}); ${prints}`;
+    });
+    fs.writeFileSync(path.join(dir, "ef_driver.m"), calls.join("\n") + "\n");
+    const stdout = execFileSync("octave-cli", ["--norc", "ef_driver.m"], { cwd: dir }).toString().trim().split("\n");
+    fs.rmSync(dir, { recursive: true, force: true });
+    return inputs.map((_, i) => outputNames.map((__, j) => parseNumericOutput(stdout[i * outputNames.length + j])));
+}
+
+function runOctave(ast, inputs) {
+    return runOctaveDriver(ast, inputs, ["result"]).map(([r]) => r);
+}
+
+function runSuiteOctave(ast, inputs, outputNames) {
+    return runOctaveDriver(ast, inputs, outputNames).map((row) =>
+        Object.fromEntries(outputNames.map((n, i) => [n, row[i]])));
 }
 
 // --- Scheme (Guile) --------------------------------------------------------
@@ -1842,6 +1900,7 @@ function registerSuiteConformance(sampleName, { ast, inputs, skipTargets = [], t
         ["Perl", TOOLS.perl, runSuitePerl],
         ["PHP", TOOLS.php, runSuitePhp],
         ["Julia", TOOLS.julia, runSuiteJulia],
+        ["Octave", TOOLS.octave, runSuiteOctave],
         ["Fortran", TOOLS.gfortran, runSuiteFortran],
         ["Zig", TOOLS.zig, runSuiteZig],
         ["Scheme", TOOLS.guile, runSuiteScheme],
@@ -1903,6 +1962,7 @@ function registerConformance(sampleName, { ast, reference, inputs, skipTargets =
         ["Perl", TOOLS.perl, runPerl],
         ["PHP", TOOLS.php, runPhp],
         ["Julia", TOOLS.julia, runJulia],
+        ["Octave", TOOLS.octave, runOctave],
         ["Fortran", TOOLS.gfortran, runFortran],
         ["Zig", TOOLS.zig, runZig],
         ["Scheme", TOOLS.guile, runScheme],
@@ -2016,6 +2076,38 @@ registerSuiteConformance("comparisonOps", {
     skipTargets: ["COBOL"],
 });
 
+// MATLAB/Octave has no conditional expression, so emitters/matlab.js picks
+// with an `if` inside a helper function rather than arithmetic emulation.
+// Octave-only on purpose: a value from the untaken branch (Inf here, from
+// 1/x at x == 0) must not leak into the result, which arithmetic select
+// (QB64's c*a + (1-c)*b) cannot guarantee and other targets handle under
+// their own rules.
+test(
+    "selectNoLeak: Octave select does not leak Inf/NaN from the untaken branch",
+    { skip: (!TOOLS.octave && "Octave toolchain not available") || (!targetAllowed("Octave") && "Octave filtered out") },
+    () => {
+        const { v, num, cmp, select, call, bin } = require("../ast.js");
+        const ast = {
+            name: "selectNoLeak",
+            params: ["x"],
+            body: select(cmp(v("x"), "==", num(0)), num(7), bin("/", num(1), v("x"))),
+        };
+        const nanBranch = {
+            name: "selectNoLeakNaN",
+            params: ["x"],
+            body: select(cmp(v("x"), ">=", num(0)), call("sqrt", v("x")), num(-1)),
+        };
+        const inputs = [[0], [4], [-4], [0.25]];
+        const jsFn = loadJsFn(ast);
+        const actual = runOctave(ast, inputs);
+        inputs.forEach((args, i) => assertClose(actual[i], jsFn(...args), `selectNoLeak at ${JSON.stringify(args)}`));
+        assert.strictEqual(actual[0], 7);
+        const jsNan = loadJsFn(nanBranch);
+        const actualNan = runOctave(nanBranch, inputs);
+        inputs.forEach((args, i) => assertClose(actualNan[i], jsNan(...args), `selectNoLeakNaN at ${JSON.stringify(args)}`));
+    },
+);
+
 // Proves sqrt/log/asin/acos/pow/log2/log10 return NaN/Infinity for an
 // out-of-domain argument identically on every target -- see
 // samples/domain-safety-demo.js's own header comment for the full,
@@ -2089,6 +2181,26 @@ registerSuiteConformance("mathEdgeCases", {
     // shape already confirmed to crash cobc when piled up with others.
     // See emitters/cobol.js's own min:/max: comment. Skipped, not
     // silently ignored.
+    skipTargets: ["COBOL"],
+});
+
+// Proves division by a runtime zero follows IEEE 754 identically on
+// every target (see samples/division-by-zero-demo.js and
+// docs/adr/0004-division-by-zero.md): x/0 is +-Infinity with the sign
+// taken from both operands (including a -0 denominator, synthesized in
+// the expression), 0/0 and NaN/0 are NaN.
+registerSuiteConformance("divisionByZero", {
+    ast: divisionByZeroAst,
+    inputs: [
+        [5, 0], // positive numerator: +Infinity / -Infinity
+        [-5, 0], // negative numerator: signs flip
+        [0, 0], // 0/0 numerator: NaN everywhere
+    ],
+    // Documented exception, see docs/adr/0004-division-by-zero.md:
+    // GnuCOBOL's COMPUTE is decimal arithmetic. A zero denominator is a
+    // size error that leaves the target unchanged, and Infinity/NaN
+    // cannot survive any COMPUTE (confirmed: COMPUTE y = inf stores 0),
+    // so IEEE results are not reachable inside an expression.
     skipTargets: ["COBOL"],
 });
 
@@ -2255,7 +2367,7 @@ test("mathDemo: round-trips through the expr-syntax emitter and back through fn(
 //
 // Issue #45: huge / non-finite / signed-zero / subnormal / degenerate
 // operands against every real toolchain. See that file's header,
-// docs/adr/0004-boundary-conditions.md and README "Numeric guarantees"
+// docs/adr/0005-boundary-conditions.md and README "Numeric guarantees"
 // for the outcome per behavior.
 {
     const B = require("../samples/boundary-conditions-demo.js");
@@ -2272,7 +2384,7 @@ test("mathDemo: round-trips through the expr-syntax emitter and back through fn(
     // The reference round() is the sign(x)*floor(abs(x)+0.5) formula from
     // ADR 0001, which is off by one at 0.49999999999999994 and above 2^52;
     // targets with a native round() disagree with it there. Registered as
-    // todo until the open decision in docs/adr/0004-boundary-conditions.md
+    // todo until the open decision in docs/adr/0005-boundary-conditions.md
     // is made.
     registerSuiteConformance("boundary.rounding", {
         ast: B.roundingBoundaryAst,

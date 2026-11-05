@@ -444,7 +444,7 @@ const emitter = new CobolEmitter({
         if (text.replace(/[-.]/g, "").length > 38) {
             throw new Error(
                 `emitter for .cob: numeric literal ${s} needs more than 38 digits, GnuCOBOL's maximum ` +
-                `literal length -- not supported for this target (see docs/adr/0004-boundary-conditions.md)`,
+                `literal length -- not supported for this target (see docs/adr/0005-boundary-conditions.md)`,
             );
         }
         return text;
