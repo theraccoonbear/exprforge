@@ -79,9 +79,10 @@ Two shapes of real use this tends to fall into:
 ## Intents
 
 **What it does**: turns one small, pure-arithmetic AST into
-identical-behavior source text for 16 real target languages, a native
-evaluator, and its own readable printer — all from the same tree, walked
-once per target. Symbolic differentiation (`differentiate`) works over
+identical-behavior source text for 18 programming languages (executable
+targets), a native evaluator, typeset LaTeX output, and a printer for
+ExprForge's own syntax (20 output targets in total) — all from the same
+tree, walked once per target. Symbolic differentiation (`differentiate`) works over
 that same AST too, so a derivative is just another tree, emittable and
 evaluable exactly the same way.
 
@@ -358,7 +359,7 @@ call regardless of target, checked unconditionally at the same tier as
 
 **If you're reading emitted code and expected `round()` to behave like
 your target language's own native rounding function, it doesn't, on 8
-of the 18 targets, by deliberate design.** `round(x)` ties **away from
+of the 18 programming-language targets, by deliberate design.** `round(x)` ties **away from
 zero** everywhere, unconditionally — `round(-0.5)` is `-1`,
 `round(1.5)` is `2`, `round(2.5)` is `3` — identical on every target,
 confirmed directly against a real compiler/interpreter for every one of
@@ -378,7 +379,7 @@ rounding function directly:
 | **QB64** (`_ROUND`) | ties to even | same pattern as Python (confirmed against a real compile) |
 | **C#** (`Math.Round(double)`) | ties to even (default) | same pattern as Python |
 
-The other 9 targets (C, Rust, Go, Perl, Zig, Fortran, COBOL, Julia, PHP)
+The other 9 programming-language targets (C, Rust, Go, Perl, Zig, Fortran, COBOL, Julia, PHP)
 already tie away from zero natively, so ExprForge's `round()` matches
 what you'd expect from those languages directly — no surprise there.
 
@@ -387,7 +388,7 @@ this library's entire value proposition is "author once, get identical
 behavior everywhere" — `round()` was the one primitive quietly not
 living up to that (three incompatible native conventions, silently
 inherited with zero normalization). Away-from-zero was chosen because
-it was already the majority (9 of the pre-existing 17 non-JS-family
+it was already the majority (10 of the 18 programming-language
 targets), and because this project's own Julia emitter had already,
 independently, made a deliberate choice to match it
 (`RoundNearestTiesAway`, not Julia's own ties-to-even default) before
@@ -548,8 +549,8 @@ console.log(evaluate(df, [Math.PI])); // -π² ≈ -9.8696
 
 `differentiate(node, varName)` returns an ordinary AST node — the
 symbolic derivative of `node` with respect to `varName` — in the exact
-same representation as everything else, so it's emittable to all 18
-targets via `emit()`/`emitMany()` and evaluable via `evaluate()`
+same representation as everything else, so it's emittable to every registered
+target via `emit()`/`emitMany()` and evaluable via `evaluate()`
 unchanged. The input is never mutated.
 
 - **Covers every differentiable primitive**: sum/difference/product/
@@ -935,15 +936,16 @@ expression model without introducing control flow:
   emulation or an indexing idiom).
 
   **`select` is not a branch** — modeled as if both `then` and `else`
-  are always evaluated, matching the three real targets where that's
+  are always evaluated, matching the four real targets where that's
   literally true: QB64 (the arithmetic expression above genuinely
   computes both sides), Fortran (`MERGE`, an elemental intrinsic that
   doesn't short-circuit its arguments — confirmed against a real
   compiler), and COBOL (its picker helper spills both branches into
-  temps before the call). The other 15 targets — including
+  temps before the call), and MATLAB/Octave (its `ef_select` helper receives
+  both already-evaluated values as arguments). The other 14 programming-language targets — including
   `evaluate()` itself — happen to short-circuit via their native
   ternary/`if`-`else`/`and`-`or`, but that's an implementation detail
-  those 15 share and the other 3 don't, not part of this AST's own
+  those 14 share and the other 4 don't, not part of this AST's own
   contract — don't rely on it. Don't use `select` to guard division by
   zero or anything else undefined; clamp the operand itself with its
   own `select` first (see `safeDiv` in `samples/spline-frame.js`), or
@@ -1541,8 +1543,8 @@ code it emits. A few concrete guarantees that follow from that:
   the most — `fn`/`expr`'s own tokenizer never produces anything but a
   safe identifier to begin with, so this was the one place a malformed or
   malicious name (e.g. `v("x); process.exit(1); //")`) could otherwise
-  reach emitted output completely unescaped, verbatim, in every one of 16
-  targets at once.
+  reach emitted output completely unescaped, verbatim, in every
+  target at once.
 - **`expr`/`fn` cap how deeply an expression can nest.** Parens,
   function-call arguments, and ternary branches can nest up to 100 levels
   deep (`MAX_EXPRESSION_DEPTH` in `expr.js`) before parsing fails with one
@@ -1672,7 +1674,7 @@ dependencies of any kind, matching this.
 
 CI is one workflow file per target language (`.github/workflows/test-*.yml`),
 run in parallel — they have nothing to do with each other, so there's no
-reason to serialize installing sixteen different toolchains (QB64-PE
+reason to serialize installing every target's toolchain (QB64-PE
 alone, built from source and cached by version, takes several minutes)
 into one job, and splitting by file rather than by job within one file is
 also what gets each language its own real status badge above, not just
@@ -1694,7 +1696,7 @@ toolchain-free `Interpreter` slice (`EXPRFORGE_TEST_TARGETS=Interpreter`,
 same filter every `test-*.yml` workflow already uses), gated on a fixed
 threshold, since that's the one environment where the number means the
 same thing on every run — installing zero, one, or a different subset of
-the 17 per-language toolchains would make an aggregate threshold either
+the per-language toolchains would make an aggregate threshold either
 flaky or meaningless. Core logic (`ast.js`/`evaluate.js`/`expr.js`/
 `fn.js`/`index.js`/`load-expr.js`/`macros.js`/`math/`/`primitives.js`/
 `samples/`/`util.js`) sits at 95-100% in every environment, toolchains or
@@ -1702,7 +1704,7 @@ not; per-target emitter coverage is intentionally excluded from that
 mental model — code that only really runs inside a real compiled/
 interpreted program can't be exercised without that target's own
 toolchain, and that verification already happens for real, by actually
-compiling and running the output, in the 17 other workflows — a lower
+compiling and running the output, in the other per-language workflows — a lower
 coverage *percentage* there isn't itself a problem this gate is
 positioned to catch.
 

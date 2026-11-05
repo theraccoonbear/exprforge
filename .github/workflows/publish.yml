@@ -44,8 +44,8 @@ jobs:
       # this file ran it twice in the same job (once explicitly, once
       # via the hook) for "clearer CI attribution" -- not worth doubling
       # the run for, especially given the real testing already happened
-      # per-language, against real toolchains, in this repo's 16 separate
-      # test-*.yml jobs on the PR that got merged before this release was
+      # per-language, against real toolchains, in this repo's separate
+      # per-language test-*.yml jobs on the PR that got merged before this release was
       # even created. prepublishOnly stays: it's what protects a manual
       # "npm publish" run from someone's own machine, not just CI.
       - run: npm publish --provenance
