@@ -47,9 +47,9 @@ const EF_HELPERS = [
     `def _ef_log10(x): return math.log10(x) if x > 0 else (-math.inf if x == 0 else math.nan)`,
     `def _ef_min(a, b): return math.nan if (a != a or b != b) else min(a, b)`,
     `def _ef_max(a, b): return math.nan if (a != a or b != b) else max(a, b)`,
-    `def _ef_floor(x): return float(math.floor(x)) if math.isfinite(x) else x`,
-    `def _ef_ceil(x): return float(math.ceil(x)) if math.isfinite(x) else x`,
-    `def _ef_trunc(x): return float(math.trunc(x)) if math.isfinite(x) else x`,
+    `def _ef_floor(x): return math.copysign(math.floor(x), x) if math.isfinite(x) else x`,
+    `def _ef_ceil(x): return math.copysign(math.ceil(x), x) if math.isfinite(x) else x`,
+    `def _ef_trunc(x): return math.copysign(math.trunc(x), x) if math.isfinite(x) else x`,
     `def _ef_round(x):\n` +
     `    if not math.isfinite(x): return x\n` +
     `    f = math.floor(abs(x))\n` +

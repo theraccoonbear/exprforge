@@ -157,7 +157,11 @@ test("python helpers: real python3 agrees with the evaluator on edge inputs", { 
 test("python helpers: round is exact ties-away, sign preserves -0/NaN, pow IEEE specials", { skip: !PYTHON && "python3 not available" }, () => {
     const src = emitters.python.emitFunction({ name: "r", params: ["x"], body: call("round", v("x")) }) + "\n\n" +
         emitters.python.emitFunction({ name: "s", params: ["x"], body: call("sign", v("x")) }, undefined, { includeHelpers: false }) + "\n\n" +
+        ["floor", "ceil", "trunc"].map((p) => emitters.python.emitFunction({ name: p[0], params: ["x"], body: call(p, v("x")) }, undefined, { includeHelpers: false })).join("\n\n") + "\n\n" +
         "import math\n" +
+        "print(f(-0.0), f(-0.4), f(0.4), f(-1.5), f(1e300), f(math.inf), f(-math.inf), f(math.nan))\n" +
+        "print(c(-0.0), c(-0.4), c(0.4), c(-1.5), c(1e300), c(math.inf), c(-math.inf), c(math.nan))\n" +
+        "print(t(-0.0), t(-0.4), t(0.4), t(-1.5), t(1e300), t(math.inf), t(-math.inf), t(math.nan))\n" +
         "print(r(0.49999999999999994), r(4503599627370497.0), r(-0.4), r(-0.0), r(2.5), r(-2.5), r(1.5), r(-1.5), r(math.inf), r(-math.inf), r(math.nan))\n" +
         "print(s(-0.0), s(0.0), s(math.nan), s(-3.0), s(2.0))\n" +
         "print(math.pow(1, math.nan), math.pow(-1, math.inf), math.pow(-1, -math.inf))\n";
@@ -166,9 +170,12 @@ test("python helpers: round is exact ties-away, sign preserves -0/NaN, pow IEEE 
         const file = path.join(dir, "gen.py");
         fs.writeFileSync(file, src);
         const out = execFileSync("python3", ["-I", file]).toString().trim().split("\n");
-        assert.strictEqual(out[0], "0.0 4503599627370497.0 -0.0 -0.0 3.0 -3.0 2.0 -2.0 inf -inf nan");
-        assert.strictEqual(out[1], "-0.0 0.0 nan -1.0 1.0");
-        assert.strictEqual(out[2], "1.0 1.0 1.0");
+        assert.strictEqual(out[0], "-0.0 -1.0 0.0 -2.0 1e+300 inf -inf nan");
+        assert.strictEqual(out[1], "-0.0 -0.0 1.0 -1.0 1e+300 inf -inf nan");
+        assert.strictEqual(out[2], "-0.0 -0.0 0.0 -1.0 1e+300 inf -inf nan");
+        assert.strictEqual(out[3], "0.0 4503599627370497.0 -0.0 -0.0 3.0 -3.0 2.0 -2.0 inf -inf nan");
+        assert.strictEqual(out[4], "-0.0 0.0 nan -1.0 1.0");
+        assert.strictEqual(out[5], "1.0 1.0 1.0");
     } finally {
         fs.rmSync(dir, { recursive: true, force: true });
     }
