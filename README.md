@@ -379,7 +379,7 @@ rounding function directly:
 | **Scheme/Guile** (`round`) | ties to even | same pattern as Python |
 | **QB64** (`_ROUND`) | ties to even | same pattern as Python (confirmed against a real compile) |
 | **C#** (`Math.Round(double)`) | ties to even (default) | same pattern as Python |
-| **R** (`round()`) | ties to even (IEC 60559) | same pattern as Python; emitted as `sign(x) * floor(abs(x) + 0.5)` |
+| **R** (`round()`) | ties to even (IEC 60559) | same pattern as Python; emitted with the exact floor-plus-fraction form |
 
 The other 9 programming-language targets (C, Rust, Go, Perl, Zig, Fortran, COBOL, Julia, PHP)
 already tie away from zero natively, so ExprForge's `round()` matches
@@ -395,9 +395,11 @@ targets), and because this project's own Julia emitter had already,
 independently, made a deliberate choice to match it
 (`RoundNearestTiesAway`, not Julia's own ties-to-even default) before
 this change existed at all — real precedent, not an arbitrary pick.
-Built from `floor`/`sign`/`abs` (which already agreed everywhere) via
-`sign(x) * floor(abs(x) + 0.5)`, the same formula `emitters/cobol.js`'s
-own hand-written `round` template already used. See
+Built from `floor`/`sign`/`abs` (which already agreed everywhere):
+`floor(|x|)` plus one when `|x| - floor(|x|) >= 0.5`, with the sign of `x`
+reapplied. That form is exact for every finite double, unlike
+`floor(|x| + 0.5)`, which is off by one at `0.49999999999999994` and
+above 2^52 (see ADR 0001's addendum). See
 `samples/round-tie-demo.js`'s own header comment for the full,
 directly-verified breakdown of what each of the 8 changed targets used
 to do, and `test/conformance.test.js`'s `roundTieBoundary` entry for the
@@ -555,7 +557,12 @@ boundary audit is
 - `floor`/`ceil`/`trunc`/`round` of NaN, ±Infinity and huge values
   (including above 2^63 and 2^53) return the argument or the exact
   integer, never raise or saturate.
-- `sign(NaN)` is NaN.
+- `sign(NaN)` is NaN and `sign(-0)` is `-0`, as `Math.sign` (GnuCOBOL has
+  neither).
+- `floor`/`ceil`/`trunc`/`round` keep the sign of a zero result
+  (`ceil(-0.4)` and `round(-0.4)` are `-0`; GnuCOBOL excepted).
+- `pow(1, y)` is 1 for every `y` including NaN, and `pow(-1, ±Infinity)`
+  is 1 (IEEE 754, C99 Annex F).
 - `hypot` does not overflow or underflow early, and handles ±Infinity
   and NaN (`hypot(Infinity, NaN)` is Infinity).
 - `exp` overflows to Infinity; `pow` handles ±0, infinite operands and
@@ -571,18 +578,15 @@ ADR 0005):
 
 | Target | Exception |
 |---|---|
-| **GnuCOBOL** | No NaN/Infinity representation: domain errors and `min`/`max` NaN return 0 (0002, 0003), `pow(0, negative)` and `wrapIndex(i, 0)` return 0, `pow` with an enormous integer exponent aborts at runtime, numeric literals over 38 digits are rejected at generation time, and arguments given as NaN, Infinity, `-0` or exponent notation cannot be passed through `NUMVAL`. `cos` near zero can differ by about 1e-16 absolute. |
+| **GnuCOBOL** | No NaN/Infinity representation: domain errors and `min`/`max` NaN return 0 (0002, 0003), `pow(0, negative)` and `wrapIndex(i, 0)` return 0, results of `-0` (`sign(-0)`, `ceil(-0.4)`, ...) are `+0`, `pow` with an enormous integer exponent aborts at runtime, numeric literals over 38 digits are rejected at generation time, and arguments given as NaN, Infinity, `-0` or exponent notation cannot be passed through `NUMVAL`. `cos` near zero can differ by about 1e-16 absolute. |
 | **Fortran** | An out-of-domain expression made only of literal constants fails to compile (0002). |
 | **QB64** | About 15-16 significant digits through `PRINT`/`VAL`; values near the double limits do not round-trip. |
 | **Perl** | `pow(-0, odd/negative integer)` returns `+0`/`+Infinity`. |
 | **Zig** | `pow(-2, 1e300)` is NaN, not Infinity. |
 | **Go** | `exp(709.5)` is `+Infinity` on the tested amd64 toolchain. |
-| JS, TypeScript, Java vs. the rest | `pow(1, NaN)` and `pow(±1, ±Infinity)` are NaN; every other target returns 1 (IEEE 754-2008). |
-| Reference formula | `round()` is off by one at `0.49999999999999994` and above 2^52 on targets built from the 0001 formula (open decision). |
 
-**Not guaranteed:** the sign of a zero result (`floor(-0.4)`, `sign(-0)`,
-`wrapIndex` landing on zero) may be `-0` on some targets and `+0` on
-others (`sign(-0)` is an open decision); `wrapIndex` with non-finite
+**Not guaranteed:** the sign of a zero result from `wrapIndex` landing on
+zero; `wrapIndex` with non-finite
 operands is unspecified; in Lua, arguments must be floats (an integer
 argument makes `%` by zero an error and lets `*` wrap).
 
