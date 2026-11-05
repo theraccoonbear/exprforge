@@ -32,6 +32,7 @@ const DYNAMIC_TARGETS = {
     lua: 'type(arr) ~= "table"',
     perl: "ref($arr) eq 'ARRAY'",
     julia: "arr isa AbstractVector",
+    r: "!is.numeric(arr)",
     scheme: "(vector? arr)",
     matlab: "~isnumeric(arr)",
 };
@@ -127,6 +128,7 @@ const LENGTH_GUARD_TARGETS = {
     lua: "#arr ~= m",
     perl: "scalar(@$arr) == $m",
     julia: "length(arr) != m",
+    r: "length(arr) != m",
     scheme: "(vector-length arr) m",
     matlab: "numel(arr) ~= m",
 };

@@ -63,7 +63,7 @@ class Emitter {
         // at the call boundary. Only meaningful for targets with no
         // compile-time enforcement of that -- present on the
         // dynamically-typed emitters (js/ts/python/php/lua/perl/scheme/
-        // julia), absent (null) everywhere else, since every compiled
+        // julia/r), absent (null) everywhere else, since every compiled
         // target already gets this for free from its own compiler. See
         // docs/runtime-type-guards.md.
         this.typeGuardImpl = config.typeGuard || null;
@@ -72,7 +72,7 @@ class Emitter {
         // lengthParam, fnName) => one line of runtime-guard code
         // asserting that arrayParam's ACTUAL length matches the value of
         // a separate scalar parameter the caller claims it to be. Same
-        // 8-target availability as typeGuard, for the same reason (every
+        // 9-target availability as typeGuard, for the same reason (every
         // compiled target either has no portable way to query an array's
         // real runtime length at all -- see docs/array-index-primitives.md's
         // "Array length is always caller-supplied" note -- or already
@@ -185,7 +185,7 @@ class Emitter {
     // caller-supplied" note) -- so this is authors opting in to
     // documenting the relationship explicitly, which then lets
     // `lengthGuardImpl` (see the constructor) emit one more runtime
-    // check per declared pair, same 8-target availability and the same
+    // check per declared pair, same 9-target availability and the same
     // "not perfect, real protection at the boundary" spirit as
     // `typeGuard` itself. See docs/runtime-type-guards.md's "Array
     // length" section.

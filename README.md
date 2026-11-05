@@ -15,6 +15,7 @@
 [![Perl](https://github.com/theraccoonbear/exprforge/actions/workflows/test-perl.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test-perl.yml)
 [![PHP](https://github.com/theraccoonbear/exprforge/actions/workflows/test-php.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test-php.yml)
 [![Julia](https://github.com/theraccoonbear/exprforge/actions/workflows/test-julia.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test-julia.yml)
+[![R](https://github.com/theraccoonbear/exprforge/actions/workflows/test-r.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test-r.yml)
 [![Fortran](https://github.com/theraccoonbear/exprforge/actions/workflows/test-fortran.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test-fortran.yml)
 [![Zig](https://github.com/theraccoonbear/exprforge/actions/workflows/test-zig.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test-zig.yml)
 [![Scheme](https://github.com/theraccoonbear/exprforge/actions/workflows/test-scheme.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test-scheme.yml)
@@ -28,7 +29,7 @@
 
 ExprForge authors a math formula once, as a small AST, and emits
 verified, identical-behavior implementations in JavaScript, TypeScript,
-Python, C#, Lua, QB64, C, Java, Go, Rust, Perl, PHP, Julia, MATLAB/Octave,
+Python, C#, Lua, QB64, C, Java, Go, Rust, Perl, PHP, Julia, MATLAB/Octave, R,
 Fortran, Zig, Scheme (Guile), and COBOL (GnuCOBOL) — plus a native in-process
 evaluator, a printer for its own readable syntax, and typeset LaTeX
 output for documenting the formula itself. No required dependencies.
@@ -79,9 +80,9 @@ Two shapes of real use this tends to fall into:
 ## Intents
 
 **What it does**: turns one small, pure-arithmetic AST into
-identical-behavior source text for 18 programming languages (executable
+identical-behavior source text for 19 programming languages (executable
 targets), a native evaluator, typeset LaTeX output, and a printer for
-ExprForge's own syntax (20 output targets in total) — all from the same
+ExprForge's own syntax (21 output targets in total) — all from the same
 tree, walked once per target. Symbolic differentiation (`differentiate`) works over
 that same AST too, so a derivative is just another tree, emittable and
 evaluable exactly the same way.
@@ -358,8 +359,8 @@ call regardless of target, checked unconditionally at the same tier as
 ### `round()` at exact `.5` boundaries: standardized, NOT your language's native behavior
 
 **If you're reading emitted code and expected `round()` to behave like
-your target language's own native rounding function, it doesn't, on 8
-of the 18 programming-language targets, by deliberate design.** `round(x)` ties **away from
+your target language's own native rounding function, it doesn't, on 9
+of the 19 programming-language targets, by deliberate design.** `round(x)` ties **away from
 zero** everywhere, unconditionally — `round(-0.5)` is `-1`,
 `round(1.5)` is `2`, `round(2.5)` is `3` — identical on every target,
 confirmed directly against a real compiler/interpreter for every one of
@@ -378,6 +379,7 @@ rounding function directly:
 | **Scheme/Guile** (`round`) | ties to even | same pattern as Python |
 | **QB64** (`_ROUND`) | ties to even | same pattern as Python (confirmed against a real compile) |
 | **C#** (`Math.Round(double)`) | ties to even (default) | same pattern as Python |
+| **R** (`round()`) | ties to even (IEC 60559) | same pattern as Python; emitted as `sign(x) * floor(abs(x) + 0.5)` |
 
 The other 9 programming-language targets (C, Rust, Go, Perl, Zig, Fortran, COBOL, Julia, PHP)
 already tie away from zero natively, so ExprForge's `round()` matches
@@ -388,7 +390,7 @@ this library's entire value proposition is "author once, get identical
 behavior everywhere" — `round()` was the one primitive quietly not
 living up to that (three incompatible native conventions, silently
 inherited with zero normalization). Away-from-zero was chosen because
-it was already the majority (10 of the 18 programming-language
+it was already the majority (10 of the 19 programming-language
 targets), and because this project's own Julia emitter had already,
 independently, made a deliberate choice to match it
 (`RoundNearestTiesAway`, not Julia's own ties-to-even default) before
@@ -440,6 +442,10 @@ number":
   would need, and not worth risking reintroducing that crash for a
   target whose math intrinsics are already documented elsewhere as not
   fully reliable.
+- **R**: `sqrt`/`log`/`log2`/`log10`/`asin`/`acos` (and `sin`/`cos`/`tan`
+  of an infinite argument) return `NaN` but also signal a "NaNs
+  produced" warning on stderr. Emitted calls are wrapped in
+  `suppressWarnings()` so output stays clean; the value is unchanged.
 - **MATLAB/Octave**: like Scheme, `sqrt`/`log`/`log2`/`log10`/`asin`/
   `acos` and `pow` with a negative base silently return a **complex
   number** for an out-of-domain real argument (`sqrt(-1)` ⇒ `0 + 1i`).
@@ -475,7 +481,7 @@ comes from both operands, including a `-0` denominator), and `0/0` and
   plain `/`. For concatenated files, pass `{ includeHelpers: false }`
   on every call after the first (see below).
 - Every other target except COBOL (JS, TypeScript, C, Go, Rust, Java,
-  Lua, C#, Zig, Julia, Fortran, Scheme, QB64) already returned IEEE
+  Lua, C#, Zig, Julia, R, Fortran, Scheme, QB64) already returned IEEE
   results and is unchanged.
 - **GnuCOBOL** is a documented, unfixed exception: `COMPUTE` is decimal
   arithmetic with no Infinity or NaN, so a zero denominator leaves the
@@ -515,8 +521,9 @@ argument order, not any documented rule):
 - **MATLAB/Octave** (`min`/`max`): NaN-**ignoring** by default —
   `min(NaN, 5)` is `5` in either argument position. Fixed with a
   self-inequality NaN check in a local helper function.
-- Every other target (JS, TypeScript, Go, Java, C#, Julia, Scheme,
-  Fortran) already propagated NaN correctly.
+- Every other target (JS, TypeScript, Go, Java, C#, Julia, R, Scheme,
+  Fortran) already propagated NaN correctly (R's base `min`/`max`
+  return `NaN` in either argument order).
 
 See `samples/math-edge-cases-demo.js`'s own header comment for the
 full, directly-verified breakdown, `test/conformance.test.js`'s
@@ -942,10 +949,10 @@ expression model without introducing control flow:
   doesn't short-circuit its arguments — confirmed against a real
   compiler), and COBOL (its picker helper spills both branches into
   temps before the call), and MATLAB/Octave (its `ef_select` helper receives
-  both already-evaluated values as arguments). The other 14 programming-language targets — including
+  both already-evaluated values as arguments). The other 15 programming-language targets — including
   `evaluate()` itself — happen to short-circuit via their native
   ternary/`if`-`else`/`and`-`or`, but that's an implementation detail
-  those 14 share and the other 4 don't, not part of this AST's own
+  those 15 share and the other 4 don't, not part of this AST's own
   contract — don't rely on it. Don't use `select` to guard division by
   zero or anything else undefined; clamp the operand itself with its
   own `select` first (see `safeDiv` in `samples/spline-frame.js`), or
@@ -1016,7 +1023,7 @@ Nothing stops a *caller* of emitted code from passing a plain number
 where an array-typed parameter (`paramTypes`) declared an array —
 `evaluate()` already guards this itself, and every statically-typed
 target's own compiler already rejects the mismatch, but plain emitted
-JS/TypeScript/Python/PHP/Lua/Perl/Scheme/Julia source shipped with no
+JS/TypeScript/Python/PHP/Lua/Perl/Scheme/Julia source (and, since it was added, R) shipped with no
 check at all. Opt in with a 4th argument to `emit()`/`emitMany()`:
 
 ```js
@@ -1506,6 +1513,7 @@ multi-value idiom it has, since none of them agree:
 | JS | object literal |
 | Go, Lua, Scheme | native multiple return values (`(values ...)` in Scheme) |
 | C#, Julia | a native named value tuple / named tuple |
+| R | a named list (`list(rx = ..., ry = ...)`, read with `result$rx`) |
 | C / Rust / Zig | a small `...Result` struct, returned by value |
 | Java, Python | a nested/local `Result` class |
 | MATLAB/Octave | native multiple return values, `function [rx, ry] = f(...)`, called as `[rx, ry] = f(...)` |
@@ -1600,6 +1608,7 @@ change that also updates this table.
 | Perl | Perl 5 with core `POSIX` | 5.38 (Ubuntu 24.04) | |
 | PHP | PHP 7 (believed; no version-specific features found) | 8.3 (Ubuntu 24.04 `php-cli`) | |
 | Julia | 1.0 (`clamp`, `RoundNearestTiesAway`) | 1.11.5 (exact) | |
+| R | base R (no packages) | 4.5.2 (exact, `r-lib/actions/setup-r`) | |
 | Fortran | Fortran 2008 (`HYPOT`, `MODULO`) | gfortran 13.x (Ubuntu 24.04), `-O2`, default `-std` | |
 | Zig | 0.14.1 exactly | 0.14.1 (exact) | Builtins and `std` change between releases. To bump: edit `test-zig.yml`, run the Zig suite, fix `emitters/zig.js`, update this table. |
 | QB64 | QB64-PE (tested release) | v4.7.0-GLFW (exact tag) | Built from the release source bundle in CI. |
@@ -1666,7 +1675,7 @@ Runs `node --test`. For each sample, that's three kinds of check:
 The compiled/interpreted-language checks need their toolchain on `PATH`
 and skip (not fail) when it's missing, so `npm test` degrades gracefully
 on any one machine. Every one of `tsc`/`qb64pe`/`dotnet`/`python3`/`lua`/
-`perl`/`php`/`julia`/`octave-cli`/`gfortran`/`zig`/`guile3.0`/`cobc` is treated exactly
+`perl`/`php`/`julia`/`octave-cli`/`Rscript`/`gfortran`/`zig`/`guile3.0`/`cobc` is treated exactly
 like gcc/go/rustc/javac: looked up on `PATH`, never a project
 dependency — exprforge only ever generates source text for these, it
 doesn't execute or type-check any of it itself. `package.json` has zero
@@ -1752,6 +1761,20 @@ compiling/running against a real toolchain rather than assumed to work:
   not just avoid the untested case. `sign(-0.0)` returns `-0.0`, which is
   numerically equal to `0.0` for the tolerance-based comparisons this
   project uses, so it isn't a real divergence.
+- **R**: emitted as a plain `name <- function(...) { ... }`. Vectors are
+  1-indexed, so an `index` node emits `arr[[round(i) + 1]]`; `[[ ]]` makes
+  an out-of-range index an error instead of a silent `NA` (or, for a
+  negative index, an element-dropping subset). `round()` is overridden
+  (R's own is ties-to-even), `%%` is already floor-mod (`wrapIndex`), and
+  `ceil` is `ceiling`. Any comparison against `NaN` is `NA` in R and
+  `if (NA)` is an error, so `select()` conditions are wrapped in
+  `isTRUE()` (and `!=` is emitted as `!isTRUE(a == b)`), which matches the
+  other targets: every comparison with a `NaN` operand is false except
+  `!=`. Division is IEEE (`x/0` is `Inf`/`-Inf`, `0/0` is `NaN`). A `NaN`
+  result is the numeric `NaN` (`is.nan()` is true), printed as `NaN` --
+  never `NA`; `Inf`/`-Inf` print as such. Multi-output suites return a
+  named list. Domain-error warnings are suppressed with
+  `suppressWarnings()`.
 - **Fortran**: a literal without the `D0` exponent marker is parsed as
   *single*-precision first, then widened — silently losing precision
   before it reaches a `real(8)` variable, unlike every other target's
