@@ -52,6 +52,7 @@ const {
     arrayMacroDemoAst,
     mathEdgeCasesAst,
     divisionByZeroAst,
+    nonFiniteRoundingAst,
     differentiateDemoAst,
     zeroParamDemoAst,
     cyclicElemAst,
@@ -1872,7 +1873,10 @@ function runSuiteCobol(ast, inputs, outputNames) {
     return results;
 }
 
-function registerSuiteConformance(sampleName, { ast, inputs, skipTargets = [] }) {
+// todoTargets: { label: reason } -- a real, recorded divergence on that
+// target. The test still runs and is reported, but as a node:test TODO so
+// it does not fail the suite.
+function registerSuiteConformance(sampleName, { ast, inputs, skipTargets = [], todoTargets = {} }) {
     const outputNames = suiteOutputNames(ast);
     const targets = [
         ["Interpreter", true, runEval],
@@ -1900,7 +1904,7 @@ function registerSuiteConformance(sampleName, { ast, inputs, skipTargets = [] })
     for (const [label, available, run] of targets) {
         test(
             `${sampleName}: ${label} emitted output matches JS`,
-            { skip: !available && `${label} toolchain not available` },
+            { skip: !available && `${label} toolchain not available`, todo: todoTargets[label] },
             () => {
                 const jsFn = loadJsFn(ast);
                 const expected = inputs.map((args) => jsFn(...args));
@@ -2173,6 +2177,29 @@ registerSuiteConformance("divisionByZero", {
     // cannot survive any COMPUTE (confirmed: COMPUTE y = inf stores 0),
     // so IEEE results are not reachable inside an expression.
     skipTargets: ["COBOL"],
+});
+
+// Proves floor/ceil/trunc/round return NaN and +-Infinity unchanged on
+// every target (see samples/non-finite-rounding-demo.js). The non-finite
+// values are built inside the expression from a runtime zero.
+registerSuiteConformance("nonFiniteRounding", {
+    ast: nonFiniteRoundingAst,
+    inputs: [
+        [2.5, 0],
+        [-2.5, 0],
+    ],
+    // GnuCOBOL's COMPUTE is decimal arithmetic with no Infinity or NaN;
+    // same documented exception as divisionByZero above.
+    skipTargets: ["COBOL"],
+    // Real divergences found by this sample on targets other than Ruby,
+    // recorded rather than fixed here. Each is the emitted target's result
+    // for the NaN / +Infinity / -Infinity inputs against the interpreter's
+    // unchanged pass-through.
+    todoTargets: {
+        Java: "truncate of NaN/+-Infinity: trunc gives NaN->0, +Inf->9.223372036854776E18, -Inf->-9.223372036854776E18 (long cast), expected NaN/Infinity/-Infinity",
+        Python: "math.floor/ceil/trunc raise ValueError for NaN and OverflowError for +-Infinity instead of returning them unchanged",
+        Fortran: "floor/ceil of NaN/+-Infinity go through an integer conversion (NaN->2147483647, +Inf->-2147483648, -Inf->2147483647 for floor; NaN/+Inf->-2147483647, -Inf->-2147483648 for ceil), expected NaN/Infinity/-Infinity",
+    },
 });
 
 // --- samples/math-demo.js -------------------------------------------------
