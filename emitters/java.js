@@ -30,7 +30,7 @@ const emitter = new Emitter({
         log10: fn1("log10"), exp: fn1("exp"), floor: fn1("floor"), ceil: fn1("ceil"),
         signum: fn1("signum"),
         pow: ([x, y]) =>
-            `((java.util.function.DoubleBinaryOperator) (a, b) -> (a == 1.0 || (a == -1.0 && Math.abs(b) == Double.POSITIVE_INFINITY)) ? 1.0 : Math.pow(a, b)).applyAsDouble(${x}, ${y})`,
+            `((java.util.function.DoubleBinaryOperator) (ef_a, ef_b) -> (ef_a == 1.0 || (ef_a == -1.0 && Math.abs(ef_b) == Double.POSITIVE_INFINITY)) ? 1.0 : Math.pow(ef_a, ef_b)).applyAsDouble(${x}, ${y})`,
         atan2: fn2("atan2"), min: fn2("min"), max: fn2("max"), hypot: fn2("hypot"),
         // Math has no log2; Java also lacks round-to-double and trunc directly.
         log2: ([x]) => `(Math.log(${x}) / Math.log(2.0))`,
@@ -40,8 +40,8 @@ const emitter = new Emitter({
         // Math.signum already returns double for a double argument, so no
         // cast is needed here the way the plain Math.round path above did.
         round: ([x]) =>
-            `((java.util.function.DoubleUnaryOperator) (a) -> Math.signum(a) * ` +
-            `(Math.floor(Math.abs(a)) + (Math.abs(a) - Math.floor(Math.abs(a)) >= 0.5 ? 1.0 : 0.0))).applyAsDouble(${x})`,
+            `((java.util.function.DoubleUnaryOperator) (ef_a) -> Math.signum(ef_a) * ` +
+            `(Math.floor(Math.abs(ef_a)) + (Math.abs(ef_a) - Math.floor(Math.abs(ef_a)) >= 0.5 ? 1.0 : 0.0))).applyAsDouble(${x})`,
         trunc: ([x]) => `((${x}) < 0.0 ? Math.ceil(${x}) : Math.floor(${x}))`,
         sign: fn1("signum"),
         wrapIndex: ([i, m]) => `(((${i} % ${m}) + ${m}) % ${m})`,
