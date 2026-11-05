@@ -152,7 +152,7 @@ class Emitter {
         // that array-typed parameter actually holds an array-shaped value
         // at the call boundary. Only meaningful for targets with no
         // compile-time enforcement of that -- present on the
-        // dynamically-typed emitters (js/ts/python/php/lua/perl/scheme/
+        // dynamically-typed emitters (js/ts/python/php/lua/perl/ruby/scheme/
         // julia/r), absent (null) everywhere else, since every compiled
         // target already gets this for free from its own compiler. See
         // docs/runtime-type-guards.md.

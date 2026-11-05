@@ -10,14 +10,14 @@
 // were found: by auditing every target's real min/max behavior with a
 // NaN operand, not assuming they agree. Confirmed directly, not guessed:
 //
-//   - JS, TypeScript, Go, Java, C#, Julia, Scheme, Fortran: already
+//   - JS, TypeScript, Go, Java, C#, Julia, R, Scheme, Fortran: already
 //     correct -- native min/max propagate NaN regardless of which
 //     operand it's in. No change needed.
 //   - C (fmin/fmax), Rust (.min()/.max()), Zig (@min/@max): all three
 //     are C99-style NaN-IGNORING by spec -- if exactly one operand is
 //     NaN, the OTHER (real) value comes back, confirmed both orders.
 //     Fixed with an explicit isnan()/.is_nan()/std.math.isNan() guard.
-//   - Python (builtin min/max), Lua (math.min/max), QB64 (_MIN/_MAX):
+//   - Python (builtin min/max), Ruby ([a, b].min), Lua (math.min/max), QB64 (_MIN/_MAX):
 //     all three are comparison-based and POSITION-DEPENDENT -- since a
 //     comparison against NaN is always false, whichever argument comes
 //     FIRST silently wins whenever either is NaN (confirmed:

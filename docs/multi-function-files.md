@@ -30,13 +30,14 @@ identical to before this existed.
 | PHP | the `<?php` opening tag | `opts.includeHelpers: false` on every call after the first | Found proactively |
 | Python | `_exprforge_div` helper `def` (see ADR 0004), only when a division needs it | one shared `opts.emittedHelpers` Set across all calls | Added with the division-by-zero fix |
 | Perl | `_exprforge_div` helper `sub` (see ADR 0004), only when a division needs it | one shared `opts.emittedHelpers` Set across all calls (a repeat triggers a "Subroutine redefined" warning) | Added with the division-by-zero fix |
+| Ruby | `_ef_*` guard helper methods (`_ef_sqrt`, `_ef_pow`, `_ef_floor`, ... 16 in total), emitted only when the function uses them | pass one shared `opts.emittedHelpers` Set to every call: each used helper is defined once, at its first use (`includeHelpers: false` emits none, so it is only right when the helpers are defined elsewhere) | Added with the helper preamble |
 | Java | `public final class <Name>` | `opts.publicClass: false` on every call except ONE (Java allows at most one *public* top-level type per file; a package-private class is still fully callable from another class in the same file/package) | Found proactively |
 
 | MATLAB/Octave | the `ef_*` local helper functions the function calls | one shared `opts.emittedHelpers` Set across all calls. Unlike the other rows, the default (one function per file, helpers inside it) is the natural MATLAB layout; the shared Set is only for putting several functions in one file, where MATLAB exposes just the first function and Octave needs a leading `1;` to `source()` the rest | Designed in, verified in `test/multi-function-files.test.js` |
 
 ## Helpers: used-only, defined once
 
-Targets with support helpers (Python, Perl, MATLAB/Octave, QB64, COBOL)
+Targets with support helpers (Python, Perl, Ruby, MATLAB/Octave, QB64, COBOL)
 emit only the helper definitions the generated code actually calls, plus
 the helpers those call. A pure-arithmetic function such as a lerp has no
 helper definitions at all. The selection is `Emitter.usedHelpers()` in
