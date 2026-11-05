@@ -1807,6 +1807,35 @@ and a redundant sanity check each time. Unset locally, so a plain
 `npm test` still runs everything your own machine's installed toolchains
 allow.
 
+**CI triggers and concurrency**:
+
+- Every test workflow cancels its own superseded runs: the concurrency
+  group is the workflow plus the PR number (or ref), with
+  `cancel-in-progress` off for `main`, so a push to a PR cancels that
+  PR's older run and runs on `main` always finish. Publish workflows
+  (`publish.yml`, `publish-vscode-extension.yml`) are not cancelled.
+- The per-language `test-<lang>.yml` workflows skip PRs that only change
+  `*.md`, `docs/`, `playground/`, `vscode-extension/` or `.github/`, except
+  that a workflow's own file always triggers it. `test-vscode-syntax.yml`
+  runs only for `vscode-extension/` (and its own file). Pushes to `main`
+  always run everything.
+- `test-node.yml` (`test (22)`, `test (24)`, `test (26)`) and
+  `test-coverage.yml` (`coverage`) hold the checks the `main` ruleset
+  requires, so they are never path-filtered: a required check from a
+  workflow skipped by `paths:` stays "Expected" and blocks merging. If one
+  of them ever needs to be filterable, the safe pattern is a job that
+  always runs and exits early, never a workflow-level `paths:`.
+- The playground build + e2e (`deploy-pages.yml`) and the PR preview
+  (`deploy-pr-preview.yml`) run on PRs only for `playground/`, the library
+  sources the playground bundles (root `*.js`, `emitters/`, `math/`,
+  `samples/`, `package.json`, `package-lock.json`), the publish script and
+  their own file. Each PR has its own preview concurrency group
+  (`pr-preview-<N>`), so previews of different PRs build in parallel.
+- Everything that writes to `gh-pages` (production deploy, previews,
+  preview cleanup) goes through `.github/scripts/publish-gh-pages.sh`,
+  which re-clones the branch and retries the push when another workflow
+  pushed first, instead of serializing behind a shared lock.
+
 **Coverage**: `npm run test:coverage` runs the same suite through Node's
 own built-in instrumentation (`--experimental-test-coverage` — no
 external dependency), honoring whatever toolchains are on your machine,
