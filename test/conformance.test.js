@@ -50,6 +50,7 @@ const {
     arraySuiteAst,
     arrayMacroDemoAst,
     mathEdgeCasesAst,
+    divisionByZeroAst,
     differentiateDemoAst,
     zeroParamDemoAst,
     cyclicElemAst,
@@ -759,6 +760,10 @@ function qb64ToNumber(str) {
     // (confirmed against a real compile) -- parseNumericOutput handles
     // both, same as every other target's own spelling; only a genuine
     // finite value ever needs the D-exponent rewrite below at all.
+    // QB64-PE 4.7.0 pads a non-finite PRINT with NUL bytes and a stray
+    // "D" (e.g. "INF\0\0...D\0\0"); only the leading token is the value.
+    const nonFinite = /^\s*([+-]?(?:inf|nan))/i.exec(str);
+    if (nonFinite) return parseNumericOutput(nonFinite[1]);
     return parseNumericOutput(str.replace(/D([+-]?\d+)/i, "E$1"));
 }
 
@@ -1965,6 +1970,26 @@ registerSuiteConformance("mathEdgeCases", {
     // shape already confirmed to crash cobc when piled up with others.
     // See emitters/cobol.js's own min:/max: comment. Skipped, not
     // silently ignored.
+    skipTargets: ["COBOL"],
+});
+
+// Proves division by a runtime zero follows IEEE 754 identically on
+// every target (see samples/division-by-zero-demo.js and
+// docs/adr/0004-division-by-zero.md): x/0 is +-Infinity with the sign
+// taken from both operands (including a -0 denominator, synthesized in
+// the expression), 0/0 and NaN/0 are NaN.
+registerSuiteConformance("divisionByZero", {
+    ast: divisionByZeroAst,
+    inputs: [
+        [5, 0], // positive numerator: +Infinity / -Infinity
+        [-5, 0], // negative numerator: signs flip
+        [0, 0], // 0/0 numerator: NaN everywhere
+    ],
+    // Documented exception, see docs/adr/0004-division-by-zero.md:
+    // GnuCOBOL's COMPUTE is decimal arithmetic. A zero denominator is a
+    // size error that leaves the target unchanged, and Infinity/NaN
+    // cannot survive any COMPUTE (confirmed: COMPUTE y = inf stores 0),
+    // so IEEE results are not reachable inside an expression.
     skipTargets: ["COBOL"],
 });
 

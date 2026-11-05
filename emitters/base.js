@@ -12,6 +12,14 @@
 //                    "expanded" (sign -> ternary expression) cases, and
 //                    postfix/method-call languages like Rust (`${x}.sqrt()`),
 //                    uniformly — it's just a string template either way.
+//   emitDiv        — optional override: (leftStr, rightStr) => string
+//                    How a "/" bin node is spelled on targets where plain
+//                    division does not follow IEEE 754 for a zero
+//                    denominator (Python, Perl, PHP: see
+//                    docs/adr/0004-division-by-zero.md). Skipped when the
+//                    denominator is a nonzero numeric literal, which can
+//                    never divide by zero. Absent on every target whose
+//                    native "/" is already IEEE-correct.
 //   formatFunction — (fn: {name, params, body}, bodyStr: string, letBindings: {name, valueStr}[]) => string
 //                    Full source text for one function, including any
 //                    language-specific signature/type/wrapper syntax.
@@ -34,6 +42,7 @@ class Emitter {
         this.ext = config.ext;
         this.formatNumber = config.formatNumber;
         this.calls = config.calls || {};
+        this.emitDivImpl = config.emitDiv ? config.emitDiv.bind(this) : null;
         this.formatFunctionImpl = config.formatFunction;
         this.formatSuiteImpl = config.formatSuite || null;
         this.emitSelectImpl = config.emitSelect
@@ -92,6 +101,9 @@ class Emitter {
                 return node.name;
             }
             case "bin": {
+                if (node.op === "/" && this.emitDivImpl && !(node.right.type === "num" && node.right.value !== 0)) {
+                    return this.emitDivImpl(this.emitExpr(node.left), this.emitExpr(node.right));
+                }
                 return `(${this.emitExpr(node.left)} ${node.op} ${this.emitExpr(node.right)})`;
             }
             case "call": {
