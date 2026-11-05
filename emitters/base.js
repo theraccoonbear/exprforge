@@ -37,6 +37,90 @@
 const { collectLets, checkUnboundVars } = require("../ast.js");
 const { expandMacros, resolveExternForEmitter, withContext } = require("../macros.js");
 
+function escapeRegExp(s) {
+    return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+// Used-only helper selection. A target that needs support definitions in
+// its generated output (a division wrapper, a domain-checked sqrt, ...)
+// declares them as a map of
+//
+//     name -> { source: string, deps?: string[] }
+//
+// and asks this function which of them a piece of generated code actually
+// calls. `code` must be the generated text WITHOUT any helper definitions
+// (so a definition can never count as a use of itself); `deps` names the
+// other helpers a helper's own source calls, which are pulled in
+// transitively. A reference is a whole-identifier match on the helper name
+// (identifier characters are letters, digits, "_" and "-", so `ef_min`
+// does not match inside `ef_minimum`, and COBOL's `ef-cmp-gt` is one
+// token). Helper names must use a prefix users cannot pick for their own
+// identifiers (`_exprforge_`, `ef_`, `ef-`, ...).
+//
+// Returns [{ name, source }] in a deterministic order: declaration order of
+// the map, except that a helper's dependencies always come first.
+// `exclude` (a Set of names) lists helpers already defined elsewhere in the
+// same output; they are skipped (their dependencies were defined with them).
+function selectHelpers(helpers, code, { exclude } = {}) {
+    const names = Object.keys(helpers);
+    const referenced = (name) =>
+        new RegExp(`(?<![\\w-])${escapeRegExp(name)}(?![\\w-])`).test(code);
+    const needed = new Set();
+    const need = (name) => {
+        if (needed.has(name)) return;
+        if (!helpers[name]) throw new Error(`unknown helper "${name}"`);
+        needed.add(name);
+        for (const dep of helpers[name].deps || []) need(dep);
+    };
+    for (const name of names) if (referenced(name)) need(name);
+    const ordered = [];
+    const done = new Set();
+    const visiting = new Set();
+    const visit = (name) => {
+        if (done.has(name)) return;
+        if (visiting.has(name)) throw new Error(`helper dependency cycle at "${name}"`);
+        visiting.add(name);
+        for (const dep of helpers[name].deps || []) visit(dep);
+        visiting.delete(name);
+        done.add(name);
+        ordered.push(name);
+    };
+    for (const name of names) if (needed.has(name)) visit(name);
+    return ordered
+        .filter((name) => !(exclude && exclude.has(name)))
+        .map((name) => ({ name, source: helpers[name].source }));
+}
+
+// Used-only import selection, the import-side twin of selectHelpers. A
+// target whose generated code needs a preamble line to reach library
+// functions or constants (`import math`, `#include <math.h>`, ...) declares
+// them as a map of
+//
+//     name -> { source: string, pattern: RegExp }
+//
+// `pattern` matches the text that needs the import (a qualified call such
+// as `math.sqrt(`, a libc function name, ...). The text matched is the
+// generated code plus the sources of the helpers that were selected, since
+// a helper's own body can need an import the function body does not. A
+// pattern must not carry the g or y flag. Only language-mandatory
+// scaffolding (`use strict`, `package`, ...) stays unconditional, outside
+// this table. `exclude` (a Set) holds import keys already written earlier
+// in the same output; they are skipped. Declaration order is preserved.
+function importKey(name) {
+    return `import:${name}`;
+}
+
+// An entry with `onExtern: true` is also selected whenever `externUsed` is
+// set, i.e. the emitted code includes the output of a user-supplied extern
+// template. Such a template is free-form and can call anything the
+// library provides, which no fixed pattern can enumerate.
+function selectImports(imports, code, { exclude, externUsed } = {}) {
+    return Object.keys(imports)
+        .filter((name) => (externUsed && imports[name].onExtern) || imports[name].pattern.test(code))
+        .filter((name) => !(exclude && exclude.has(importKey(name))))
+        .map((name) => ({ name, source: imports[name].source }));
+}
+
 class Emitter {
     constructor(config) {
         this.ext = config.ext;
@@ -45,6 +129,12 @@ class Emitter {
         this.emitDivImpl = config.emitDiv ? config.emitDiv.bind(this) : null;
         this.formatFunctionImpl = config.formatFunction;
         this.formatSuiteImpl = config.formatSuite || null;
+        // Optional: name -> { source, deps } map of this target's support
+        // definitions. See selectHelpers and usedHelpers.
+        this.helpers = config.helpers || {};
+        // Optional: name -> { source, pattern } map of this target's
+        // import/include preamble lines. See selectImports and usedImports.
+        this.imports = config.imports || {};
         this.emitSelectImpl = config.emitSelect
             ? config.emitSelect.bind(this)
             : this._defaultSelect.bind(this);
@@ -79,6 +169,33 @@ class Emitter {
         // gets an equivalent check from its own compiler/runtime, e.g. a
         // Rust slice's .len() bounds-checks on access regardless).
         this.lengthGuardImpl = config.lengthGuard || null;
+    }
+
+    // The helper definitions `code` (generated text without any helper
+    // definitions) actually uses, dependencies first -- see selectHelpers.
+    // `opts.includeHelpers === false` yields none. When `opts.emittedHelpers`
+    // (a Set) is passed it records helpers already defined earlier in the
+    // same output: those are skipped and the newly returned ones are added,
+    // so concatenating several functions' output defines the union of used
+    // helpers exactly once.
+    usedHelpers(code, opts = {}) {
+        if (opts.includeHelpers === false) return [];
+        const used = selectHelpers(this.helpers, code, { exclude: opts.emittedHelpers });
+        if (opts.emittedHelpers) for (const h of used) opts.emittedHelpers.add(h.name);
+        return used;
+    }
+
+    // The import lines `code` (generated text without helper definitions)
+    // plus the selected `helpers` (the array usedHelpers returned) actually
+    // need -- see selectImports. Shares `opts.emittedHelpers` with
+    // usedHelpers: an import already recorded there (key `import:<name>`) is
+    // skipped and newly returned ones are recorded, so concatenated
+    // functions import each module once.
+    usedImports(code, helpers = [], opts = {}) {
+        const text = code + helpers.map((h) => h.source).join("\n");
+        const used = selectImports(this.imports, text, { exclude: opts.emittedHelpers, externUsed: this._externUsed });
+        if (opts.emittedHelpers) for (const i of used) opts.emittedHelpers.add(importKey(i.name));
+        return used;
     }
 
     // Default ternary (cond ? a : b) — correct for JS, C, and Java, which
@@ -122,6 +239,7 @@ class Emitter {
                 // supplied code that could have a bug worth attributing
                 // -- a built-in primitive's template is exprforge's own,
                 // not worth wrapping.
+                if (!builtin) this._externUsed = true;
                 return builtin
                     ? template(args)
                     : withContext(`emitter for .${this.ext}: while emitting extern "${node.name}"`, () => template(args));
@@ -190,27 +308,36 @@ class Emitter {
     // `typeGuard` itself. See docs/runtime-type-guards.md's "Array
     // length" section.
     //
-    // `opts.includeHelpers` (default true, so today's single-function
-    // output is unchanged unless a caller explicitly opts out): whether
-    // to include this target's own always-on shared helper
-    // preamble/boilerplate (QB64's SAFE_MATH_HELPERS, COBOL's
-    // CMP_HELPER_SOURCE) in THIS call's output. `formatFunctionImpl`/
-    // `formatSuiteImpl` receive the full `opts` object as a 5th
-    // argument -- not just this one flag -- so a target-specific concern
-    // like this stays local to that target's own emitter file instead of
-    // needing a new base.js-level option (and a new positional argument
-    // threaded everywhere) every time one more target needs one. A real,
-    // reported consumer bug (github.com/theraccoonbear/exprforge/pull/37):
-    // concatenating N functions emitted for the SAME target into one
-    // compiled unit (a real, common pattern -- one .bi/.cob file per
-    // program, not one file per function) got that target's shared
-    // helper block duplicated N times, which both QB64 and GnuCOBOL
-    // reject as a duplicate definition at compile time. The fix: emit
-    // it (`includeHelpers: true`, the default) for exactly ONE of the N
-    // calls, pass `{ includeHelpers: false }` for the rest, then
-    // concatenate — see docs/multi-function-files.md.
+    // `opts.includeHelpers` (default true): whether this call may define
+    // the target's support helpers at all; false defines none (and, for Go
+    // and Zig, omits the package/import preamble). Targets that declare a
+    // `helpers` map (python, perl, matlab, qb64, cobol) define only the
+    // helpers the call's own code uses -- see usedHelpers above.
+    //
+    // Imports follow the same rule (python, perl, c, zig, go declare an
+    // `imports` map): a preamble line such as `import math` is written only
+    // when the call's code, or a helper it pulls in, references the module
+    // -- see usedImports. The same shared `opts.emittedHelpers` Set records
+    // written imports (as `import:<name>`), so a concatenated file imports
+    // each module once, at the first function that needs it. Go is the one
+    // exception: it requires imports before any declaration, so it keeps
+    // its package-clause-call plus `forceMathImport` mechanism.
+    //
+    // `opts.emittedHelpers` (a Set, optional): for concatenating N functions
+    // emitted for the SAME target into one compiled unit (a real, common
+    // pattern -- one .bi/.cob file per program), pass ONE shared Set to
+    // every call. Each helper is then defined once, at the first call that
+    // uses it, so the file holds the union of used helpers with no
+    // duplicate definition (which QB64 and GnuCOBOL reject, see
+    // github.com/theraccoonbear/exprforge/pull/37). `formatFunctionImpl`/
+    // `formatSuiteImpl` receive the full `opts` object as a 5th argument, so
+    // a target-specific concern stays local to that target's emitter file.
+    // See docs/multi-function-files.md.
     emitFunction(fn, registry = undefined, opts = {}) {
         this._registry = registry;
+        // Set by emitExpr when an extern template contributes to the
+        // output; read by usedImports (see selectImports' `onExtern`).
+        this._externUsed = false;
         // Resolves every macro call and field() access into plain
         // arithmetic first -- see macros.js's own header comment. Must
         // run before checkUnboundVars: expansion is what introduces the
@@ -261,3 +388,5 @@ class Emitter {
 }
 
 module.exports = Emitter;
+module.exports.selectHelpers = selectHelpers;
+module.exports.selectImports = selectImports;
