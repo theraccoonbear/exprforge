@@ -877,7 +877,7 @@ How each cross-target behavior is handled:
 | Domain errors | `sqrt`/`log`/`log2`/`log10`/`asin`/`acos`/`pow` call `ef_*` helper functions with a real `if` guard, returning `NaN` (or `-Inf` for `log*(0)`) instead of a complex number |
 | `min`/`max` | `ef_min`/`ef_max` return `NaN` if either operand is NaN; the native functions ignore NaN |
 | Division | native IEEE (`1/0` is `Inf`, `0/0` is `NaN`) |
-| `wrapIndex` | native `mod` (floor-mod). Exception: `mod(i, 0)` is `i`, where the interpreter yields NaN |
+| `wrapIndex` | `rem(rem(i, m) + m, m)` (truncated remainder, identical to the interpreter; `m = 0` is NaN) |
 | `clampIndex` | `ef_max(lo, ef_min(hi, i))`, so NaN propagates like `evaluate()` |
 | Comparisons | all six; `!=` is `~=` (MATLAB has no `!=`) |
 | `select` | `ef_select(cond, then, else)`, a helper with a real `if` |

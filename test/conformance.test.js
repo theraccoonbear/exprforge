@@ -1502,6 +1502,7 @@ function octaveLiteral(value) {
     if (Number.isNaN(value)) return "NaN";
     if (value === Infinity) return "Inf";
     if (value === -Infinity) return "-Inf";
+    if (Object.is(value, -0)) return "-0";
     return String(value);
 }
 

@@ -85,6 +85,11 @@ const HELPERS =
     `function ef_r = ef_pow(ef_x, ef_y)\n` +
     `    if ef_x < 0 && ef_y ~= fix(ef_y)\n` +
     `        ef_r = NaN;\n` +
+    `    elseif ef_x < 0\n` +
+    `        ef_r = (-ef_x) ^ ef_y;\n` +
+    `        if mod(ef_y, 2) == 1\n` +
+    `            ef_r = -ef_r;\n` +
+    `        end\n` +
     `    else\n` +
     `        ef_r = ef_x ^ ef_y;\n` +
     `    end\n` +
@@ -149,10 +154,10 @@ const emitter = new Emitter({
         min: ([a, b]) => `ef_min(${a}, ${b})`,
         max: ([a, b]) => `ef_max(${a}, ${b})`,
         hypot: ([a, b]) => `hypot(${a}, ${b})`,
-        // mod() is floor-mod (result takes the divisor's sign). Documented
-        // exception: mod(i, 0) is i here, where the interpreter yields NaN;
-        // wrapIndex's modulus is an array length, never 0 in practice.
-        wrapIndex: ([i, m]) => `mod(${i}, ${m})`,
+        // ((i % m) + m) % m with the truncated remainder rem(), exactly as
+        // the interpreter computes it. mod() is not used: mod(i, 0) is i,
+        // where the interpreter (and rem(i, 0)) yields NaN.
+        wrapIndex: ([i, m]) => `rem(rem(${i}, ${m}) + ${m}, ${m})`,
         clampIndex: ([i, lo, hi]) => `ef_max(${lo}, ef_min(${hi}, ${i}))`,
     },
     // MATLAB subscripts are 1-based and must be integer-valued; round()
