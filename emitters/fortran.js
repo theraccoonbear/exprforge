@@ -139,8 +139,8 @@ const emitter = new Emitter({
         // REAL(..., 8) converts back to double, matching this project's
         // float64-only model everywhere else (same reasoning as Python's
         // float(math.floor(...))).
-        floor: ([x]) => `(AINT(${x}) - MERGE(1.0D0, 0.0D0, (${x}) < AINT(${x})))`,
-        ceil: ([x]) => `SIGN(AINT(${x}) + MERGE(1.0D0, 0.0D0, (${x}) > AINT(${x})), ${x})`,
+        floor: ([x]) => `MERGE(AINT(${x}) - 1.0D0, AINT(${x}), (${x}) < AINT(${x}))`,
+        ceil: ([x]) => `MERGE(AINT(${x}) + 1.0D0, AINT(${x}), (${x}) > AINT(${x}))`,
         // No LOG2 intrinsic -- derive it.
         log2: ([x]) => `(LOG(${x}) / LOG(2.0D0))`,
         // The native SIGN(A, B) intrinsic ("magnitude of A, sign of B") is
