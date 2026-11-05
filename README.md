@@ -650,6 +650,9 @@ the declared ranges against `evaluate()` for every primitive, every
 comparison operator, random expression trees and every shipped sample.
 Sessions expose the same function as `session.analyzeRanges`.
 
+Try it interactively in the [live playground](https://theraccoonbear.github.io/exprforge/)'s
+Range analysis tab.
+
 ## Math utilities (`exprforge/math`)
 
 A separate, additive export — `require("exprforge")` is unchanged — of
