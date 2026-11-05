@@ -91,6 +91,32 @@ function selectHelpers(helpers, code, { exclude } = {}) {
         .map((name) => ({ name, source: helpers[name].source }));
 }
 
+// Used-only import selection, the import-side twin of selectHelpers. A
+// target whose generated code needs a preamble line to reach library
+// functions or constants (`import math`, `#include <math.h>`, ...) declares
+// them as a map of
+//
+//     name -> { source: string, pattern: RegExp }
+//
+// `pattern` matches the text that needs the import (a qualified call such
+// as `math.sqrt(`, a libc function name, ...). The text matched is the
+// generated code plus the sources of the helpers that were selected, since
+// a helper's own body can need an import the function body does not. A
+// pattern must not carry the g or y flag. Only language-mandatory
+// scaffolding (`use strict`, `package`, ...) stays unconditional, outside
+// this table. `exclude` (a Set) holds import keys already written earlier
+// in the same output; they are skipped. Declaration order is preserved.
+function importKey(name) {
+    return `import:${name}`;
+}
+
+function selectImports(imports, code, { exclude } = {}) {
+    return Object.keys(imports)
+        .filter((name) => imports[name].pattern.test(code))
+        .filter((name) => !(exclude && exclude.has(importKey(name))))
+        .map((name) => ({ name, source: imports[name].source }));
+}
+
 class Emitter {
     constructor(config) {
         this.ext = config.ext;
@@ -102,6 +128,9 @@ class Emitter {
         // Optional: name -> { source, deps } map of this target's support
         // definitions. See selectHelpers and usedHelpers.
         this.helpers = config.helpers || {};
+        // Optional: name -> { source, pattern } map of this target's
+        // import/include preamble lines. See selectImports and usedImports.
+        this.imports = config.imports || {};
         this.emitSelectImpl = config.emitSelect
             ? config.emitSelect.bind(this)
             : this._defaultSelect.bind(this);
@@ -149,6 +178,19 @@ class Emitter {
         if (opts.includeHelpers === false) return [];
         const used = selectHelpers(this.helpers, code, { exclude: opts.emittedHelpers });
         if (opts.emittedHelpers) for (const h of used) opts.emittedHelpers.add(h.name);
+        return used;
+    }
+
+    // The import lines `code` (generated text without helper definitions)
+    // plus the selected `helpers` (the array usedHelpers returned) actually
+    // need -- see selectImports. Shares `opts.emittedHelpers` with
+    // usedHelpers: an import already recorded there (key `import:<name>`) is
+    // skipped and newly returned ones are recorded, so concatenated
+    // functions import each module once.
+    usedImports(code, helpers = [], opts = {}) {
+        const text = code + helpers.map((h) => h.source).join("\n");
+        const used = selectImports(this.imports, text, { exclude: opts.emittedHelpers });
+        if (opts.emittedHelpers) for (const i of used) opts.emittedHelpers.add(importKey(i.name));
         return used;
     }
 
@@ -267,6 +309,15 @@ class Emitter {
     // `helpers` map (python, perl, matlab, qb64, cobol) define only the
     // helpers the call's own code uses -- see usedHelpers above.
     //
+    // Imports follow the same rule (python, perl, c, zig, go declare an
+    // `imports` map): a preamble line such as `import math` is written only
+    // when the call's code, or a helper it pulls in, references the module
+    // -- see usedImports. The same shared `opts.emittedHelpers` Set records
+    // written imports (as `import:<name>`), so a concatenated file imports
+    // each module once, at the first function that needs it. Go is the one
+    // exception: it requires imports before any declaration, so it keeps
+    // its package-clause-call plus `forceMathImport` mechanism.
+    //
     // `opts.emittedHelpers` (a Set, optional): for concatenating N functions
     // emitted for the SAME target into one compiled unit (a real, common
     // pattern -- one .bi/.cob file per program), pass ONE shared Set to
@@ -330,3 +381,4 @@ class Emitter {
 
 module.exports = Emitter;
 module.exports.selectHelpers = selectHelpers;
+module.exports.selectImports = selectImports;
