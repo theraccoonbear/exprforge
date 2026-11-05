@@ -72,7 +72,7 @@ division helper needs `math.nan` in Python and `POSIX::copysign` in Perl).
 | Python | `import math` | `math.` |
 | Perl | `use POSIX ();` | `POSIX::` |
 | Perl | `use List::Util ();` | `List::Util::` |
-| C | `#include <math.h>` | any `<math.h>` function, macro or `M_*` constant (list in `emitters/c.js`) |
+| C | `#include <math.h>` | any `<math.h>` function, macro or `M_*` constant (list in `emitters/c.js`); always, when an extern's template is used |
 | Zig | `const std = @import("std");` | `std.` (the `@floor`, `@abs`, `@mod`, ... builtins and the `@as(f64, ...)` literals need no import) |
 | Go | `import "math"` | `math.` (still limited to the call that carries the package clause, see above) |
 

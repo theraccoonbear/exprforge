@@ -825,6 +825,10 @@ const rodrigues = fn`
   can't be expressed by composing existing macros/primitives; prefer a
   macro whenever it can.
 
+  For C, any emitted function (or suite) that uses an extern always gets
+  `#include <math.h>`, because a free-form `c:` template can call any libm
+  function (`j0`, `gamma`, `exp10`, ...) that no name list could cover.
+
 Names are a single shared namespace with the 22 built-in primitives and
 with each other — `loadMacro`/`loadExtern` throw on a collision rather
 than silently shadowing anything.

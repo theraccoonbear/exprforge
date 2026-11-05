@@ -36,7 +36,7 @@ function includeBlock(code, opts) {
 const emitter = new Emitter({
     ext: "c",
     imports: {
-        "math.h": { source: "#include <math.h>", pattern: MATH_H_PATTERN },
+        "math.h": { source: "#include <math.h>", pattern: MATH_H_PATTERN, onExtern: true },
     },
     // Appending ".0" unconditionally to an integer-valued number is wrong
     // once JS's own String() renders it in exponential form (>= 1e21, or

@@ -110,9 +110,13 @@ function importKey(name) {
     return `import:${name}`;
 }
 
-function selectImports(imports, code, { exclude } = {}) {
+// An entry with `onExtern: true` is also selected whenever `externUsed` is
+// set, i.e. the emitted code includes the output of a user-supplied extern
+// template. Such a template is free-form and can call anything the
+// library provides, which no fixed pattern can enumerate.
+function selectImports(imports, code, { exclude, externUsed } = {}) {
     return Object.keys(imports)
-        .filter((name) => imports[name].pattern.test(code))
+        .filter((name) => (externUsed && imports[name].onExtern) || imports[name].pattern.test(code))
         .filter((name) => !(exclude && exclude.has(importKey(name))))
         .map((name) => ({ name, source: imports[name].source }));
 }
@@ -189,7 +193,7 @@ class Emitter {
     // functions import each module once.
     usedImports(code, helpers = [], opts = {}) {
         const text = code + helpers.map((h) => h.source).join("\n");
-        const used = selectImports(this.imports, text, { exclude: opts.emittedHelpers });
+        const used = selectImports(this.imports, text, { exclude: opts.emittedHelpers, externUsed: this._externUsed });
         if (opts.emittedHelpers) for (const i of used) opts.emittedHelpers.add(importKey(i.name));
         return used;
     }
@@ -235,6 +239,7 @@ class Emitter {
                 // supplied code that could have a bug worth attributing
                 // -- a built-in primitive's template is exprforge's own,
                 // not worth wrapping.
+                if (!builtin) this._externUsed = true;
                 return builtin
                     ? template(args)
                     : withContext(`emitter for .${this.ext}: while emitting extern "${node.name}"`, () => template(args));
@@ -330,6 +335,9 @@ class Emitter {
     // See docs/multi-function-files.md.
     emitFunction(fn, registry = undefined, opts = {}) {
         this._registry = registry;
+        // Set by emitExpr when an extern template contributes to the
+        // output; read by usedImports (see selectImports' `onExtern`).
+        this._externUsed = false;
         // Resolves every macro call and field() access into plain
         // arithmetic first -- see macros.js's own header comment. Must
         // run before checkUnboundVars: expansion is what introduces the
