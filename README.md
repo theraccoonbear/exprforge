@@ -1205,8 +1205,9 @@ consumer report, then the same bug class found in 5 more targets by
 auditing for it): the target's compiler rejects the file outright.
 
 ```js
-const out1 = emit(fn1, "qb64").source;                                       // helpers included (default)
-const out2 = emit(fn2, "qb64", undefined, { includeHelpers: false }).source; // helpers omitted
+const emittedHelpers = new Set();                                            // shared: each helper defined once
+const out1 = emit(fn1, "qb64", undefined, { emittedHelpers }).source;
+const out2 = emit(fn2, "qb64", undefined, { emittedHelpers }).source;
 fs.writeFileSync("spline.bi", [out1, out2].join("\n"));
 ```
 

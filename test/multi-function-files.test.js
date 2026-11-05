@@ -32,7 +32,7 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const { tmpDir, hasQb64, compileQb64, runQb64, QB64_ERROR_PROLOGUE, QB64_ERROR_HANDLER } = require("./harness-util.js");
-const { v, num, call, add, sub } = require("../ast.js");
+const { v, num, call, add, sub, cmp, select } = require("../ast.js");
 const emitters = require("../emitters/registry.js");
 const { DOTNET_TFM } = require("./dotnet-tfm.js");
 
@@ -94,8 +94,9 @@ function assertClose(actual, expected, msg) {
 // --- QB64 --------------------------------------------------------------
 
 test("multi-function file: QB64 -- concatenating 2 functions compiles and runs correctly", { skip: !TOOLS.qb64 && "qb64pe not available" }, () => {
-    const out1 = emitters.qb64.emitFunction(fn1, undefined, { includeHelpers: true });
-    const out2 = emitters.qb64.emitFunction(fn2, undefined, { includeHelpers: false });
+    const emittedHelpers = new Set();
+    const out1 = emitters.qb64.emitFunction(fn1, undefined, { emittedHelpers });
+    const out2 = emitters.qb64.emitFunction(fn2, undefined, { emittedHelpers });
     const dir = tmpDir("ef-multi-qb64-");
     const harness = `$CONSOLE:ONLY\n${out1}\n${out2}\n${QB64_ERROR_PROLOGUE}PRINT f1#(${F1_ARG}#)\nPRINT f2#(${F2_ARG}#)\nSYSTEM\n${QB64_ERROR_HANDLER}`;
     const srcPath = path.join(dir, "main.bas");
@@ -126,17 +127,18 @@ test("multi-function file: QB64 -- concatenating 2 functions compiles and runs c
 // regression in the includeHelpers fix this test exists to verify, a
 // separate, pre-existing GnuCOBOL fragility this test accidentally
 // wandered into by picking sqrt/log as its example functions. Plain
-// arithmetic (+/-) never touches that codegen path at all, and still
-// fully exercises CMP_HELPER_SOURCE's own dedup (unconditionally
-// prepended to every COBOL function regardless of whether it uses
-// cmp()/select(), same as every other target's own helper block here) --
-// which is the actual thing this test needs to prove.
-const cobolFn1 = { name: "f1", params: ["x"], body: add(v("x"), num(1)) };
-const cobolFn2 = { name: "f2", params: ["x"], body: sub(v("x"), num(1)) };
+// arithmetic (+/-) never touches that codegen path at all. Each function
+// uses select(cmp(...)) with a different comparator, so the union of the
+// two programs' ef-cmp-* helpers (gt and lt) has to be defined exactly
+// once across the concatenated file -- which is the actual thing this
+// test needs to prove.
+const cobolFn1 = { name: "f1", params: ["x"], body: select(cmp(v("x"), ">", num(0)), add(v("x"), num(1)), sub(v("x"), num(1))) };
+const cobolFn2 = { name: "f2", params: ["x"], body: select(cmp(v("x"), "<", num(0)), add(v("x"), num(1)), sub(v("x"), num(1))) };
 
 test("multi-function file: COBOL -- concatenating 2 programs compiles and runs correctly", { skip: !TOOLS.cobc && "cobc not available" }, () => {
-    const out1 = emitters.cobol.emitFunction(cobolFn1, undefined, { includeHelpers: true });
-    const out2 = emitters.cobol.emitFunction(cobolFn2, undefined, { includeHelpers: false });
+    const emittedHelpers = new Set();
+    const out1 = emitters.cobol.emitFunction(cobolFn1, undefined, { emittedHelpers });
+    const out2 = emitters.cobol.emitFunction(cobolFn2, undefined, { emittedHelpers });
     const dir = tmpDir("ef-multi-cobol-");
     const fnsPath = path.join(dir, "fns.cob");
     fs.writeFileSync(fnsPath, out1 + "\n" + out2);
@@ -164,6 +166,8 @@ test("multi-function file: COBOL -- concatenating 2 programs compiles and runs c
     const lines = execFileSync(bin, []).toString().trim().split("\n");
     assertClose(parseFloat(lines[0]), F1_ARG + 1, "f1");
     assertClose(parseFloat(lines[1]), F2_ARG - 1, "f2");
+    assert.strictEqual((fs.readFileSync(fnsPath, "utf8").match(/FUNCTION-ID\. ef-cmp-gt\./g) || []).length, 1);
+    assert.strictEqual((fs.readFileSync(fnsPath, "utf8").match(/FUNCTION-ID\. ef-cmp-lt\./g) || []).length, 1);
     fs.rmSync(dir, { recursive: true, force: true });
 });
 
@@ -369,8 +373,9 @@ test("multi-function file: R -- concatenating 2 functions runs correctly", { ski
 });
 
 test("multi-function file: MATLAB/Octave -- one concatenated file (helpers once) runs correctly", { skip: !TOOLS.octave && "octave-cli not available" }, () => {
-    const out1 = emitters.matlab.emitFunction(fn1, undefined, { includeHelpers: true });
-    const out2 = emitters.matlab.emitFunction(fn2, undefined, { includeHelpers: false });
+    const emittedHelpers = new Set();
+    const out1 = emitters.matlab.emitFunction(fn1, undefined, { emittedHelpers });
+    const out2 = emitters.matlab.emitFunction(fn2, undefined, { emittedHelpers });
     const dir = tmpDir("ef-multi-octave-");
     // Octave only runs a file's later functions after source() when the
     // file is a script file; a leading "1;" statement makes it one. MATLAB
@@ -387,11 +392,12 @@ test("multi-function file: MATLAB/Octave -- one concatenated file (helpers once)
     fs.rmSync(dir, { recursive: true, force: true });
 });
 
-test("multi-function file: MATLAB/Octave -- includeHelpers defaults to true and false omits every helper", () => {
+test("multi-function file: MATLAB/Octave -- each function carries the helpers it uses; includeHelpers false omits them", () => {
     const out1 = emitters.matlab.emitFunction(fn1);
     const out2 = emitters.matlab.emitFunction(fn2);
-    assert.ok(out1.includes("function ef_r = ef_select") && out2.includes("function ef_r = ef_select"));
-    assert.ok(!emitters.matlab.emitFunction(fn2, undefined, { includeHelpers: false }).includes("ef_select"));
+    assert.ok(out1.includes("function ef_r = ef_sqrt") && !out1.includes("ef_log"));
+    assert.ok(out2.includes("function ef_r = ef_log(") && !out2.includes("ef_sqrt"));
+    assert.ok(!emitters.matlab.emitFunction(fn2, undefined, { includeHelpers: false }).includes("function ef_r"));
 });
 
 test("multi-function file: MATLAB/Octave -- one function per file, each self-contained (the MATLAB layout)", { skip: !TOOLS.octave && "octave-cli not available" }, () => {
