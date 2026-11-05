@@ -16,6 +16,7 @@ const emitters = {
     ruby: require("./ruby.js"),
     php: require("./php.js"),
     julia: require("./julia.js"),
+    r: require("./r.js"),
     fortran: require("./fortran.js"),
     zig: require("./zig.js"),
     scheme: require("./scheme.js"),

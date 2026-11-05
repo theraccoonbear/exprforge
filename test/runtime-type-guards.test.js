@@ -33,6 +33,7 @@ const DYNAMIC_TARGETS = {
     perl: "ref($arr) eq 'ARRAY'",
     ruby: "arr.is_a?(Array)",
     julia: "arr isa AbstractVector",
+    r: "!is.numeric(arr)",
     scheme: "(vector? arr)",
     matlab: "~isnumeric(arr)",
 };
@@ -129,6 +130,7 @@ const LENGTH_GUARD_TARGETS = {
     perl: "scalar(@$arr) == $m",
     ruby: "arr.length != m",
     julia: "length(arr) != m",
+    r: "length(arr) != m",
     scheme: "(vector-length arr) m",
     matlab: "numel(arr) ~= m",
 };

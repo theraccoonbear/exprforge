@@ -68,6 +68,7 @@ const TOOLS = {
     ruby: hasTool("ruby", ["-v"]),
     php: hasTool("php", ["--version"]),
     julia: hasTool("julia", ["--version"]),
+    rscript: hasTool("Rscript", ["--version"]),
     octave: hasTool("octave-cli", ["--version"]),
     gfortran: hasTool("gfortran", ["--version"]),
     zig: hasTool("zig", ["version"]),
@@ -367,6 +368,18 @@ test("multi-function file: Julia -- concatenating 2 functions runs correctly", {
     fs.writeFileSync(fnsPath, out1 + "\n" + out2);
     const output = execFileSync("julia", ["-e", `include("${fnsPath}"); println(f1(${F1_ARG})); println(f2(${F2_ARG}))`])
         .toString().trim().split("\n");
+    assertClose(parseFloat(output[0]), F1_EXPECT, "f1");
+    assertClose(parseFloat(output[1]), F2_EXPECT, "f2");
+    fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test("multi-function file: R -- concatenating 2 functions runs correctly", { skip: !TOOLS.rscript && "Rscript not available" }, () => {
+    const out1 = emitters.r.emitFunction(fn1);
+    const out2 = emitters.r.emitFunction(fn2);
+    const dir = tmpDir("ef-multi-r-");
+    const fnsPath = path.join(dir, "fns.R");
+    fs.writeFileSync(fnsPath, out1 + "\n" + out2 + `\ncat(sprintf("%.17g", f1(${F1_ARG})), "\\n", sep = "")\ncat(sprintf("%.17g", f2(${F2_ARG})), "\\n", sep = "")\n`);
+    const output = execFileSync("Rscript", [fnsPath]).toString().trim().split("\n");
     assertClose(parseFloat(output[0]), F1_EXPECT, "f1");
     assertClose(parseFloat(output[1]), F2_EXPECT, "f2");
     fs.rmSync(dir, { recursive: true, force: true });

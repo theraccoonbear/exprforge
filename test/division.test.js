@@ -32,6 +32,7 @@ const VARIABLE_DENOMINATOR = {
     csharp: "(x / y)",
     lua: "(x / y)",
     julia: "(x / y)",
+    r: "(x / y)",
     ruby: "(x / y)",
     fortran: "(x / y)",
     zig: "(x / y)",

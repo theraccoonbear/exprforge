@@ -47,6 +47,10 @@ const EXPECTED = {
     qb64: { eq: "=", ne: "<>", forbidEq: "==", forbidNe: "!=" },
     fortran: { eq: "==", ne: "/=", forbidNe: "!=" },
     lua: { eq: "==", ne: "~=", forbidNe: "!=" },
+    r: { eq: "isTRUE(x == 5)", ne: "!isTRUE(x == 5)", forbidNe: "!=" },
+    // r: a comparison involving NaN is NA in R and `if (NA)` is an error,
+    // so every operator goes through isTRUE(); "!=" is the negated "=="
+    // because NaN != x is true in JS but NA in R.
     // ruby: same spelling as JS/C for every operator (ternary select).
     ruby: { eq: "==", ne: "!=" },
     matlab: { eq: "==", ne: "~=", forbidNe: "!=" },

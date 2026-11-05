@@ -28,6 +28,7 @@ import { lua as legacyLua } from "@codemirror/legacy-modes/mode/lua";
 import { perl as legacyPerl } from "@codemirror/legacy-modes/mode/perl";
 import { ruby as legacyRuby } from "@codemirror/legacy-modes/mode/ruby";
 import { julia as legacyJulia } from "@codemirror/legacy-modes/mode/julia";
+import { r as legacyR } from "@codemirror/legacy-modes/mode/r";
 import { octave as legacyOctave } from "@codemirror/legacy-modes/mode/octave";
 import { fortran as legacyFortran } from "@codemirror/legacy-modes/mode/fortran";
 import { scheme as legacyScheme } from "@codemirror/legacy-modes/mode/scheme";
@@ -42,6 +43,7 @@ const LUA = StreamLanguage.define(legacyLua);
 const PERL = StreamLanguage.define(legacyPerl);
 const RUBY = StreamLanguage.define(legacyRuby);
 const JULIA = StreamLanguage.define(legacyJulia);
+const R = StreamLanguage.define(legacyR);
 const OCTAVE = StreamLanguage.define(legacyOctave);
 const FORTRAN = StreamLanguage.define(legacyFortran);
 const SCHEME = StreamLanguage.define(legacyScheme);
@@ -76,6 +78,7 @@ const HIGHLIGHT: Record<string, Extension> = {
     ruby: RUBY,
     php: php(),
     julia: JULIA,
+    r: R,
     matlab: OCTAVE,
     fortran: FORTRAN,
     scheme: SCHEME,
