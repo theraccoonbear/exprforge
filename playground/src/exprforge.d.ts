@@ -120,4 +120,22 @@ declare module "exprforge" {
     // ordinary AST emittable to all targets via emit()/emitMany() and
     // evaluable via evaluate(), unchanged.
     export function differentiate(node: Node, varName: string): Node;
+    // Interval analysis: see analyze.js. `ranges` maps parameter names to
+    // [min, max].
+    export interface Interval { lo: number; hi: number; nan: boolean }
+    export interface RangeWarning {
+        kind: "div-by-zero" | "div-guarded";
+        at: string;
+        denominator: Interval;
+        certain?: boolean;
+        guards?: string[];
+        inDeadBranch?: boolean;
+    }
+    export interface RangeSelect { at: string; outcome: "always-then" | "always-else" | "either"; loadBearing: boolean }
+    export interface RangeAnalysis {
+        range: Interval | Record<string, Interval>;
+        warnings: RangeWarning[];
+        selects: RangeSelect[];
+    }
+    export function analyzeRanges(def: FnDef, ranges?: Record<string, [number, number]>): RangeAnalysis;
 }
