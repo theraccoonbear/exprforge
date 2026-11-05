@@ -111,7 +111,7 @@ function checkUsingClauseNames(names) {
 
 // See https://github.com/theraccoonbear/exprforge/issues/18 for the full
 // design rationale. Only PARAMETERS get this treatment, deliberately --
-// every one of this project's 18 targets calls functions positionally,
+// every one of this project's targets calls functions positionally,
 // so a parameter's declared name is purely an internal binding, never
 // visible to a caller in ANY target, making a per-target rename here
 // completely invisible from the outside. fn.name and outputs() field

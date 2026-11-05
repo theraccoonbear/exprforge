@@ -72,8 +72,8 @@ git log --oneline origin/main..HEAD
 
 ExprForge is a cross-language math expression code generator. Author a
 pure-arithmetic formula once as an AST, emit identical-behavior implementations
-in 18 programming languages (executable targets) plus a native JS evaluator,
-LaTeX typeset output, and a printer for ExprForge's own syntax (20 output
+in 19 programming languages (executable targets) plus a native JS evaluator,
+LaTeX typeset output, and a printer for ExprForge's own syntax (21 output
 targets in total).
 
 ### Architecture layers
@@ -145,6 +145,36 @@ toolchain and skip (not fail) when a toolchain is absent.
   `test/comparison-operators.test.js` for what closing this gap actually
   looked like -- both a real-compiler conformance sample AND a static
   per-emitter/per-value string check, not just one or the other.
+
+### Docs-sync rule
+
+Any change to targets, primitives, node types, options, toolchain versions,
+numeric behavior or CI updates every doc that states it, in the same PR:
+
+- README sections and tables (including the supported-toolchain-versions
+  table, if present)
+- target counts and language lists
+- `package.json` description and keywords
+- `docs/` and ADRs
+- playground metadata and text
+- workflow comments
+- test comments
+
+Prefer count-free wording ("every registered target") where possible so docs
+don't go stale. Where a number is needed, use the convention: 19 programming
+languages (executable targets), LaTeX typeset output, ExprForge's own syntax
+printer, 21 output targets in total. Claims about identical computed behavior
+cover the executable targets (plus the evaluator), not LaTeX or `expr`.
+
+Checklist when adding a new target:
+
+- [ ] `emitters/registry.js` entry and `emitters/<lang>.js`
+- [ ] conformance and static tests (every operator/keyword value covered)
+- [ ] CI workflow (`.github/workflows/test-<lang>.yml`) plus README badge
+- [ ] README toolchain table
+- [ ] counts and language lists (README, CLAUDE.md, docs, comments)
+- [ ] playground `languageMeta` and syntax highlighting
+- [ ] `package.json` description
 
 ### Toolchain versions
 
