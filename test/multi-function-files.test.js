@@ -35,45 +35,9 @@ const { v, num, call, add, sub } = require("../ast.js");
 const emitters = require("../emitters/registry.js");
 const { DOTNET_TFM } = require("./dotnet-tfm.js");
 
-function hasTool(cmd, args) {
-    try {
-        execFileSync(cmd, args, { stdio: "ignore" });
-        return true;
-    } catch {
-        return false;
-    }
-}
-
-function resolveTool(candidates, args) {
-    for (const cmd of candidates) {
-        if (hasTool(cmd, args)) return cmd;
-    }
-    return null;
-}
-
-const GUILE_BIN = resolveTool(["guile3.0", "guile-3.0", "guile"], ["--version"]);
-const LUA_BIN = resolveTool(["lua5.4", "lua"], ["-v"]);
-
-const TOOLS = {
-    gcc: hasTool("gcc", ["--version"]),
-    go: hasTool("go", ["version"]),
-    rustc: hasTool("rustc", ["--version"]),
-    java: hasTool("javac", ["-version"]) && hasTool("java", ["-version"]),
-    tsc: hasTool("tsc", ["--version"]),
-    qb64: hasTool("qb64pe", ["-v"]),
-    dotnet: hasTool("dotnet", ["--version"]),
-    python: hasTool("python3", ["--version"]),
-    lua: LUA_BIN !== null,
-    perl: hasTool("perl", ["-v"]),
-    php: hasTool("php", ["--version"]),
-    julia: hasTool("julia", ["--version"]),
-    rscript: hasTool("Rscript", ["--version"]),
-    octave: hasTool("octave-cli", ["--version"]),
-    gfortran: hasTool("gfortran", ["--version"]),
-    zig: hasTool("zig", ["version"]),
-    guile: GUILE_BIN !== null,
-    cobc: hasTool("cobc", ["--version"]),
-};
+const { TOOLS, bin, queried } = require("./toolchains.js");
+const GUILE_BIN = bin("scheme");
+const LUA_BIN = bin("lua");
 
 function tmpDir(prefix) {
     return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
@@ -137,7 +101,7 @@ test("multi-function file: QB64 -- concatenating 2 functions compiles and runs c
 const cobolFn1 = { name: "f1", params: ["x"], body: add(v("x"), num(1)) };
 const cobolFn2 = { name: "f2", params: ["x"], body: sub(v("x"), num(1)) };
 
-test("multi-function file: COBOL -- concatenating 2 programs compiles and runs correctly", { skip: !TOOLS.cobc && "cobc not available" }, () => {
+test("multi-function file: COBOL -- concatenating 2 programs compiles and runs correctly", { skip: !TOOLS.cobol && "cobc not available" }, () => {
     const out1 = emitters.cobol.emitFunction(cobolFn1, undefined, { includeHelpers: true });
     const out2 = emitters.cobol.emitFunction(cobolFn2, undefined, { includeHelpers: false });
     const dir = tmpDir("ef-multi-cobol-");
@@ -278,7 +242,7 @@ test("multi-function file: Java -- concatenating 2 classes into one file compile
 // directly rather than trusted from reading the emitter source, so a
 // future change that accidentally introduces one gets caught here too.
 
-test("multi-function file: C -- concatenating 2 functions compiles and runs correctly", { skip: !TOOLS.gcc && "gcc not available" }, () => {
+test("multi-function file: C -- concatenating 2 functions compiles and runs correctly", { skip: !TOOLS.c && "gcc not available" }, () => {
     const out1 = emitters.c.emitFunction(fn1);
     const out2 = emitters.c.emitFunction(fn2);
     const dir = tmpDir("ef-multi-c-");
@@ -293,7 +257,7 @@ test("multi-function file: C -- concatenating 2 functions compiles and runs corr
     fs.rmSync(dir, { recursive: true, force: true });
 });
 
-test("multi-function file: Rust -- concatenating 2 functions compiles and runs correctly", { skip: !TOOLS.rustc && "rustc not available" }, () => {
+test("multi-function file: Rust -- concatenating 2 functions compiles and runs correctly", { skip: !TOOLS.rust && "rustc not available" }, () => {
     const out1 = emitters.rust.emitFunction(fn1);
     const out2 = emitters.rust.emitFunction(fn2);
     const dir = tmpDir("ef-multi-rust-");
@@ -359,7 +323,7 @@ test("multi-function file: Julia -- concatenating 2 functions runs correctly", {
     fs.rmSync(dir, { recursive: true, force: true });
 });
 
-test("multi-function file: R -- concatenating 2 functions runs correctly", { skip: !TOOLS.rscript && "Rscript not available" }, () => {
+test("multi-function file: R -- concatenating 2 functions runs correctly", { skip: !TOOLS.r && "Rscript not available" }, () => {
     const out1 = emitters.r.emitFunction(fn1);
     const out2 = emitters.r.emitFunction(fn2);
     const dir = tmpDir("ef-multi-r-");
@@ -371,7 +335,7 @@ test("multi-function file: R -- concatenating 2 functions runs correctly", { ski
     fs.rmSync(dir, { recursive: true, force: true });
 });
 
-test("multi-function file: MATLAB/Octave -- one concatenated file (helpers once) runs correctly", { skip: !TOOLS.octave && "octave-cli not available" }, () => {
+test("multi-function file: MATLAB/Octave -- one concatenated file (helpers once) runs correctly", { skip: !TOOLS.matlab && "octave-cli not available" }, () => {
     const out1 = emitters.matlab.emitFunction(fn1, undefined, { includeHelpers: true });
     const out2 = emitters.matlab.emitFunction(fn2, undefined, { includeHelpers: false });
     const dir = tmpDir("ef-multi-octave-");
@@ -397,7 +361,7 @@ test("multi-function file: MATLAB/Octave -- includeHelpers defaults to true and 
     assert.ok(!emitters.matlab.emitFunction(fn2, undefined, { includeHelpers: false }).includes("ef_select"));
 });
 
-test("multi-function file: MATLAB/Octave -- one function per file, each self-contained (the MATLAB layout)", { skip: !TOOLS.octave && "octave-cli not available" }, () => {
+test("multi-function file: MATLAB/Octave -- one function per file, each self-contained (the MATLAB layout)", { skip: !TOOLS.matlab && "octave-cli not available" }, () => {
     const dir = tmpDir("ef-multi-octave-files-");
     fs.writeFileSync(path.join(dir, "f1.m"), emitters.matlab.emitFunction(fn1));
     fs.writeFileSync(path.join(dir, "f2.m"), emitters.matlab.emitFunction(fn2));
@@ -411,7 +375,7 @@ test("multi-function file: MATLAB/Octave -- one function per file, each self-con
     fs.rmSync(dir, { recursive: true, force: true });
 });
 
-test("multi-function file: Scheme -- concatenating 2 functions runs correctly", { skip: !TOOLS.guile && "guile not available" }, () => {
+test("multi-function file: Scheme -- concatenating 2 functions runs correctly", { skip: !TOOLS.scheme && "guile not available" }, () => {
     const out1 = emitters.scheme.emitFunction(fn1);
     const out2 = emitters.scheme.emitFunction(fn2);
     const dir = tmpDir("ef-multi-scheme-");
@@ -426,7 +390,7 @@ test("multi-function file: Scheme -- concatenating 2 functions runs correctly", 
     fs.rmSync(dir, { recursive: true, force: true });
 });
 
-test("multi-function file: TypeScript -- concatenating 2 functions compiles and runs correctly", { skip: !TOOLS.tsc && "tsc not available" }, () => {
+test("multi-function file: TypeScript -- concatenating 2 functions compiles and runs correctly", { skip: !TOOLS.ts && "tsc not available" }, () => {
     const out1 = emitters.ts.emitFunction(fn1);
     const out2 = emitters.ts.emitFunction(fn2);
     const dir = tmpDir("ef-multi-ts-");
@@ -441,7 +405,7 @@ test("multi-function file: TypeScript -- concatenating 2 functions compiles and 
     fs.rmSync(dir, { recursive: true, force: true });
 });
 
-test("multi-function file: Fortran -- concatenating 2 functions compiles and runs correctly", { skip: !TOOLS.gfortran && "gfortran not available" }, () => {
+test("multi-function file: Fortran -- concatenating 2 functions compiles and runs correctly", { skip: !TOOLS.fortran && "gfortran not available" }, () => {
     const out1 = emitters.fortran.emitFunction(fn1);
     const out2 = emitters.fortran.emitFunction(fn2);
     const dir = tmpDir("ef-multi-fortran-");
@@ -461,7 +425,7 @@ test("multi-function file: Fortran -- concatenating 2 functions compiles and run
     fs.rmSync(dir, { recursive: true, force: true });
 });
 
-test("multi-function file: C# -- concatenating 2 classes into one file compiles and runs correctly", { skip: !TOOLS.dotnet && "dotnet not available" }, () => {
+test("multi-function file: C# -- concatenating 2 classes into one file compiles and runs correctly", { skip: !TOOLS.csharp && "dotnet not available" }, () => {
     const out1 = emitters.csharp.emitFunction(fn1);
     const out2 = emitters.csharp.emitFunction(fn2);
     const dir = tmpDir("ef-multi-cs-");
@@ -492,4 +456,12 @@ test("multi-function file: C# -- concatenating 2 classes into one file compiles 
     assertClose(parseFloat(lines[0]), F1_EXPECT, "f1");
     assertClose(parseFloat(lines[1]), F2_EXPECT, "f2");
     fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test("every toolchain-backed executable target has a multi-function test above", () => {
+    for (const [lang, emitter] of Object.entries(require("../emitters/registry.js"))) {
+        const probes = emitter.meta.toolchain && emitter.meta.toolchain.probes;
+        if (!probes) continue;
+        assert.ok(queried.has(lang), `${lang}: no multi-function test consults TOOLS.${lang}`);
+    }
 });

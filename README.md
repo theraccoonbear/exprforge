@@ -3,15 +3,16 @@
 ![ExprForge — a blacksmith forging 3a² + 2ab − b² = (a+b)² − 2ab on a glowing anvil](https://raw.githubusercontent.com/theraccoonbear/exprforge/main/assets/expression-forge.png)
 
 [![npm version](https://img.shields.io/npm/v/exprforge.svg)](https://www.npmjs.com/package/exprforge)
+<!-- exprforge:badges -->
 [![TypeScript](https://github.com/theraccoonbear/exprforge/actions/workflows/test-typescript.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test-typescript.yml)
-[![Python](https://github.com/theraccoonbear/exprforge/actions/workflows/test-python.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test-python.yml)
-[![C#](https://github.com/theraccoonbear/exprforge/actions/workflows/test-csharp.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test-csharp.yml)
-[![Lua](https://github.com/theraccoonbear/exprforge/actions/workflows/test-lua.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test-lua.yml)
 [![QB64](https://github.com/theraccoonbear/exprforge/actions/workflows/test-qb64.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test-qb64.yml)
 [![C](https://github.com/theraccoonbear/exprforge/actions/workflows/test-c.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test-c.yml)
 [![Java](https://github.com/theraccoonbear/exprforge/actions/workflows/test-java.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test-java.yml)
 [![Go](https://github.com/theraccoonbear/exprforge/actions/workflows/test-go.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test-go.yml)
 [![Rust](https://github.com/theraccoonbear/exprforge/actions/workflows/test-rust.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test-rust.yml)
+[![C#](https://github.com/theraccoonbear/exprforge/actions/workflows/test-csharp.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test-csharp.yml)
+[![Python](https://github.com/theraccoonbear/exprforge/actions/workflows/test-python.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test-python.yml)
+[![Lua](https://github.com/theraccoonbear/exprforge/actions/workflows/test-lua.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test-lua.yml)
 [![Perl](https://github.com/theraccoonbear/exprforge/actions/workflows/test-perl.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test-perl.yml)
 [![PHP](https://github.com/theraccoonbear/exprforge/actions/workflows/test-php.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test-php.yml)
 [![Julia](https://github.com/theraccoonbear/exprforge/actions/workflows/test-julia.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test-julia.yml)
@@ -22,15 +23,14 @@
 [![COBOL](https://github.com/theraccoonbear/exprforge/actions/workflows/test-cobol.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test-cobol.yml)
 [![Octave](https://github.com/theraccoonbear/exprforge/actions/workflows/test-octave.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test-octave.yml)
 [![LaTeX](https://github.com/theraccoonbear/exprforge/actions/workflows/test-latex.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test-latex.yml)
+<!-- /exprforge -->
 [![Test Coverage](https://github.com/theraccoonbear/exprforge/actions/workflows/test-coverage.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test-coverage.yml)
 [![VS Code Syntax](https://github.com/theraccoonbear/exprforge/actions/workflows/test-vscode-syntax.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test-vscode-syntax.yml)
 
 ## Brief
 
 ExprForge authors a math formula once, as a small AST, and emits
-verified, identical-behavior implementations in JavaScript, TypeScript,
-Python, C#, Lua, QB64, C, Java, Go, Rust, Perl, PHP, Julia, MATLAB/Octave, R,
-Fortran, Zig, Scheme (Guile), and COBOL (GnuCOBOL) — plus a native in-process
+verified, identical-behavior implementations in <!-- exprforge:list:executable-dialects -->JavaScript, TypeScript, QB64, C, Java, Go, Rust, C#, Python, Lua, Perl, PHP, Julia, R, Fortran, Zig, Scheme (Guile), COBOL (GnuCOBOL), and MATLAB/Octave<!-- /exprforge --> — plus a native in-process
 evaluator, a printer for its own readable syntax, and typeset LaTeX
 output for documenting the formula itself. No required dependencies.
 
@@ -80,9 +80,9 @@ Two shapes of real use this tends to fall into:
 ## Intents
 
 **What it does**: turns one small, pure-arithmetic AST into
-identical-behavior source text for 19 programming languages (executable
+identical-behavior source text for <!-- exprforge:count:executable -->19<!-- /exprforge --> programming languages (executable
 targets), a native evaluator, typeset LaTeX output, and a printer for
-ExprForge's own syntax (21 output targets in total) — all from the same
+ExprForge's own syntax (<!-- exprforge:count:outputs -->21<!-- /exprforge --> output targets in total) — all from the same
 tree, walked once per target. Symbolic differentiation (`differentiate`) works over
 that same AST too, so a derivative is just another tree, emittable and
 evaluable exactly the same way.
@@ -359,8 +359,8 @@ call regardless of target, checked unconditionally at the same tier as
 ### `round()` at exact `.5` boundaries: standardized, NOT your language's native behavior
 
 **If you're reading emitted code and expected `round()` to behave like
-your target language's own native rounding function, it doesn't, on 9
-of the 19 programming-language targets, by deliberate design.** `round(x)` ties **away from
+your target language's own native rounding function, it doesn't, on <!-- exprforge:count:round-other -->9<!-- /exprforge -->
+of the <!-- exprforge:count:executable -->19<!-- /exprforge --> programming-language targets, by deliberate design.** `round(x)` ties **away from
 zero** everywhere, unconditionally — `round(-0.5)` is `-1`,
 `round(1.5)` is `2`, `round(2.5)` is `3` — identical on every target,
 confirmed directly against a real compiler/interpreter for every one of
@@ -381,7 +381,7 @@ rounding function directly:
 | **C#** (`Math.Round(double)`) | ties to even (default) | same pattern as Python |
 | **R** (`round()`) | ties to even (IEC 60559) | same pattern as Python; emitted as `sign(x) * floor(abs(x) + 0.5)` |
 
-The other 9 programming-language targets (C, Rust, Go, Perl, Zig, Fortran, COBOL, Julia, PHP)
+The other <!-- exprforge:count:round-away -->10<!-- /exprforge --> programming-language targets (<!-- exprforge:list:round-away -->C, Go, Rust, Perl, PHP, Julia, Fortran, Zig, COBOL, MATLAB/Octave<!-- /exprforge -->)
 already tie away from zero natively, so ExprForge's `round()` matches
 what you'd expect from those languages directly — no surprise there.
 
@@ -390,7 +390,7 @@ this library's entire value proposition is "author once, get identical
 behavior everywhere" — `round()` was the one primitive quietly not
 living up to that (three incompatible native conventions, silently
 inherited with zero normalization). Away-from-zero was chosen because
-it was already the majority (10 of the 19 programming-language
+it was already the majority (<!-- exprforge:count:round-away -->10<!-- /exprforge --> of the <!-- exprforge:count:executable -->19<!-- /exprforge --> programming-language
 targets), and because this project's own Julia emitter had already,
 independently, made a deliberate choice to match it
 (`RoundNearestTiesAway`, not Julia's own ties-to-even default) before
@@ -399,12 +399,12 @@ Built from `floor`/`sign`/`abs` (which already agreed everywhere) via
 `sign(x) * floor(abs(x) + 0.5)`, the same formula `emitters/cobol.js`'s
 own hand-written `round` template already used. See
 `samples/round-tie-demo.js`'s own header comment for the full,
-directly-verified breakdown of what each of the 8 changed targets used
+directly-verified breakdown of what each changed target used
 to do, and `test/conformance.test.js`'s `roundTieBoundary` entry for the
 permanent regression test proving every target agrees now.
 
-This is a real, deliberate, one-time behavior change on those 8
-targets — not configurable, no opt-out. If your use case genuinely
+This is a real, deliberate, one-time behavior change on the
+targets whose native rounding differed — not configurable, no opt-out. If your use case genuinely
 needs a DIFFERENT guaranteed tie-breaking convention (half-up, or
 half-to-even) across every target, don't reach for `round()` — compose
 it yourself from `floor`/`ceil`/`sign`/`abs` (all of which agree
@@ -480,8 +480,7 @@ comes from both operands, including a `-0` denominator), and `0/0` and
   evaluated exactly once). A nonzero literal denominator keeps the
   plain `/`. For concatenated files, pass `{ includeHelpers: false }`
   on every call after the first (see below).
-- Every other target except COBOL (JS, TypeScript, C, Go, Rust, Java,
-  Lua, C#, Zig, Julia, R, Fortran, Scheme, QB64) already returned IEEE
+- Every other executable target except COBOL already returned IEEE
   results and is unchanged.
 - **GnuCOBOL** is a documented, unfixed exception: `COMPUTE` is decimal
   arithmetic with no Infinity or NaN, so a zero denominator leaves the
@@ -1054,16 +1053,16 @@ expression model without introducing control flow:
   emulation or an indexing idiom).
 
   **`select` is not a branch** — modeled as if both `then` and `else`
-  are always evaluated, matching the four real targets where that's
-  literally true: QB64 (the arithmetic expression above genuinely
+  are always evaluated, matching the <!-- exprforge:count:select-eager -->4<!-- /exprforge --> real targets where that's
+  literally true (<!-- exprforge:list:select-eager -->QB64, Fortran, COBOL, and MATLAB/Octave<!-- /exprforge -->). How each does it: QB64 (the arithmetic expression above genuinely
   computes both sides), Fortran (`MERGE`, an elemental intrinsic that
   doesn't short-circuit its arguments — confirmed against a real
   compiler), and COBOL (its picker helper spills both branches into
   temps before the call), and MATLAB/Octave (its `ef_select` helper receives
-  both already-evaluated values as arguments). The other 15 programming-language targets — including
+  both already-evaluated values as arguments). The other <!-- exprforge:count:select-lazy -->15<!-- /exprforge --> programming-language targets — including
   `evaluate()` itself — happen to short-circuit via their native
   ternary/`if`-`else`/`and`-`or`, but that's an implementation detail
-  those 15 share and the other 4 don't, not part of this AST's own
+  those <!-- exprforge:count:select-lazy -->15<!-- /exprforge --> share and the other <!-- exprforge:count:select-eager -->4<!-- /exprforge --> don't, not part of this AST's own
   contract — don't rely on it. Don't use `select` to guard division by
   zero or anything else undefined; clamp the operand itself with its
   own `select` first (see `safeDiv` in `samples/spline-frame.js`), or
@@ -1705,27 +1704,30 @@ have the version that image ships. Every workflow prints its resolved
 toolchain version. Bump pinned versions deliberately, in a reviewed
 change that also updates this table.
 
+<!-- exprforge:table:toolchains -->
 | Target | Minimum | Tested in CI | Notes |
 |---|---|---|---|
 | Node (library + JS target) | Node 22 (`engines`) | 22, 24, 26 (`test-node.yml`); 22 for all other workflows | Every supported Node line is tested. Node 18 and 20 are end-of-life and no longer supported. |
-| C | C99 | gcc from Ubuntu 24.04 (13.x), default `-std` | Needs `fmin`/`fmax`/`isnan`/`log2`/`hypot`/`trunc`/`round` from C99 `math.h` and compound literals; link with `-lm`. |
-| C# | C# 7.0; .NET Core 3.0 / .NET 5+ when `log2` is used (`Math.Log2`) | .NET 10.0.x (SDK-matched target framework) | Output is standalone: no `using` needed, `Math` is emitted as `global::System.Math`. Value tuples (C# 7) are used only for multi-output suites; on .NET Framework they need `System.ValueTuple`. Everything else used (`Math.Sign/Floor/Ceiling/Truncate/Abs/Sqrt/Pow/Atan2/Min/Max/Log/Log10/Exp`, trig) exists on every .NET version. Lower versions than the tested ones are not exercised by CI. |
-| Go | any Go 1.x (`math` only) | 1.26 | |
-| Rust | 1.50 (`f64::clamp`; `rem_euclid` needs 1.38) | 1.99.1 | Not rewritten to `max`/`min`: Rust's `f64::max`/`min` ignore NaN, which would change results. |
-| Java | Java 8 (only `Math.*`) | 21 (Temurin) | |
-| Python | 3.3 (`math.log2`) | 3.13 | Python 3 only. |
 | TypeScript | tsc accepting `--strict --target es2020 --module commonjs` | 5.9.3 | Source text is only generated; type-checked in tests. |
-| Lua | 5.3 (two-argument `math.atan`, no `math.pow`/`math.atan2`) | 5.3 and 5.4 | Not valid on 5.1/LuaJIT without compatibility. |
-| Perl | Perl 5 with core `POSIX` | 5.38 (Ubuntu 24.04) | |
-| PHP | PHP 7 (believed; no version-specific features found) | 8.3 (Ubuntu 24.04 `php-cli`) | |
-| Julia | 1.0 (`clamp`, `RoundNearestTiesAway`) | 1.11.5 (exact) | |
-| R | base R (no packages) | 4.5.2 (exact, `r-lib/actions/setup-r`) | |
-| Fortran | Fortran 2008 (`HYPOT`, `MODULO`) | gfortran 13.x (Ubuntu 24.04), `-O2`, default `-std` | |
-| Zig | 0.14.1 exactly | 0.14.1 (exact) | Builtins and `std` change between releases. To bump: edit `test-zig.yml`, run the Zig suite, fix `emitters/zig.js`, update this table. |
 | QB64 | QB64-PE (tested release) | v4.7.0-GLFW (exact tag) | Built from the release source bundle in CI. |
-| Scheme | Guile 3.0 | guile-3.0 (Ubuntu 24.04) | |
+| C | C99 | gcc from Ubuntu 24.04 (13.x), default `-std` | Needs `fmin`/`fmax`/`isnan`/`log2`/`hypot`/`trunc`/`round` from C99 `math.h` and compound literals; link with `-lm`. |
+| Java | Java 8 (only `Math.*`) | 21 (Temurin) |  |
+| Go | any Go 1.x (`math` only) | 1.26 |  |
+| Rust | 1.50 (`f64::clamp`; `rem_euclid` needs 1.38) | 1.99.1 | Not rewritten to `max`/`min`: Rust's `f64::max`/`min` ignore NaN, which would change results. |
+| C# | C# 7.0; .NET Core 3.0 / .NET 5+ when `log2` is used (`Math.Log2`) | .NET 10.0.x (SDK-matched target framework) | Output is standalone: no `using` needed, `Math` is emitted as `global::System.Math`. Value tuples (C# 7) are used only for multi-output suites; on .NET Framework they need `System.ValueTuple`. Everything else used (`Math.Sign/Floor/Ceiling/Truncate/Abs/Sqrt/Pow/Atan2/Min/Max/Log/Log10/Exp`, trig) exists on every .NET version. Lower versions than the tested ones are not exercised by CI. |
+| Python | 3.3 (`math.log2`) | 3.13 | Python 3 only. |
+| Lua | 5.3 (two-argument `math.atan`, no `math.pow`/`math.atan2`) | 5.3 and 5.4 | Not valid on 5.1/LuaJIT without compatibility. |
+| Perl | Perl 5 with core `POSIX` | 5.38 (Ubuntu 24.04) |  |
+| PHP | PHP 7 (believed; no version-specific features found) | 8.3 (Ubuntu 24.04 `php-cli`) |  |
+| Julia | 1.0 (`clamp`, `RoundNearestTiesAway`) | 1.11.5 (exact) |  |
+| R | base R (no packages) | 4.5.2 (exact, `r-lib/actions/setup-r`) |  |
+| Fortran | Fortran 2008 (`HYPOT`, `MODULO`) | gfortran 13.x (Ubuntu 24.04), `-O2`, default `-std` |  |
+| Zig | 0.14.1 exactly | 0.14.1 (exact) | Builtins and `std` change between releases. To bump: edit `test-zig.yml`, run the Zig suite, fix `emitters/zig.js`, update this table. |
+| Scheme | Guile 3.0 | guile-3.0 (Ubuntu 24.04) |  |
 | COBOL | GnuCOBOL 3.x | `gnucobol3` (3.1.2) | Not 4.x early-dev: confirmed `cob_decimal` codegen issue. To bump: run the full COBOL suite on the new series, re-check the skipped samples, update this table. |
+| MATLAB/Octave | GNU Octave or MATLAB (the shared syntax subset; see "MATLAB / Octave target") | Octave from Ubuntu 24.04 `octave` (`octave-cli`) | CI exercises Octave only; MATLAB compatibility is by construction and not machine-verified. |
 | LaTeX | LaTeX2e with `amsmath` (`wrap: "document"` loads it; other wraps need it in the host document). KaTeX 0.16+ or MathJax for web rendering. | KaTeX 0.16 strict parse; `pdflatex` from Ubuntu 24.04 `texlive-latex-base` | Output is typeset math, never executed. `document` output compiles standalone; long one-line formulas can run past the margin (overfull boxes are reported, not failures). |
+<!-- /exprforge -->
 
 Adding a target, or raising a minimum, requires updating this table and
 the matching workflow.
@@ -1785,9 +1787,8 @@ Runs `node --test`. For each sample, that's three kinds of check:
 
 The compiled/interpreted-language checks need their toolchain on `PATH`
 and skip (not fail) when it's missing, so `npm test` degrades gracefully
-on any one machine. Every one of `tsc`/`qb64pe`/`dotnet`/`python3`/`lua`/
-`perl`/`php`/`julia`/`octave-cli`/`Rscript`/`gfortran`/`zig`/`guile3.0`/`cobc` is treated exactly
-like gcc/go/rustc/javac: looked up on `PATH`, never a project
+on any one machine. Every toolchain command (<!-- exprforge:list:toolchain-commands -->`tsc`/`qb64pe`/`gcc`/`javac`/`java`/`go`/`rustc`/`dotnet`/`python3`/`lua`/`perl`/`php`/`julia`/`Rscript`/`gfortran`/`zig`/`guile3.0`/`cobc`/`octave-cli`<!-- /exprforge -->) is
+looked up on `PATH`, never a project
 dependency — exprforge only ever generates source text for these, it
 doesn't execute or type-check any of it itself. `package.json` has zero
 dependencies of any kind, matching this.

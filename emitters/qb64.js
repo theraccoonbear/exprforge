@@ -289,4 +289,28 @@ const emitter = new Emitter({
     },
 });
 
+// Per-target facts that registry-wide docs and tests read; field reference
+// in emitters/meta.js.
+emitter.meta = {
+    displayName: "QB64",
+    kind: "executable",
+    testTarget: "QB64",
+    ci: { workflow: "test-qb64.yml", badge: "QB64" },
+    toolchain: {
+        probes: [{ candidates: ["qb64pe"], args: ["-v"] }],
+        docs: {
+            minimum: "QB64-PE (tested release)",
+            tested: "v4.7.0-GLFW (exact tag)",
+            notes: "Built from the release source bundle in CI.",
+        },
+    },
+    guards: null,
+    division: "(x / y)",
+    cmp: { eq: "=", ne: "<>", forbidEq: "==", forbidNe: "!=" },
+    multiFile: "opt-out",
+    roundTies: "even",
+    selectShortCircuits: false,
+    minMaxNaN: "positional",
+};
+
 module.exports = emitter;

@@ -119,4 +119,27 @@ function capitalize(s) {
     return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
+// Per-target facts that registry-wide docs and tests read; field reference
+// in emitters/meta.js.
+emitter.meta = {
+    displayName: "Rust",
+    kind: "executable",
+    testTarget: "Rust",
+    ci: { workflow: "test-rust.yml", badge: "Rust" },
+    toolchain: {
+        probes: [{ candidates: ["rustc"], args: ["--version"] }],
+        docs: {
+            minimum: "1.50 (`f64::clamp`; `rem_euclid` needs 1.38)",
+            tested: "1.99.1",
+            notes: "Not rewritten to `max`/`min`: Rust's `f64::max`/`min` ignore NaN, which would change results.",
+        },
+    },
+    guards: null,
+    division: "(x / y)",
+    multiFile: "safe",
+    roundTies: "away",
+    selectShortCircuits: true,
+    minMaxNaN: "ignore",
+};
+
 module.exports = emitter;

@@ -6,7 +6,7 @@ import { ExprForge } from "../../lib/exprforge";
 import { RANGE_EXAMPLES } from "./examples";
 import { readStorageString, writeStorageString } from "../../lib/storage";
 import type { FnDef, Interval, RangeAnalysis } from "../../lib/exprforgeTypes";
-import { RANGES_TOOL_ID } from "../ids";
+import { RANGES_TOOL_ID } from "./id";
 
 const { fn, loadExprSource, analyzeRanges } = ExprForge;
 

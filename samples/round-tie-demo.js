@@ -18,21 +18,21 @@
 // divergence (matching this project's precedent for QB64's select()
 // div-by-zero behavior). Revisited: unlike that precedent, this one had
 // a real, sound, already-majority convention to converge on instead of
-// just living with -- away-from-zero is what 10 of the 18 programming-language
+// just living with -- away-from-zero is what the majority of the programming-language
 // targets already did NATIVELY, and Julia's own emitter already
 // made a deliberate, precedent-setting choice to match it
 // (RoundNearestTiesAway, not Julia's own ties-to-even default) before
-// this file existed at all. So the 8 targets that DIDN'T already agree
+// this file existed at all. So the targets that DIDN'T already agree
 // (js.js, typescript.js, java.js, lua.js, python.js, scheme.js, qb64.js,
 // csharp.js) had their `round` calls-table entry replaced with an
 // explicit `sign(x) * floor(abs(x) + 0.5)` formula -- built entirely
 // from primitives that already agreed everywhere (floor/sign/abs),
 // exactly the formula emitters/cobol.js's own hand-written round: entry
-// already used. Every one of the 8 replacements confirmed against a
+// already used. Every one of those replacements confirmed against a
 // real compiler/interpreter, not just written and assumed correct.
 //
 // This IS a real, deliberate behavior change for round() specifically,
-// on those 8 targets, for anyone relying on their native tie-breaking --
+// on those targets, for anyone relying on their native tie-breaking --
 // accepted as worth it: this library's entire value proposition is
 // "author once, identical behavior everywhere," and round() was the one
 // primitive quietly not living up to that.

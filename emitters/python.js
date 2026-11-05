@@ -167,4 +167,28 @@ const emitter = new Emitter({
     },
 });
 
+// Per-target facts that registry-wide docs and tests read; field reference
+// in emitters/meta.js.
+emitter.meta = {
+    displayName: "Python",
+    kind: "executable",
+    testTarget: "Python",
+    ci: { workflow: "test-python.yml", badge: "Python" },
+    toolchain: {
+        probes: [{ candidates: ["python3"], args: ["--version"] }],
+        docs: {
+            minimum: "3.3 (`math.log2`)",
+            tested: "3.13",
+            notes: "Python 3 only.",
+        },
+    },
+    guards: "isinstance(arr, list)",
+    division: "_exprforge_div(x, y)",
+    divisionGuard: { plain: "(x / 2)", helperCall: "_exprforge_div(" },
+    multiFile: "opt-out",
+    roundTies: "even",
+    selectShortCircuits: true,
+    minMaxNaN: "positional",
+};
+
 module.exports = emitter;

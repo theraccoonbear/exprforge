@@ -1,8 +1,16 @@
-// Display metadata for each emitters/registry.js key -- labels and which
-// ones are toggled on by default. Deliberately a small curated default
-// set rather than every target at once (see the plan's "easily see multiple
-// toggleable outputs, not overwhelmed by all of them" requirement); the
-// full set is always one click away via the toggle chips.
+// Display metadata for each emitters/registry.js key, derived rather than
+// listed: the label comes from the library's own emitter metadata
+// (emitter.meta.displayName), and the highlighting extension, default
+// visibility and ordering come from ./languages/<key>.ts, discovered with
+// import.meta.glob. A new target therefore shows up here the moment it is
+// registered in the library.
+//
+// Defaults are deliberately a small curated set rather than every target at
+// once ("easily see multiple toggleable outputs, not overwhelmed by all of
+// them"); the full set is always one click away via the toggle chips.
+import { ExprForge } from "../../lib/exprforge";
+import type { LanguagePlugin } from "./languagePlugin";
+
 export interface LanguageMeta {
     label: string;
     defaultOn: boolean;
@@ -10,30 +18,31 @@ export interface LanguageMeta {
     defaultOnMobile: boolean;
 }
 
-export const LANGUAGE_META: Record<string, LanguageMeta> = {
-    js: { label: "JavaScript", defaultOn: true, defaultOnMobile: true },
-    ts: { label: "TypeScript", defaultOn: false, defaultOnMobile: false },
-    python: { label: "Python", defaultOn: true, defaultOnMobile: false },
-    java: { label: "Java", defaultOn: true, defaultOnMobile: true },
-    csharp: { label: "C#", defaultOn: false, defaultOnMobile: false },
-    c: { label: "C", defaultOn: false, defaultOnMobile: false },
-    go: { label: "Go", defaultOn: false, defaultOnMobile: false },
-    rust: { label: "Rust", defaultOn: false, defaultOnMobile: false },
-    lua: { label: "Lua", defaultOn: false, defaultOnMobile: false },
-    perl: { label: "Perl", defaultOn: false, defaultOnMobile: false },
-    php: { label: "PHP", defaultOn: false, defaultOnMobile: false },
-    julia: { label: "Julia", defaultOn: false, defaultOnMobile: false },
-    r: { label: "R", defaultOn: false, defaultOnMobile: false },
-    matlab: { label: "MATLAB/Octave", defaultOn: false, defaultOnMobile: false },
-    fortran: { label: "Fortran", defaultOn: false, defaultOnMobile: false },
-    zig: { label: "Zig", defaultOn: false, defaultOnMobile: false },
-    scheme: { label: "Scheme", defaultOn: true, defaultOnMobile: false },
-    cobol: { label: "COBOL", defaultOn: true, defaultOnMobile: true },
-    qb64: { label: "QB64", defaultOn: false, defaultOnMobile: false },
-    // The non-language "target" -- emitters/exprsyntax.js, the printer that
-    // round-trips back through fn() itself. Labeled distinctly from the
-    // others since it's not a third-party language.
-    expr: { label: "ExprForge syntax (printer)", defaultOn: false, defaultOnMobile: false },
-    // emitters/latex.js -- typeset math-mode source, not executable code.
-    latex: { label: "LaTeX", defaultOn: false, defaultOnMobile: false },
-};
+const modules = import.meta.glob<{ default: LanguagePlugin }>("./languages/*.ts", { eager: true });
+
+export const LANGUAGE_PLUGINS: Record<string, LanguagePlugin> = {};
+for (const [path, mod] of Object.entries(modules)) {
+    const key = path.replace(/^.*\//, "").replace(/\.ts$/, "");
+    LANGUAGE_PLUGINS[key] = mod.default;
+}
+
+const registered = Object.keys(ExprForge.emitters);
+const rank = (id: string) => LANGUAGE_PLUGINS[id]?.order ?? Number.MAX_SAFE_INTEGER;
+
+export const LANGUAGE_META: Record<string, LanguageMeta> = Object.fromEntries(
+    registered
+        .map((id, index) => ({ id, index }))
+        .sort((a, b) => rank(a.id) - rank(b.id) || a.index - b.index)
+        .map(({ id }) => {
+            const plugin = LANGUAGE_PLUGINS[id];
+            const meta = ExprForge.emitters[id].meta;
+            return [
+                id,
+                {
+                    label: plugin?.label ?? meta?.displayName ?? id,
+                    defaultOn: plugin?.defaultOn ?? false,
+                    defaultOnMobile: plugin?.defaultOnMobile ?? false,
+                },
+            ];
+        }),
+);

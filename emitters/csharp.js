@@ -107,4 +107,27 @@ const emitter = new Emitter({
     },
 });
 
+// Per-target facts that registry-wide docs and tests read; field reference
+// in emitters/meta.js.
+emitter.meta = {
+    displayName: "C#",
+    kind: "executable",
+    testTarget: "C#",
+    ci: { workflow: "test-csharp.yml", badge: "C#" },
+    toolchain: {
+        probes: [{ candidates: ["dotnet"], args: ["--version"] }],
+        docs: {
+            minimum: "C# 7.0; .NET Core 3.0 / .NET 5+ when `log2` is used (`Math.Log2`)",
+            tested: ".NET 10.0.x (SDK-matched target framework)",
+            notes: "Output is standalone: no `using` needed, `Math` is emitted as `global::System.Math`. Value tuples (C# 7) are used only for multi-output suites; on .NET Framework they need `System.ValueTuple`. Everything else used (`Math.Sign/Floor/Ceiling/Truncate/Abs/Sqrt/Pow/Atan2/Min/Max/Log/Log10/Exp`, trig) exists on every .NET version. Lower versions than the tested ones are not exercised by CI.",
+        },
+    },
+    guards: null,
+    division: "(x / y)",
+    multiFile: "safe",
+    roundTies: "even",
+    selectShortCircuits: true,
+    minMaxNaN: "propagate",
+};
+
 module.exports = emitter;

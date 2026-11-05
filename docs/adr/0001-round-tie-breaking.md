@@ -19,7 +19,7 @@ auditing every target directly rather than assumed.
 
 Standardize `round()` on **ties away from zero** on every executable target,
 unconditionally, no opt-out. Chosen because it was already the majority
-(10 of the 18 programming-language targets), and because this
+(a majority of the programming-language targets), and because this
 project's own Julia emitter had already, independently, chosen to match
 it (`RoundNearestTiesAway`) before this decision existed — real
 precedent, not an arbitrary pick. Built from `sign(x) * floor(abs(x) +
@@ -28,7 +28,8 @@ template already used.
 
 ## Consequences
 
-8 targets (JS, TypeScript, Java, Lua, Python, Scheme, QB64, C#) changed
+The targets whose native rounding differed from ties away from zero
+(JS, TypeScript, Java, Lua, Python, Scheme, QB64, C#) changed
 behavior at exact `.5` boundaries — a real, one-time, non-configurable
 change. A caller who genuinely needs a *different* guaranteed
 tie-breaking convention should compose it from `floor`/`ceil`/`sign`/
@@ -37,7 +38,7 @@ tie-breaking convention should compose it from `floor`/`ceil`/`sign`/
 ## Evidence
 
 - `samples/round-tie-demo.js` — full per-target breakdown of what each
-  of the 8 changed targets used to do, verified directly.
+  of the changed targets used to do, verified directly.
 - `test/conformance.test.js`'s `roundTieBoundary` registration — the
   permanent regression test.
 - Root `README.md`'s "`round()` at exact `.5` boundaries" section — the

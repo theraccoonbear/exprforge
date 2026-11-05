@@ -217,4 +217,29 @@ const emitter = new SchemeEmitter({
     },
 });
 
+// Per-target facts that registry-wide docs and tests read; field reference
+// in emitters/meta.js.
+emitter.meta = {
+    displayName: "Scheme",
+    dialect: "Guile",
+    kind: "executable",
+    testTarget: "Scheme",
+    ci: { workflow: "test-scheme.yml", badge: "Scheme" },
+    toolchain: {
+        probes: [{ candidates: ["guile3.0", "guile-3.0", "guile"], args: ["--version"] }],
+        docs: {
+            minimum: "Guile 3.0",
+            tested: "guile-3.0 (Ubuntu 24.04)",
+            notes: "",
+        },
+    },
+    guards: "(vector? arr)",
+    division: "(/ x y)",
+    cmp: { eq: "(=", ne: "(not (=" },
+    multiFile: "safe",
+    roundTies: "even",
+    selectShortCircuits: true,
+    minMaxNaN: "propagate",
+};
+
 module.exports = emitter;

@@ -1,41 +1,18 @@
 // exprforge-playground/src/tools/index.ts
 //
 // The extension point this whole shell is built around: a "Tool" is any
-// self-contained demo panel (the fn`...` -> multi-language playground
-// today; a REPL, a differentiator, a simplifier, etc. later -- see
-// exprforge's own GitHub issues #6/#9-#12). Adding a new one is meant to
-// mean "write one new component, add one line here" -- App.tsx never
-// needs to know how many tools exist or what any individual one does.
-import type { ComponentType } from "react";
-import { PlaygroundTool } from "./playground/PlaygroundTool";
-import { DifferentiatorTool } from "./differentiator/DifferentiatorTool";
-import { RangesTool } from "./ranges/RangesTool";
-import { PLAYGROUND_TOOL_ID, DIFFERENTIATOR_TOOL_ID, RANGES_TOOL_ID } from "./ids";
+// self-contained demo panel. Adding one means creating
+// tools/<name>/index.ts that default-exports a Tool (see ./types.ts);
+// it is discovered here with import.meta.glob and ordered by its `order`
+// field, so no central list needs editing and parallel changes that add
+// tools never touch the same lines. App.tsx never needs to know how many
+// tools exist or what any individual one does.
+import type { Tool } from "./types";
 
-export interface Tool {
-    id: string;
-    label: string;
-    description: string;
-    component: ComponentType;
-}
+export type { Tool } from "./types";
 
-export const TOOLS: Tool[] = [
-    {
-        id: PLAYGROUND_TOOL_ID,
-        label: "Playground",
-        description: "Write a formula, see it emitted live across every target language.",
-        component: PlaygroundTool,
-    },
-    {
-        id: DIFFERENTIATOR_TOOL_ID,
-        label: "Differentiation",
-        description: "Symbolic differentiation: enter an expression, get its derivative, verify numerically.",
-        component: DifferentiatorTool,
-    },
-    {
-        id: RANGES_TOOL_ID,
-        label: "Range analysis",
-        description: "Interval analysis: declare input ranges, see output bounds and divide-by-zero warnings.",
-        component: RangesTool,
-    },
-];
+const modules = import.meta.glob<{ default: Tool }>("./*/index.ts", { eager: true });
+
+export const TOOLS: Tool[] = Object.values(modules)
+    .map((m) => m.default)
+    .sort((a, b) => a.order - b.order);

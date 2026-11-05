@@ -35,46 +35,28 @@ const emitters = require("../emitters/registry.js");
 
 const OPS = [">", "<", ">=", "<=", "==", "!="];
 
-// What each emitter is expected to actually print for "==" / "!=" --
-// defaults to the JS/C spelling every target shares EXCEPT the ones
-// listed explicitly. `forbid` (only present where it differs from the
+// What each emitter is expected to actually print for "==" / "!=" is
+// declared next to the emitter (meta.cmp in emitters/<lang>.js): it defaults
+// to the JS/C spelling every target shares, and an emitter lists only what
+// differs. `forbidEq` / `forbidNe` (only present where it differs from the
 // default) is the naive JS/C token that must NOT appear anywhere in the
 // output for that operator -- this is the literal assertion that would
 // have caught the original bug immediately, for exactly the language it
-// broke in.
-const EXPECTED = {
-    // qb64/fortran/lua: the three real, shipped bugs this file locks down.
-    qb64: { eq: "=", ne: "<>", forbidEq: "==", forbidNe: "!=" },
-    fortran: { eq: "==", ne: "/=", forbidNe: "!=" },
-    lua: { eq: "==", ne: "~=", forbidNe: "!=" },
-    r: { eq: "isTRUE(x == 5)", ne: "!isTRUE(x == 5)", forbidNe: "!=" },
-    // r: a comparison involving NaN is NA in R and `if (NA)` is an error,
-    // so every operator goes through isTRUE(); "!=" is the negated "=="
-    // because NaN != x is true in JS but NA in R.
-    matlab: { eq: "==", ne: "~=", forbidNe: "!=" },
-    // scheme: prefix notation, not an infix token -- "(=" for equality,
-    // "(not (=" for inequality (R7RS has no single not-equal procedure).
-    // Already correct before this file existed (see scheme.js's own
-    // comment) -- included here so a regression there is caught too.
-    scheme: { eq: "(=", ne: "(not (=" },
-    // cobol: dispatches to a dedicated FUNCTION-ID helper per operator
-    // (ef-cmp-eq/ef-cmp-ne) rather than embedding a relational token
-    // inline at all -- see CMP_HELPERS in emitters/cobol.js. Already
-    // correct before this file existed, included for the same reason.
-    cobol: { eq: "ef-cmp-eq", ne: "ef-cmp-ne" },
-    // latex: typeset math, not code -- "=" and "\neq" inside a cases
-    // block's "\text{if }" row. Neither JS token may leak through.
-    latex: { eq: "x = 5", ne: "x \\neq 5", forbidEq: "==", forbidNe: "!=" },
-};
-
-// Same idea for the four operators every CODE target spells identically:
-// only targets whose spelling differs are listed.
-const SHARED_OP_SPELLING = {
-    latex: { ">": "x > 5", "<": "x < 5", ">=": "x \\geq 5", "<=": "x \\leq 5" },
-};
+// broke in. The original three real, shipped bugs were qb64 ("=" / "<>"),
+// fortran ("/=") and lua ("~="); R (every operator goes through isTRUE(),
+// since a comparison involving NaN is NA in R and `if (NA)` is an error;
+// "!=" is the negated "==" because NaN != x is true in JS but NA in R),
+// MATLAB ("~="), Scheme (prefix notation: "(=" and "(not (=" since R7RS
+// has no single not-equal procedure), COBOL (a dedicated FUNCTION-ID
+// helper per operator, ef-cmp-eq / ef-cmp-ne) and LaTeX (typeset "=" and
+// "\neq" inside a cases block; neither JS token may leak through) list
+// their spellings alongside.
+const SHARED_OP_SPELLING = Object.fromEntries(
+    Object.entries(emitters).map(([lang, e]) => [lang, (e.meta.cmp && e.meta.cmp.shared) || {}]),
+);
 
 function expectedFor(lang) {
-    return { eq: "==", ne: "!=", ...(EXPECTED[lang] || {}) };
+    return { eq: "==", ne: "!=", ...(emitters[lang].meta.cmp || {}) };
 }
 
 function makeFn(op) {
@@ -96,14 +78,14 @@ test("every registered emitter prints a real, valid comparison operator for == a
             `${lang}: "!=" should emit to include "${expected.ne}" -- got:\n${neSource}`,
         );
 
-        const forbidEq = (EXPECTED[lang] || {}).forbidEq;
+        const forbidEq = expected.forbidEq;
         if (forbidEq) {
             assert.ok(
                 !eqSource.includes(forbidEq),
                 `${lang}: "==" must NOT emit the naive JS/C token "${forbidEq}" -- got:\n${eqSource}`,
             );
         }
-        const forbidNe = (EXPECTED[lang] || {}).forbidNe;
+        const forbidNe = expected.forbidNe;
         if (forbidNe) {
             assert.ok(
                 !neSource.includes(forbidNe),
@@ -123,7 +105,7 @@ test("every registered emitter prints the four operators shared identically acro
     for (const op of [">", "<", ">=", "<="]) {
         for (const [lang, emitter] of Object.entries(emitters)) {
             const source = emitter.emitFunction(makeFn(op));
-            const spelled = SHARED_OP_SPELLING[lang]?.[op] ?? op;
+            const spelled = SHARED_OP_SPELLING[lang][op] ?? op;
             assert.ok(
                 source.includes(spelled),
                 `${lang}: "${op}" should appear as "${spelled}" in the emitted source -- got:\n${source}`,

@@ -72,8 +72,8 @@ git log --oneline origin/main..HEAD
 
 ExprForge is a cross-language math expression code generator. Author a
 pure-arithmetic formula once as an AST, emit identical-behavior implementations
-in 19 programming languages (executable targets) plus a native JS evaluator,
-LaTeX typeset output, and a printer for ExprForge's own syntax (21 output
+in <!-- exprforge:count:executable -->19<!-- /exprforge --> programming languages (executable targets) plus a native JS evaluator,
+LaTeX typeset output, and a printer for ExprForge's own syntax (<!-- exprforge:count:outputs -->21<!-- /exprforge --> output
 targets in total).
 
 ### Architecture layers
@@ -86,19 +86,38 @@ targets in total).
 ### Key files
 
 - `ast.js` -- AST node types and builder primitives
-- `primitives.js` -- fixed arity table for 22 built-in Math primitives
+- `primitives.js` -- fixed arity table for <!-- exprforge:count:primitives -->24<!-- /exprforge --> built-in Math primitives
 - `evaluate.js` -- native interpreter over the AST
 - `differentiate.js` -- symbolic differentiation (d/dx)
 - `analyze.js` -- opt-in interval/range analysis (`analyzeRanges`): output bounds and divide-by-zero warnings
 - `emitters/base.js` -- emitter base class with shared emitExpr pipeline
 - `emitters/registry.js` -- maps language names to emitter instances
+- `emitters/meta.js` -- helpers over each emitter's `meta` object (the field reference lives there)
+- `scripts/sync-docs.js` -- regenerates the marked doc regions from the registry (`npm run docs:sync`)
 - `macros.js` -- macro/extern expansion system
 - `math/index.js` -- pre-built 3D math compositions (dot3, len3, etc.)
 
 ### Adding a new language emitter
 
-1. Create `emitters/<lang>.js` exporting an Emitter instance
+1. Create `emitters/<lang>.js` exporting an Emitter instance with `emitter.meta`
+   set (display name, conformance label, toolchain probes and docs row,
+   division/comparison/guard expectations, native round/select/min-max
+   behavior -- field reference in `emitters/meta.js`)
 2. Add one line to `emitters/registry.js`
+3. Add `.github/workflows/test-<lang>.yml` (named by `meta.ci.workflow`)
+4. Add the language's conformance harness: `runX`/`runSuiteX` plus a
+   `registerRunner("<lang>", ...)` line next to them in
+   `test/conformance.test.js`, and a multi-function test in
+   `test/multi-function-files.test.js`
+5. Add `playground/src/tools/playground/languages/<lang>.ts` for syntax
+   highlighting and default visibility (optional; the target still appears
+   without it)
+6. Run `npm run docs:sync` and commit the regenerated docs
+
+Counts, ratio sentences, per-language lists, the README toolchain table, the
+README CI badges, the package.json description, the registry-wide tests
+(division, comparison operators, type guards) and the playground's language
+list all derive from the registry and `meta`; no central list needs editing.
 
 ### Testing
 
@@ -150,36 +169,59 @@ toolchain and skip (not fail) when a toolchain is absent.
 ### Docs-sync rule
 
 Any change to targets, primitives, node types, options, toolchain versions,
-numeric behavior or CI updates every doc that states it, in the same PR:
+numeric behavior or CI updates every doc that states it, in the same PR.
+Facts that derive from the registry are generated, not hand-maintained:
 
-- README sections and tables (including the supported-toolchain-versions
-  table, if present)
-- target counts and language lists
-- `package.json` description and keywords
+- `npm run docs:sync` (`scripts/sync-docs.js`) rewrites every region
+  delimited by exprforge comment markers (example below) in README.md,
+  CLAUDE.md and `docs/`, plus the `package.json` description. Keys are the
+  object returned by `docFacts()` in `emitters/meta.js`: target counts,
+  per-language lists, the ratio sentences (native round tie behavior, whether
+  `select` short-circuits), the supported-toolchain-versions table and the CI
+  badges.
+  ```
+  <!-- exprforge:count:executable -->N<!-- /exprforge -->
+  ```
+
+- `test/registry-meta.test.js` runs the generator in check mode, so stale
+  counts, lists or tables fail `npm test` (and CI) with the fix named.
+- To state a new derived number or list, add a key to `docFacts()` and put a
+  marker where it belongs; do not type the number.
+- Per-language expectations used by tests (division text, comparison
+  spellings, type-guard substrings, toolchain probes) live in each
+  `emitters/<lang>.js` `meta`, not in central test tables.
+
+What stays hand-written: prose, ADRs (use count-free wording such as "a
+majority of the executable targets"), the README sections for individual
+behaviors, and workflow contents. When a change touches one of those, update
+it in the same PR:
+
+- README sections that describe behavior
+- `package.json` keywords
 - `docs/` and ADRs
-- playground metadata and text
+- playground text
 - workflow comments
 - test comments
 
-Prefer count-free wording ("every registered target") where possible so docs
-don't go stale. Where a number is needed, use the convention: 19 programming
-languages (executable targets), LaTeX typeset output, ExprForge's own syntax
-printer, 21 output targets in total. Claims about identical computed behavior
-cover the executable targets (plus the evaluator), not LaTeX or `expr`.
+Prefer count-free wording ("every registered target") where possible. Where a
+number is needed, use a marker. The convention is: N programming languages
+(executable targets), LaTeX typeset output, ExprForge's own syntax printer,
+M output targets in total. Claims about identical computed behavior cover the
+executable targets (plus the evaluator), not LaTeX or `expr`.
 
 Checklist when adding a new target:
 
-- [ ] `emitters/registry.js` entry and `emitters/<lang>.js`
-- [ ] conformance and static tests (every operator/keyword value covered)
-- [ ] CI workflow (`.github/workflows/test-<lang>.yml`) plus README badge
-- [ ] README toolchain table
-- [ ] counts and language lists (README, CLAUDE.md, docs, comments)
-- [ ] playground `languageMeta` and syntax highlighting
-- [ ] `package.json` description
+- [ ] `emitters/<lang>.js` with `emitter.meta`, and its `emitters/registry.js` line
+- [ ] CI workflow `.github/workflows/test-<lang>.yml` (named by `meta.ci`)
+- [ ] conformance harness and multi-function test (every operator/keyword value covered)
+- [ ] `npm run docs:sync`
+- [ ] playground language file (highlighting, default visibility)
 
 ### Toolchain versions
 
 Adding a target, or raising the minimum toolchain version an emitter
-needs, requires updating the README table "Supported toolchain versions"
-and the matching `.github/workflows/test-<lang>.yml`. Keep Zig and
-GnuCOBOL pinned exactly; re-verification steps are in their workflows.
+needs, requires updating that emitter's `meta.toolchain.docs` (the row of
+the README table "Supported toolchain versions", regenerated by
+`npm run docs:sync`) and the matching `.github/workflows/test-<lang>.yml`.
+Keep Zig and GnuCOBOL pinned exactly; re-verification steps are in their
+workflows.

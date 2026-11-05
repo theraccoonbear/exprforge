@@ -436,57 +436,28 @@ function assertClose(actual, expected, msg) {
     );
 }
 
-function hasTool(cmd, args) {
-    try {
-        execFileSync(cmd, args, { stdio: "ignore" });
-        return true;
-    } catch {
-        return false;
-    }
+// Toolchain probes are declared per emitter (meta.toolchain.probes in
+// emitters/<lang>.js) and resolved once in test/toolchains.js. TOOLS is
+// keyed by registry language; bin() returns the resolved command name,
+// which is not consistent across distros (Guile ships as guile3.0 on
+// Fedora and guile-3.0 on Ubuntu).
+const { TOOLS, bin } = require("./toolchains.js");
+const { targets: registryTargets } = require("../emitters/meta.js");
+
+// Each language's run/runSuite harness is registered next to its own
+// implementation below with registerRunner(). The sample-by-target matrix
+// is then built from the registry's metadata, so adding a language needs
+// no central list here.
+const RUNNERS = {};
+function registerRunner(lang, run, runSuite) {
+    RUNNERS[lang] = { run, runSuite };
 }
 
-// Guile's binary name is NOT consistent across distros -- confirmed the
-// hard way (CI failure) that Ubuntu's guile-3.0 package installs
-// /usr/bin/guile-3.0 (hyphenated), while Fedora's installs /usr/bin/guile3.0
-// (no hyphen). Rather than hardcode one and break local dev on whichever
-// distro didn't get guessed, this resolves whichever candidate is actually
-// on PATH at runtime -- GUILE_BIN is that resolved command name (or null,
-// meaning skip), used everywhere below instead of a hardcoded string.
-function resolveTool(candidates, args) {
-    for (const cmd of candidates) {
-        if (hasTool(cmd, args)) return cmd;
-    }
-    return null;
+function runnerTargets(kind) {
+    return registryTargets()
+        .filter(({ meta }) => meta.kind === "executable" && meta.testTarget)
+        .map(({ lang, meta }) => [meta.testTarget, TOOLS[lang], RUNNERS[lang] && RUNNERS[lang][kind]]);
 }
-
-const GUILE_BIN = resolveTool(["guile3.0", "guile-3.0", "guile"], ["--version"]);
-
-const TOOLS = {
-    gcc: hasTool("gcc", ["--version"]),
-    go: hasTool("go", ["version"]),
-    rustc: hasTool("rustc", ["--version"]),
-    java: hasTool("javac", ["-version"]) && hasTool("java", ["-version"]),
-    // tsc is a system tool here exactly like gcc/go/rustc/javac -- looked
-    // up on PATH, never a project dependency. exprforge only ever
-    // generates .ts source text; it doesn't execute or type-check
-    // TypeScript itself, so there's nothing for the package to depend on.
-    // If tsc isn't installed wherever this runs, these tests just skip,
-    // same as Java does without a local JDK.
-    tsc: hasTool("tsc", ["--version"]),
-    qb64: hasTool("qb64pe", ["-v"]),
-    dotnet: hasTool("dotnet", ["--version"]),
-    python: hasTool("python3", ["--version"]),
-    lua: hasTool("lua", ["-v"]),
-    perl: hasTool("perl", ["-v"]),
-    php: hasTool("php", ["--version"]),
-    julia: hasTool("julia", ["--version"]),
-    rscript: hasTool("Rscript", ["--version"]),
-    octave: hasTool("octave-cli", ["--version"]),
-    gfortran: hasTool("gfortran", ["--version"]),
-    zig: hasTool("zig", ["version"]),
-    guile: GUILE_BIN !== null,
-    cobc: hasTool("cobc", ["--version"]),
-};
 
 // Optional CI-only filter: EXPRFORGE_TEST_TARGETS="Go" npm test runs only
 // the Go-labeled checks (plus the toolchain-independent JS/reference ones,
@@ -743,6 +714,7 @@ function runTS(ast, inputs) {
     fs.rmSync(dir, { recursive: true, force: true });
     return results;
 }
+registerRunner("ts", runTS, runTS);
 
 // --- QB64 --------------------------------------------------------------
 //
@@ -868,6 +840,7 @@ function runSuiteQB64(ast, inputs, outputNames) {
     fs.rmSync(dir, { recursive: true, force: true });
     return results;
 }
+registerRunner("qb64", runQB64, runSuiteQB64);
 
 // --- suite (multi-output) variants ----------------------------------------
 //
@@ -938,6 +911,7 @@ function runSuiteC(ast, inputs, outputNames) {
     fs.rmSync(dir, { recursive: true, force: true });
     return results;
 }
+registerRunner("c", runC, runSuiteC);
 
 function runSuiteGo(ast, inputs, outputNames) {
     const source = emitters.go.emitFunction(ast);
@@ -961,6 +935,7 @@ function runSuiteGo(ast, inputs, outputNames) {
     fs.rmSync(dir, { recursive: true, force: true });
     return results;
 }
+registerRunner("go", runGo, runSuiteGo);
 
 function runSuiteRust(ast, inputs, outputNames) {
     const source = emitters.rust.emitFunction(ast);
@@ -984,6 +959,7 @@ function runSuiteRust(ast, inputs, outputNames) {
     fs.rmSync(dir, { recursive: true, force: true });
     return results;
 }
+registerRunner("rust", runRust, runSuiteRust);
 
 function runSuiteJava(ast, inputs, outputNames) {
     const source = emitters.java.emitFunction(ast);
@@ -1010,6 +986,7 @@ function runSuiteJava(ast, inputs, outputNames) {
     fs.rmSync(dir, { recursive: true, force: true });
     return results;
 }
+registerRunner("java", runJava, runSuiteJava);
 
 // --- C# --------------------------------------------------------------
 //
@@ -1096,6 +1073,7 @@ function runSuiteCSharp(ast, inputs, outputNames) {
     fs.rmSync(dir, { recursive: true, force: true });
     return results;
 }
+registerRunner("csharp", runCSharp, runSuiteCSharp);
 
 // --- Python --------------------------------------------------------------
 //
@@ -1143,6 +1121,7 @@ function runSuitePython(ast, inputs, outputNames) {
     fs.rmSync(dir, { recursive: true, force: true });
     return results;
 }
+registerRunner("python", runPython, runSuitePython);
 
 // --- Lua -------------------------------------------------------------------
 //
@@ -1176,7 +1155,7 @@ function runLua(ast, inputs) {
     const harness = `${source}\n${parses}\nprint(string.format("%.17g", ${ast.name}(${callArgs})))\n`;
     const srcPath = path.join(dir, "main.lua");
     fs.writeFileSync(srcPath, harness);
-    const results = inputs.map((args) => parseNumericOutput(execFileSync("lua", [srcPath, ...args.map(String)]).toString().trim()));
+    const results = inputs.map((args) => parseNumericOutput(execFileSync(bin("lua"), [srcPath, ...args.map(String)]).toString().trim()));
     fs.rmSync(dir, { recursive: true, force: true });
     return results;
 }
@@ -1191,10 +1170,11 @@ function runSuiteLua(ast, inputs, outputNames) {
     const harness = `${source}\n${parses}\nlocal ${resultVars} = ${ast.name}(${callArgs})\n${prints}\n`;
     const srcPath = path.join(dir, "main.lua");
     fs.writeFileSync(srcPath, harness);
-    const results = inputs.map((args) => parseSuiteOutput(execFileSync("lua", [srcPath, ...args.map(String)]), outputNames));
+    const results = inputs.map((args) => parseSuiteOutput(execFileSync(bin("lua"), [srcPath, ...args.map(String)]), outputNames));
     fs.rmSync(dir, { recursive: true, force: true });
     return results;
 }
+registerRunner("lua", runLua, runSuiteLua);
 
 // --- Perl --------------------------------------------------------------
 //
@@ -1243,6 +1223,7 @@ function runSuitePerl(ast, inputs, outputNames) {
     fs.rmSync(dir, { recursive: true, force: true });
     return results;
 }
+registerRunner("perl", runPerl, runSuitePerl);
 
 // --- PHP -------------------------------------------------------------------
 //
@@ -1305,6 +1286,7 @@ function runSuitePhp(ast, inputs, outputNames) {
     fs.rmSync(dir, { recursive: true, force: true });
     return results;
 }
+registerRunner("php", runPhp, runSuitePhp);
 
 // --- Julia -------------------------------------------------------------------
 //
@@ -1355,6 +1337,7 @@ function runSuiteJulia(ast, inputs, outputNames) {
     fs.rmSync(dir, { recursive: true, force: true });
     return results;
 }
+registerRunner("julia", runJulia, runSuiteJulia);
 
 // --- R -----------------------------------------------------------------------
 //
@@ -1399,6 +1382,7 @@ function runSuiteR(ast, inputs, outputNames) {
     fs.rmSync(dir, { recursive: true, force: true });
     return results;
 }
+registerRunner("r", runR, runSuiteR);
 
 // --- MATLAB / Octave ---------------------------------------------------------
 //
@@ -1443,6 +1427,7 @@ function runSuiteOctave(ast, inputs, outputNames) {
     return runOctaveDriver(ast, inputs, outputNames).map((row) =>
         Object.fromEntries(outputNames.map((n, i) => [n, row[i]])));
 }
+registerRunner("matlab", runOctave, runSuiteOctave);
 
 // --- Scheme (Guile) --------------------------------------------------------
 //
@@ -1478,7 +1463,7 @@ function runScheme(ast, inputs) {
     const srcPath = path.join(dir, "main.scm");
     fs.writeFileSync(srcPath, harness);
     const results = inputs.map((args) =>
-        parseNumericOutput(execFileSync(GUILE_BIN, ["--no-auto-compile", srcPath, ...args.map(String)]).toString().trim()),
+        parseNumericOutput(execFileSync(bin("scheme"), ["--no-auto-compile", srcPath, ...args.map(String)]).toString().trim()),
     );
     fs.rmSync(dir, { recursive: true, force: true });
     return results;
@@ -1497,11 +1482,12 @@ function runSuiteScheme(ast, inputs, outputNames) {
     const srcPath = path.join(dir, "main.scm");
     fs.writeFileSync(srcPath, harness);
     const results = inputs.map((args) =>
-        parseSuiteOutput(execFileSync(GUILE_BIN, ["--no-auto-compile", srcPath, ...args.map(String)]), outputNames),
+        parseSuiteOutput(execFileSync(bin("scheme"), ["--no-auto-compile", srcPath, ...args.map(String)]), outputNames),
     );
     fs.rmSync(dir, { recursive: true, force: true });
     return results;
 }
+registerRunner("scheme", runScheme, runSuiteScheme);
 
 // --- Fortran -----------------------------------------------------------
 //
@@ -1631,6 +1617,7 @@ function runSuiteFortran(ast, inputs, outputNames) {
     fs.rmSync(dir, { recursive: true, force: true });
     return results;
 }
+registerRunner("fortran", runFortran, runSuiteFortran);
 
 // --- Zig -----------------------------------------------------------------
 //
@@ -1723,6 +1710,7 @@ function runSuiteZig(ast, inputs, outputNames) {
     fs.rmSync(dir, { recursive: true, force: true });
     return results;
 }
+registerRunner("zig", runZig, runSuiteZig);
 
 // --- COBOL (GnuCOBOL) -------------------------------------------------------
 //
@@ -1825,30 +1813,11 @@ function runSuiteCobol(ast, inputs, outputNames) {
     fs.rmSync(dir, { recursive: true, force: true });
     return results;
 }
+registerRunner("cobol", runCobol, runSuiteCobol);
 
 function registerSuiteConformance(sampleName, { ast, inputs, skipTargets = [] }) {
     const outputNames = suiteOutputNames(ast);
-    const targets = [
-        ["Interpreter", true, runEval],
-        ["C", TOOLS.gcc, runSuiteC],
-        ["Go", TOOLS.go, runSuiteGo],
-        ["Rust", TOOLS.rustc, runSuiteRust],
-        ["Java", TOOLS.java, runSuiteJava],
-        ["TypeScript", TOOLS.tsc, runTS],
-        ["QB64", TOOLS.qb64, runSuiteQB64],
-        ["C#", TOOLS.dotnet, runSuiteCSharp],
-        ["Python", TOOLS.python, runSuitePython],
-        ["Lua", TOOLS.lua, runSuiteLua],
-        ["Perl", TOOLS.perl, runSuitePerl],
-        ["PHP", TOOLS.php, runSuitePhp],
-        ["Julia", TOOLS.julia, runSuiteJulia],
-        ["R", TOOLS.rscript, runSuiteR],
-        ["Octave", TOOLS.octave, runSuiteOctave],
-        ["Fortran", TOOLS.gfortran, runSuiteFortran],
-        ["Zig", TOOLS.zig, runSuiteZig],
-        ["Scheme", TOOLS.guile, runSuiteScheme],
-        ["COBOL", TOOLS.cobc, runSuiteCobol],
-    ].filter(([label]) => !skipTargets.includes(label) && targetAllowed(label));
+    const targets = [["Interpreter", true, runEval], ...runnerTargets("runSuite")].filter(([label]) => !skipTargets.includes(label) && targetAllowed(label));
 
     for (const [label, available, run] of targets) {
         test(
@@ -1885,27 +1854,7 @@ function registerConformance(sampleName, { ast, reference, inputs, skipTargets =
         });
     }
 
-    const targets = [
-        ["Interpreter", true, runEval],
-        ["C", TOOLS.gcc, runC],
-        ["Go", TOOLS.go, runGo],
-        ["Rust", TOOLS.rustc, runRust],
-        ["Java", TOOLS.java, runJava],
-        ["TypeScript", TOOLS.tsc, runTS],
-        ["QB64", TOOLS.qb64, runQB64],
-        ["C#", TOOLS.dotnet, runCSharp],
-        ["Python", TOOLS.python, runPython],
-        ["Lua", TOOLS.lua, runLua],
-        ["Perl", TOOLS.perl, runPerl],
-        ["PHP", TOOLS.php, runPhp],
-        ["Julia", TOOLS.julia, runJulia],
-        ["R", TOOLS.rscript, runR],
-        ["Octave", TOOLS.octave, runOctave],
-        ["Fortran", TOOLS.gfortran, runFortran],
-        ["Zig", TOOLS.zig, runZig],
-        ["Scheme", TOOLS.guile, runScheme],
-        ["COBOL", TOOLS.cobc, runCobol],
-    ].filter(([label]) => !skipTargets.includes(label) && targetAllowed(label));
+    const targets = [["Interpreter", true, runEval], ...runnerTargets("run")].filter(([label]) => !skipTargets.includes(label) && targetAllowed(label));
 
     for (const [label, available, run] of targets) {
         test(
@@ -1923,6 +1872,20 @@ function registerConformance(sampleName, { ast, reference, inputs, skipTargets =
         );
     }
 }
+
+test("every executable target with a conformance label has registered run and runSuite harnesses", () => {
+    for (const { lang, meta } of registryTargets()) {
+        if (meta.kind !== "executable" || !meta.testTarget) continue;
+        assert.ok(
+            RUNNERS[lang] && typeof RUNNERS[lang].run === "function" && typeof RUNNERS[lang].runSuite === "function",
+            `${lang}: no registerRunner("${lang}", run, runSuite) in test/conformance.test.js`,
+        );
+        assert.ok(TOOLS[lang] !== undefined, `${lang}: meta.toolchain.probes is required for a target with a testTarget`);
+    }
+    for (const lang of Object.keys(RUNNERS)) {
+        assert.ok(registryTargets().some((t) => t.lang === lang), `runner registered for unknown target ${lang}`);
+    }
+});
 
 for (const [sampleName, sample] of Object.entries(SAMPLES)) {
     registerConformance(sampleName, sample);
@@ -2007,7 +1970,7 @@ registerSuiteConformance("comparisonOps", {
 // their own rules.
 test(
     "selectNoLeak: Octave select does not leak Inf/NaN from the untaken branch",
-    { skip: (!TOOLS.octave && "Octave toolchain not available") || (!targetAllowed("Octave") && "Octave filtered out") },
+    { skip: (!TOOLS.matlab && "Octave toolchain not available") || (!targetAllowed("Octave") && "Octave filtered out") },
     () => {
         const { v, num, cmp, select, call, bin } = require("../ast.js");
         const ast = {

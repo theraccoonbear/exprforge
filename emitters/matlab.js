@@ -201,4 +201,28 @@ const emitter = new Emitter({
     },
 });
 
+// Per-target facts that registry-wide docs and tests read; field reference
+// in emitters/meta.js.
+emitter.meta = {
+    displayName: "MATLAB/Octave",
+    kind: "executable",
+    testTarget: "Octave",
+    ci: { workflow: "test-octave.yml", badge: "Octave" },
+    toolchain: {
+        probes: [{ candidates: ["octave-cli"], args: ["--version"] }],
+        docs: {
+            minimum: "GNU Octave or MATLAB (the shared syntax subset; see \"MATLAB / Octave target\")",
+            tested: "Octave from Ubuntu 24.04 `octave` (`octave-cli`)",
+            notes: "CI exercises Octave only; MATLAB compatibility is by construction and not machine-verified.",
+        },
+    },
+    guards: "~isnumeric(arr)",
+    division: "(x / y)",
+    cmp: { eq: "==", ne: "~=", forbidNe: "!=" },
+    multiFile: "opt-out",
+    roundTies: "away",
+    selectShortCircuits: false,
+    minMaxNaN: "ignore",
+};
+
 module.exports = emitter;

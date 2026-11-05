@@ -231,4 +231,28 @@ const emitter = new Emitter({
     },
 });
 
+// Per-target facts that registry-wide docs and tests read; field reference
+// in emitters/meta.js.
+emitter.meta = {
+    displayName: "Fortran",
+    kind: "executable",
+    testTarget: "Fortran",
+    ci: { workflow: "test-fortran.yml", badge: "Fortran" },
+    toolchain: {
+        probes: [{ candidates: ["gfortran"], args: ["--version"] }],
+        docs: {
+            minimum: "Fortran 2008 (`HYPOT`, `MODULO`)",
+            tested: "gfortran 13.x (Ubuntu 24.04), `-O2`, default `-std`",
+            notes: "",
+        },
+    },
+    guards: null,
+    division: "(x / y)",
+    cmp: { eq: "==", ne: "/=", forbidNe: "!=" },
+    multiFile: "safe",
+    roundTies: "away",
+    selectShortCircuits: false,
+    minMaxNaN: "erratic",
+};
+
 module.exports = emitter;

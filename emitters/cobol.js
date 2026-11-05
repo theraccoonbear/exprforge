@@ -684,4 +684,30 @@ const emitter = new CobolEmitter({
     },
 });
 
+// Per-target facts that registry-wide docs and tests read; field reference
+// in emitters/meta.js.
+emitter.meta = {
+    displayName: "COBOL",
+    dialect: "GnuCOBOL",
+    kind: "executable",
+    testTarget: "COBOL",
+    ci: { workflow: "test-cobol.yml", badge: "COBOL" },
+    toolchain: {
+        probes: [{ candidates: ["cobc"], args: ["--version"] }],
+        docs: {
+            minimum: "GnuCOBOL 3.x",
+            tested: "`gnucobol3` (3.1.2)",
+            notes: "Not 4.x early-dev: confirmed `cob_decimal` codegen issue. To bump: run the full COBOL suite on the new series, re-check the skipped samples, update this table.",
+        },
+    },
+    guards: null,
+    arrayParams: false,
+    division: "(x / y)",
+    cmp: { eq: "ef-cmp-eq", ne: "ef-cmp-ne" },
+    multiFile: "opt-out",
+    roundTies: "away",
+    selectShortCircuits: false,
+    minMaxNaN: "erratic",
+};
+
 module.exports = emitter;

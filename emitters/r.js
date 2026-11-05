@@ -110,4 +110,28 @@ const emitter = new Emitter({
     },
 });
 
+// Per-target facts that registry-wide docs and tests read; field reference
+// in emitters/meta.js.
+emitter.meta = {
+    displayName: "R",
+    kind: "executable",
+    testTarget: "R",
+    ci: { workflow: "test-r.yml", badge: "R" },
+    toolchain: {
+        probes: [{ candidates: ["Rscript"], args: ["--version"] }],
+        docs: {
+            minimum: "base R (no packages)",
+            tested: "4.5.2 (exact, `r-lib/actions/setup-r`)",
+            notes: "",
+        },
+    },
+    guards: "!is.numeric(arr)",
+    division: "(x / y)",
+    cmp: { eq: "isTRUE(x == 5)", ne: "!isTRUE(x == 5)", forbidNe: "!=" },
+    multiFile: "safe",
+    roundTies: "even",
+    selectShortCircuits: true,
+    minMaxNaN: "propagate",
+};
+
 module.exports = emitter;

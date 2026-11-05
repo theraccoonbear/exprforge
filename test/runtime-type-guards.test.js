@@ -2,7 +2,7 @@
 //
 // Unit coverage for the opt-in addTypeGuards option (see
 // docs/runtime-type-guards.md) -- emit()/emitMany()'s 4th argument, and
-// each of the 9 dynamic-language emitters' `typeGuard` config. Static/
+// each dynamic-language emitter's `typeGuard` config. Static/
 // string-level checks here (does the right guard text show up, does it
 // stay absent by default, do targets with no typeGuard ignore the
 // option silently); real interpreter execution (does a wrong-type call
@@ -21,27 +21,20 @@ const emitters = require("../emitters/registry.js");
 
 // Every dynamic-language target this option applies to, and the
 // substring its guard is expected to contain for cyclicElem's "arr"
-// parameter -- see docs/runtime-type-guards.md's own table for why each
-// one checks what it checks (Perl's arrayref convention, Scheme's
-// vector-ref requirement, etc.).
-const DYNAMIC_TARGETS = {
-    js: "Array.isArray(arr)",
-    ts: "Array.isArray(arr)",
-    python: "isinstance(arr, list)",
-    php: "is_array($arr)",
-    lua: 'type(arr) ~= "table"',
-    perl: "ref($arr) eq 'ARRAY'",
-    julia: "arr isa AbstractVector",
-    r: "!is.numeric(arr)",
-    scheme: "(vector? arr)",
-    matlab: "~isnumeric(arr)",
-};
-
-// Every OTHER registered target -- addTypeGuards should be a silent
-// no-op for every one of these: the compiled ones already enforce this
-// at compile time, cobol doesn't support array params at all, and expr
-// (the source-text printer) has no typeGuard configured either way.
-const NO_GUARD_TARGETS = ["c", "java", "go", "rust", "csharp", "fortran", "zig", "qb64", "cobol", "expr", "latex"];
+// parameter, are declared next to each emitter as meta.guards -- see
+// docs/runtime-type-guards.md's own table for why each one checks what it
+// checks (Perl's arrayref convention, Scheme's vector-ref requirement,
+// etc.). Every OTHER registered target has meta.guards === null and
+// addTypeGuards should be a silent no-op for it: the compiled ones already
+// enforce this at compile time, cobol doesn't support array params at all
+// (meta.arrayParams === false), and expr (the source-text printer) has no
+// typeGuard configured either way.
+const DYNAMIC_TARGETS = Object.fromEntries(
+    Object.entries(emitters)
+        .filter(([, e]) => e.meta.guards !== null)
+        .map(([lang, e]) => [lang, e.meta.guards]),
+);
+const NO_GUARD_TARGETS = Object.keys(emitters).filter((lang) => emitters[lang].meta.guards === null);
 
 test("addTypeGuards defaults to false -- output is byte-for-byte unchanged when omitted", () => {
     for (const lang of Object.keys(DYNAMIC_TARGETS)) {
@@ -65,7 +58,7 @@ test("addTypeGuards: true adds the correct per-language guard for every dynamic 
 
 test("addTypeGuards: true is a silent no-op for every statically-typed target", () => {
     for (const lang of NO_GUARD_TARGETS) {
-        if (lang === "cobol") continue; // cobol throws for ANY array param, guards or not -- see docs/array-index-primitives.md
+        if (emitters[lang].meta.arrayParams === false) continue; // cobol throws for ANY array param, guards or not -- see docs/array-index-primitives.md
         const withoutOpts = emitters[lang].emitFunction(cyclicElemAst);
         const withOpts = emitters[lang].emitFunction(cyclicElemAst, undefined, { addTypeGuards: true });
         assert.strictEqual(withoutOpts, withOpts, `${lang}: addTypeGuards should have no effect`);
