@@ -6,6 +6,7 @@ const { fn } = require("./fn.js");
 const { evaluate } = require("./evaluate.js");
 const { differentiate } = require("./differentiate.js");
 const { analyzeRanges } = require("./analyze.js");
+const { findDuplicateSubexpressions } = require("./duplicates.js");
 const { loadMacro, loadExtern, expandMacros, createRegistry } = require("./macros.js");
 const { loadExpr, loadExprSource } = require("./load-expr.js");
 const emitters = require("./emitters/registry.js");
@@ -165,6 +166,10 @@ module.exports = {
     // through a function definition and flags divisions whose denominator
     // can be zero. See analyze.js.
     analyzeRanges,
+    // Advisory report of computations shared (up to variable renaming)
+    // across several definitions, with a proposed macro for each. Never
+    // rewrites anything. See duplicates.js.
+    findDuplicateSubexpressions,
     // Register a macro: a name usable inside fn`...`/expr`...` text
     // beyond the built-in primitives, inline-expanded at build time,
     // never emitted as a real call. See macros.js's own header comment.
