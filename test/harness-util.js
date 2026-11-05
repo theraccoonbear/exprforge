@@ -92,40 +92,52 @@ function readLockPid(lockPath) {
     }
 }
 
+// A holder that is gone is stale; so is a lock older than any real compile.
+// An empty/garbled file means the holder is between create and write (or
+// died there), so it gets a short grace period. A lock that disappears
+// while being examined was released, not stale.
 function lockIsStale(lockPath) {
-    return fs.existsSync(lockPath) && lockIsStaleFile(lockPath);
+    let st;
+    try {
+        st = fs.statSync(lockPath);
+    } catch {
+        return false;
+    }
+    const age = Date.now() - st.mtimeMs;
+    const pid = readLockPid(lockPath);
+    if (!Number.isInteger(pid)) return age > 2000;
+    return !pidAlive(pid) || age > LOCK_STALE_AGE_MS;
 }
 
-// Remove a stale lock without clobbering a fresh lock that another process
-// created between the staleness check and the removal: move it aside, check
-// it is still the file that was judged stale, and put it back if it is not.
+// Removing a stale lock must not delete a fresh lock that another process
+// created after the staleness check. Breakers are serialised by a second
+// exclusive-create file, and staleness is re-checked while holding it:
+// acquirers only create the lock when it is absent and a live holder only
+// removes its own, so under the breaker lock the file judged stale cannot be
+// replaced before it is removed. A breaker that cannot get the breaker lock
+// simply keeps waiting; a breaker lock abandoned by a crash is discarded
+// after a short while.
 function breakStaleLock(lockPath) {
-    const aside = `${lockPath}.stale.${process.pid}`;
+    const breaker = `${lockPath}.breaker`;
+    let fd;
     try {
-        fs.renameSync(lockPath, aside);
-    } catch {
+        fd = fs.openSync(breaker, "wx");
+    } catch (e) {
+        if (e.code === "EEXIST") {
+            sleepSync(5);
+            try {
+                if (Date.now() - fs.statSync(breaker).mtimeMs > 30000) fs.rmSync(breaker, { force: true });
+            } catch {
+                // already gone
+            }
+        }
         return;
     }
-    if (!lockIsStaleFile(aside)) {
-        try {
-            fs.linkSync(aside, lockPath);
-        } catch {
-            // someone else already took the lock; theirs wins
-        }
-    }
-    fs.rmSync(aside, { force: true });
-}
-
-// A holder that is gone is stale; so is a lock older than any real compile.
-// An empty/garbled file means the holder died (or is mid-write) between
-// create and write, so it gets a short grace period.
-function lockIsStaleFile(file) {
-    const pid = readLockPid(file);
-    if (Number.isInteger(pid) && !pidAlive(pid)) return true;
     try {
-        return Date.now() - fs.statSync(file).mtimeMs > (Number.isInteger(pid) ? LOCK_STALE_AGE_MS : 2000);
-    } catch {
-        return true;
+        fs.closeSync(fd);
+        if (lockIsStale(lockPath)) fs.rmSync(lockPath, { force: true });
+    } finally {
+        fs.rmSync(breaker, { force: true });
     }
 }
 
@@ -206,7 +218,14 @@ function qb64LockPath() {
 // binaries, spurious C++ errors). Only the compile is serialised; running
 // the produced binaries stays parallel.
 function compileQb64(srcPath, outPath) {
-    return withFileLock(qb64LockPath(), () => execFileSync("qb64pe", ["-x", srcPath, "-o", outPath]));
+    return withFileLock(qb64LockPath(), () => {
+        try {
+            return execFileSync("qb64pe", ["-x", srcPath, "-o", outPath], { stdio: ["ignore", "pipe", "pipe"] });
+        } catch (e) {
+            // qb64pe reports compile errors on stdout; surface them.
+            throw new Error(`${e.message}\n${e.stdout || ""}${e.stderr || ""}`);
+        }
+    });
 }
 
 module.exports = {
