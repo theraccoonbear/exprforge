@@ -24,6 +24,7 @@ const fs = require("node:fs");
 const { DOTNET_TFM } = require("./dotnet-tfm.js");
 const os = require("node:os");
 const path = require("node:path");
+const { tmpDir, hasQb64, compileQb64, runQb64, QB64_ERROR_PROLOGUE, QB64_ERROR_HANDLER } = require("./harness-util.js");
 
 const {
     num,
@@ -473,7 +474,7 @@ const TOOLS = {
     // If tsc isn't installed wherever this runs, these tests just skip,
     // same as Java does without a local JDK.
     tsc: hasTool("tsc", ["--version"]),
-    qb64: hasTool("qb64pe", ["-v"]),
+    qb64: hasQb64(),
     dotnet: hasTool("dotnet", ["--version"]),
     python: hasTool("python3", ["--version"]),
     lua: hasTool("lua", ["-v"]),
@@ -503,10 +504,6 @@ const TARGET_FILTER = process.env.EXPRFORGE_TEST_TARGETS
 
 function targetAllowed(label) {
     return !TARGET_FILTER || TARGET_FILTER.has(label);
-}
-
-function tmpDir(prefix) {
-    return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
 }
 
 // The emitted JS implementation, loaded in-process, is the baseline every
@@ -826,12 +823,12 @@ function runQB64(ast, inputs) {
     // this call site never hit the empty case before.
     const callExpr = callArgs ? `${ast.name}#(${callArgs})` : `${ast.name}#`;
     const harness =
-        `$CONSOLE:ONLY\n${source}\n${argReads}\nPRINT ${callExpr}\nSYSTEM\n`;
+        `$CONSOLE:ONLY\n${source}\n${QB64_ERROR_PROLOGUE}${argReads}\nPRINT ${callExpr}\nSYSTEM\n${QB64_ERROR_HANDLER}`;
     const srcPath = path.join(dir, "main.bas");
     fs.writeFileSync(srcPath, harness);
     const bin = path.join(dir, "bin");
-    execFileSync("qb64pe", ["-x", srcPath, "-o", bin]);
-    const results = inputs.map((args) => qb64ToNumber(execFileSync(bin, args.map(String)).toString().trim()));
+    compileQb64(srcPath, bin);
+    const results = inputs.map((args) => qb64ToNumber(runQb64(bin, args.map(String)).toString().trim()));
     fs.rmSync(dir, { recursive: true, force: true });
     return results;
 }
@@ -851,14 +848,14 @@ function runSuiteQB64(ast, inputs, outputNames) {
     // stays correct if one ever does.
     const allCallArgs = [callArgs, outputNames.join(", ")].filter(Boolean).join(", ");
     const harness =
-        `$CONSOLE:ONLY\n${source}\n${argReads}\n${outDecl}\n` +
-        `CALL ${ast.name}(${allCallArgs})\n${prints}\nSYSTEM\n`;
+        `$CONSOLE:ONLY\n${source}\n${QB64_ERROR_PROLOGUE}${argReads}\n${outDecl}\n` +
+        `CALL ${ast.name}(${allCallArgs})\n${prints}\nSYSTEM\n${QB64_ERROR_HANDLER}`;
     const srcPath = path.join(dir, "main.bas");
     fs.writeFileSync(srcPath, harness);
     const bin = path.join(dir, "bin");
-    execFileSync("qb64pe", ["-x", srcPath, "-o", bin]);
+    compileQb64(srcPath, bin);
     const results = inputs.map((args) => {
-        const lines = execFileSync(bin, args.map(String)).toString().trim().split("\n");
+        const lines = runQb64(bin, args.map(String)).toString().trim().split("\n");
         const record = {};
         outputNames.forEach((name, i) => {
             record[name] = qb64ToNumber(lines[i]);
