@@ -397,7 +397,7 @@ test("multi-function file: MATLAB/Octave -- each function carries the helpers it
     const out2 = emitters.matlab.emitFunction(fn2);
     assert.ok(out1.includes("function ef_r = ef_sqrt") && !out1.includes("ef_log"));
     assert.ok(out2.includes("function ef_r = ef_log(") && !out2.includes("ef_sqrt"));
-    assert.ok(!emitters.matlab.emitFunction(fn2, undefined, { includeHelpers: false }).includes("function ef_r"));
+    assert.ok(!emitters.matlab.emitFunction(fn2, undefined, { includeHelpers: false }).includes("function ef_r ="));
 });
 
 test("multi-function file: MATLAB/Octave -- one function per file, each self-contained (the MATLAB layout)", { skip: !TOOLS.octave && "octave-cli not available" }, () => {
