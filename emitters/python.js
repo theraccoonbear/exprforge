@@ -58,7 +58,7 @@ const EF_HELPERS = [
     `def _ef_wrap_index(i, m): return i % m if m != 0 else math.nan`,
 ].join("\n") + "\n";
 
-const HELPER_BLOCK = DIV_HELPER + EF_HELPERS;
+const HELPER_BLOCK = DIV_HELPER + "\n\n" + EF_HELPERS;
 
 const emitter = new Emitter({
     ext: "py",
