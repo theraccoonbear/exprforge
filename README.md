@@ -593,6 +593,57 @@ Try it interactively in the [live playground](https://theraccoonbear.github.io/e
 Differentiation tab — enter a formula, see the derivative and a numeric
 spot-check side by side.
 
+## Finding duplicate computation (`findDuplicateSubexpressions`)
+
+```js
+const { loadExprSource, findDuplicateSubexpressions, emit } = require("exprforge");
+
+const defs = loadExprSource(`
+    fn crossX(ay, az, by, bz):
+    return ay * bz - az * by;
+
+    fn other(qy, qz, ry, rz):
+    return (qy * rz - qz * ry) * 2;
+`);
+
+for (const c of findDuplicateSubexpressions(defs)) {
+    console.log(c.name, c.occurrences.map((o) => `${o.definition}(${o.args})`));
+    console.log(emit(c.macro, "expr").source); // a proposed macro to review
+}
+```
+
+`findDuplicateSubexpressions(defs, { minSize = 5 })` takes an array of
+`{ name, params, body }` definitions, or the object `loadExprSource()`/
+`loadExpr()` returns, and reports computations that appear, up to variable
+renaming, in two or more of them. Each free variable is replaced by a
+positional placeholder in first-appearance order (let-bound names by
+nesting depth), so `ay*bz - az*by` and `qy*rz - qz*ry` match while `x*x`
+and `x*y` do not.
+
+- **Advisory only.** It returns a report and never rewrites a definition,
+  reads a file, or runs implicitly during loading or emitting. Acting on a
+  candidate is a manual step.
+- **Each candidate** has `name` (a hash-derived placeholder such as
+  `shared_0f330956`; a tool cannot know what the shape means, so rename
+  it), `size` (node count), `macro` (a proposed `{ name, params, body }`
+  with params `p0`, `p1`, ..., usable with `loadMacro()` or printable with
+  `emit(macro, "expr")`), and `occurrences` (`{ definition, node, args }`,
+  where `args` lists the variables the occurrence passes, in `macro.params`
+  order).
+- **Maximal matches only**: a piece of a larger reported match is not
+  reported separately. Matches must span at least two definitions; a repeat
+  within one definition is a missing `let`, a separate question.
+- **`minSize`** (node count, default 5) keeps trivial matches such as
+  `a + b` out of the report.
+- **Runs on the reduced form.** `loadExprSource()` inlines macros, so a
+  computation that was shared in the source appears as one copy per
+  definition that used it and is detected again, which suits checking
+  whether a file is as factored as it could be.
+
+Verified by running the proposed macro against every occurrence (see
+`test/duplicates.test.js`). No emitter is involved, so no per-target
+behavior applies.
+
 ## Math utilities (`exprforge/math`)
 
 A separate, additive export — `require("exprforge")` is unchanged — of
