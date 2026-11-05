@@ -20,12 +20,13 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const { evaluate, emit, loadExpr, loadExprSource } = require("../index.js");
+const { tmpDir: makeTmpDir } = require("./harness-util.js");
 // Registers exprforge/math's macros (dot3/len3/cross3/normalize3/
 // safeDiv) globally -- exercised below to confirm a .expr file can
 // reference them too, not just earlier definitions in the same file.
 require("../math/index.js");
 
-const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "exprforge-load-expr-"));
+const tmpDir = makeTmpDir("exprforge-load-expr-");
 
 function writeExpr(name, contents) {
     const filePath = path.join(tmpDir, name);

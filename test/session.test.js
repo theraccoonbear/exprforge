@@ -20,6 +20,7 @@ const path = require("node:path");
 const { v, num, call } = require("../ast.js");
 const { fn } = require("../fn.js");
 const { createSession, loadMacro, evaluate: globalEvaluate, emit: globalEmit } = require("../index.js");
+const { tmpDir: makeTmpDir } = require("./harness-util.js");
 
 let n = 0;
 function uniqueName(base) {
@@ -133,7 +134,7 @@ test("session.loadMacro accepts an AST fn-def (fn`...`), same as the global load
 
 // --- session.loadExpr/loadExprSource resolve against the session too ----
 
-const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "exprforge-session-"));
+const tmpDir = makeTmpDir("exprforge-session-");
 function writeExpr(name, contents) {
     const filePath = path.join(tmpDir, name);
     fs.writeFileSync(filePath, contents);

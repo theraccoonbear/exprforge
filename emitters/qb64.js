@@ -58,11 +58,10 @@ function checkReservedNames(names) {
 // might treat a literal 0/0 differently (this project doesn't rely on
 // that at all, for exactly this reason).
 //
-// Always emitted, unconditionally, regardless of whether this
-// particular function actually uses sqrt/log/pow/asin/acos -- same
-// "every helper always present" convention emitters/cobol.js's own
-// ef-cmp-* helpers already established for this project.
-const SAFE_MATH_HELPERS =
+// Only the helpers a function actually calls are emitted (see
+// Emitter.usedHelpers in base.js), each one a separate entry here.
+const SAFE_MATH_HELPERS = {
+    ef_safe_sqr:
     `FUNCTION ef_safe_sqr# (x AS DOUBLE)\n` +
     `    DIM ef_zero AS DOUBLE\n` +
     `    IF x < 0# THEN\n` +
@@ -71,7 +70,8 @@ const SAFE_MATH_HELPERS =
     `    ELSE\n` +
     `        ef_safe_sqr# = SQR(x)\n` +
     `    END IF\n` +
-    `END FUNCTION\n\n` +
+    `END FUNCTION\n`,
+    ef_safe_log:
     `FUNCTION ef_safe_log# (x AS DOUBLE)\n` +
     `    DIM ef_zero AS DOUBLE\n` +
     `    IF x < 0# THEN\n` +
@@ -83,7 +83,8 @@ const SAFE_MATH_HELPERS =
     `    ELSE\n` +
     `        ef_safe_log# = LOG(x)\n` +
     `    END IF\n` +
-    `END FUNCTION\n\n` +
+    `END FUNCTION\n`,
+    ef_safe_pow:
     `FUNCTION ef_safe_pow# (ef_base AS DOUBLE, ef_expo AS DOUBLE)\n` +
     `    DIM ef_zero AS DOUBLE\n` +
     `    IF ef_base < 0# AND ef_expo <> INT(ef_expo) THEN\n` +
@@ -92,20 +93,8 @@ const SAFE_MATH_HELPERS =
     `    ELSE\n` +
     `        ef_safe_pow# = ef_base ^ ef_expo\n` +
     `    END IF\n` +
-    `END FUNCTION\n\n` +
-    // _MIN/_MAX don't crash, but confirmed directly to be NaN-IGNORING
-    // in a POSITION-DEPENDENT way, not a clean "always ignore" rule:
-    // _MIN(nan,5#) returns NaN (first operand wins) while _MIN(5#,nan)
-    // returns 5 -- same landmine class as Python's/Lua's builtins.
-    // JS/Go/Java/C#/Julia/Scheme/Fortran instead propagate NaN through
-    // min/max the way this project now standardizes on -- see
-    // docs/adr/0003-min-max-nan-propagation.md. "a <> a" is the
-    // self-inequality NaN test (an IEEE NaN never compares equal to
-    // itself, and this project already confirmed QB64's own <>/=
-    // translate correctly -- see emitSelect below), and the real
-    // IF/THEN/ELSE *statement* genuinely short-circuits (see this
-    // const's own header comment above) so there's no risk of _MIN/
-    // _MAX itself ever running against a NaN it can't handle.
+    `END FUNCTION\n`,
+    ef_safe_floor:
     `FUNCTION ef_safe_floor# (x AS DOUBLE)\n` +
     `    IF x <> x THEN\n` +
     `        ef_safe_floor# = x\n` +
@@ -114,14 +103,16 @@ const SAFE_MATH_HELPERS =
     `    ELSE\n` +
     `        ef_safe_floor# = INT(x)\n` +
     `    END IF\n` +
-    `END FUNCTION\n\n` +
+    `END FUNCTION\n`,
+    ef_safe_trunc:
     `FUNCTION ef_safe_trunc# (x AS DOUBLE)\n` +
     `    IF x < 0# THEN\n` +
     `        ef_safe_trunc# = -ef_safe_floor#(-x)\n` +
     `    ELSE\n` +
     `        ef_safe_trunc# = ef_safe_floor#(x)\n` +
     `    END IF\n` +
-    `END FUNCTION\n\n` +
+    `END FUNCTION\n`,
+    ef_safe_round:
     `FUNCTION ef_safe_round# (x AS DOUBLE)\n` +
     `    DIM ef_m AS DOUBLE, ef_f AS DOUBLE\n` +
     `    IF x <> x THEN\n` +
@@ -142,7 +133,8 @@ const SAFE_MATH_HELPERS =
     `            ef_safe_round# = ef_f\n` +
     `        END IF\n` +
     `    END IF\n` +
-    `END FUNCTION\n\n` +
+    `END FUNCTION\n`,
+    ef_safe_sgn:
     `FUNCTION ef_safe_sgn# (x AS DOUBLE)\n` +
     `    IF x <> x THEN\n` +
     `        ef_safe_sgn# = x\n` +
@@ -151,7 +143,8 @@ const SAFE_MATH_HELPERS =
     `    ELSE\n` +
     `        ef_safe_sgn# = SGN(x)\n` +
     `    END IF\n` +
-    `END FUNCTION\n\n` +
+    `END FUNCTION\n`,
+    ef_safe_exp:
     `FUNCTION ef_safe_exp# (x AS DOUBLE)\n` +
     `    DIM ef_zero AS DOUBLE\n` +
     `    IF x <> x THEN\n` +
@@ -162,7 +155,8 @@ const SAFE_MATH_HELPERS =
     `    ELSE\n` +
     `        ef_safe_exp# = EXP(x)\n` +
     `    END IF\n` +
-    `END FUNCTION\n\n` +
+    `END FUNCTION\n`,
+    ef_safe_hypot:
     `FUNCTION ef_safe_hypot# (ef_a AS DOUBLE, ef_b AS DOUBLE)\n` +
     `    DIM ef_zero AS DOUBLE, ef_hi AS DOUBLE, ef_lo AS DOUBLE, ef_s AS DOUBLE, ef_r AS DOUBLE\n` +
     `    ef_zero = 0#\n` +
@@ -184,7 +178,21 @@ const SAFE_MATH_HELPERS =
     `            ef_safe_hypot# = ef_hi * SQR(1# + ef_r * ef_r)\n` +
     `        END IF\n` +
     `    END IF\n` +
-    `END FUNCTION\n\n` +
+    `END FUNCTION\n`,
+    // _MIN/_MAX don't crash, but confirmed directly to be NaN-IGNORING
+    // in a POSITION-DEPENDENT way, not a clean "always ignore" rule:
+    // _MIN(nan,5#) returns NaN (first operand wins) while _MIN(5#,nan)
+    // returns 5 -- same landmine class as Python's/Lua's builtins.
+    // JS/Go/Java/C#/Julia/Scheme/Fortran instead propagate NaN through
+    // min/max the way this project now standardizes on -- see
+    // docs/adr/0003-min-max-nan-propagation.md. "a <> a" is the
+    // self-inequality NaN test (an IEEE NaN never compares equal to
+    // itself, and this project already confirmed QB64's own <>/=
+    // translate correctly -- see emitSelect below), and the real
+    // IF/THEN/ELSE *statement* genuinely short-circuits (see this
+    // const's own header comment above) so there's no risk of _MIN/
+    // _MAX itself ever running against a NaN it can't handle.
+    ef_safe_min:
     `FUNCTION ef_safe_min# (ef_a AS DOUBLE, ef_b AS DOUBLE)\n` +
     `    DIM ef_zero AS DOUBLE\n` +
     `    IF ef_a <> ef_a OR ef_b <> ef_b THEN\n` +
@@ -193,7 +201,8 @@ const SAFE_MATH_HELPERS =
     `    ELSE\n` +
     `        ef_safe_min# = _MIN(ef_a, ef_b)\n` +
     `    END IF\n` +
-    `END FUNCTION\n\n` +
+    `END FUNCTION\n`,
+    ef_safe_max:
     `FUNCTION ef_safe_max# (ef_a AS DOUBLE, ef_b AS DOUBLE)\n` +
     `    DIM ef_zero AS DOUBLE\n` +
     `    IF ef_a <> ef_a OR ef_b <> ef_b THEN\n` +
@@ -202,10 +211,21 @@ const SAFE_MATH_HELPERS =
     `    ELSE\n` +
     `        ef_safe_max# = _MAX(ef_a, ef_b)\n` +
     `    END IF\n` +
-    `END FUNCTION\n\n`;
+    `END FUNCTION\n`,
+};
+
+function helperBlock(used) {
+    return used.map((h) => h.source + "\n").join("");
+}
 
 const emitter = new Emitter({
     ext: "bas",
+    helpers: Object.fromEntries(
+        Object.entries(SAFE_MATH_HELPERS).map(([name, source]) => [
+            name,
+            { source, deps: name === "ef_safe_trunc" ? ["ef_safe_floor"] : [] },
+        ]),
+    ),
     // JS renders very small/large magnitudes in exponential notation
     // (String(1e-9) === "1e-9"), and QB64 doesn't accept that combined
     // with a # suffix ("Invalid expression", confirmed against a real
@@ -305,7 +325,6 @@ const emitter = new Emitter({
         // definitions N times -- QB64 rejects that as a duplicate
         // definition at compile time (confirmed directly). See
         // docs/multi-function-files.md.
-        const helpers = opts.includeHelpers === false ? "" : SAFE_MATH_HELPERS;
         // Array param: bare `()` -- QB64's dynamic-array-parameter syntax,
         // passed by reference, matching what spline_path.bi already does
         // by hand (`seaWps() As E3D_Coord`). Deliberately NOT reading
@@ -329,12 +348,13 @@ const emitter = new Emitter({
             .map(({ name, valueStr }) => `    Dim ${name} AS DOUBLE : ${name} = ${valueStr}`)
             .join("\n");
         const letsBlock = lets ? lets + "\n" : "";
-        return `' AUTO-GENERATED by ExprForge -- do not hand-edit.\n` +
-               helpers +
-               `FUNCTION ${fn.name}# (${params})\n` +
+        const code = `FUNCTION ${fn.name}# (${params})\n` +
                letsBlock +
                `    ${fn.name}# = ${body}\n` +
                `END FUNCTION\n`;
+        return `' AUTO-GENERATED by ExprForge -- do not hand-edit.\n` +
+               helperBlock(emitter.usedHelpers(code, opts)) +
+               code;
     },
     // Multiple named outputs from one call: QB64 has no struct/tuple return,
     // so this emits a SUB instead of a FUNCTION, with the outputs as
@@ -344,8 +364,6 @@ const emitter = new Emitter({
     formatSuite: (fn, outputStrs, letBindings = [], guardLines = [], opts = {}) => {
         const outputNames = Object.keys(outputStrs);
         checkReservedNames([fn.name, ...fn.params, ...outputNames, ...letBindings.map((b) => b.name)]);
-        // See formatFunction's own comment above -- same opts.includeHelpers.
-        const helpers = opts.includeHelpers === false ? "" : SAFE_MATH_HELPERS;
         const inParams = fn.params.map((p) => `${p}${fn.paramTypes?.[p] === "number[]" ? "()" : ""} AS DOUBLE`);
         const outParams = outputNames.map((n) => `${n} AS DOUBLE`);
         // NOT `Dim name# AS DOUBLE`: combining the # sigil with an AS
@@ -359,12 +377,13 @@ const emitter = new Emitter({
             .join("\n");
         const letsBlock = lets ? lets + "\n" : "";
         const assigns = outputNames.map((n) => `    ${n} = ${outputStrs[n]}`).join("\n");
-        return `' AUTO-GENERATED by ExprForge -- do not hand-edit.\n` +
-               helpers +
-               `SUB ${fn.name} (${[...inParams, ...outParams].join(", ")})\n` +
+        const code = `SUB ${fn.name} (${[...inParams, ...outParams].join(", ")})\n` +
                letsBlock +
                `${assigns}\n` +
                `END SUB\n`;
+        return `' AUTO-GENERATED by ExprForge -- do not hand-edit.\n` +
+               helperBlock(emitter.usedHelpers(code, opts)) +
+               code;
     },
 });
 

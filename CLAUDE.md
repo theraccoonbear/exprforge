@@ -72,8 +72,8 @@ git log --oneline origin/main..HEAD
 
 ExprForge is a cross-language math expression code generator. Author a
 pure-arithmetic formula once as an AST, emit identical-behavior implementations
-in 19 programming languages (executable targets) plus a native JS evaluator,
-LaTeX typeset output, and a printer for ExprForge's own syntax (21 output
+in 20 programming languages (executable targets) plus a native JS evaluator,
+LaTeX typeset output, and a printer for ExprForge's own syntax (22 output
 targets in total).
 
 ### Architecture layers
@@ -107,6 +107,14 @@ npm test                    # run all tests (skips missing toolchains)
 npm run test:coverage       # with coverage
 ```
 
+Several `npm test` runs may execute at once. Scratch directories come from
+`tmpDir()` in `test/harness-util.js` (unique `fs.mkdtemp` dirs, removed at
+exit; `EXPRFORGE_KEEP_TMP=1` keeps the leftovers of failed cases), and the
+qb64pe compile step goes through `compileQb64()`, which holds a cross-process
+lock because qb64pe compiles inside its shared install directory. New
+harness code must use these helpers rather than `mkdtempSync` or a direct
+`qb64pe` call.
+
 Tests use Node's built-in test runner (`node:test` + `node:assert`).
 Conformance tests compile/interpret emitted code against every available
 toolchain and skip (not fail) when a toolchain is absent.
@@ -129,6 +137,11 @@ toolchain and skip (not fail) when a toolchain is absent.
   something yet, throw a clear "not supported for this target" error at
   generation time (same pattern `formatSuite` already uses) and treat it as
   tracked follow-up work, not settled scope.
+- **New user-facing functionality (an analysis, option, target or API) is
+  demonstrated in the playground as part of the same work, or a follow-up
+  issue is filed right away.** The playground is how people discover a
+  feature exists; a capability that ships without a tab or control there
+  stays invisible to most users.
 - **Any feature with more than one discrete operator/keyword value
   (comparison operators today; the next one won't be the last) needs real
   compiled/executed conformance coverage for EVERY value, not just one
@@ -162,9 +175,9 @@ numeric behavior or CI updates every doc that states it, in the same PR:
 - test comments
 
 Prefer count-free wording ("every registered target") where possible so docs
-don't go stale. Where a number is needed, use the convention: 19 programming
+don't go stale. Where a number is needed, use the convention: 20 programming
 languages (executable targets), LaTeX typeset output, ExprForge's own syntax
-printer, 21 output targets in total. Claims about identical computed behavior
+printer, 22 output targets in total. Claims about identical computed behavior
 cover the executable targets (plus the evaluator), not LaTeX or `expr`.
 
 Checklist when adding a new target:

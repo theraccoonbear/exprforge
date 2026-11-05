@@ -11,14 +11,15 @@
 // for each, not assumed):
 //
 //   - half-up (ties toward +Infinity): JS, TypeScript, Java, Lua
-//   - half away from zero: C, Rust, Go, Perl, Zig, Fortran, COBOL, Julia
-//   - half to even ("banker's rounding"): Python, Scheme, QB64, C#
+//   - half away from zero: C, Rust, Go, Perl, Ruby, Zig, Fortran, COBOL,
+//     Julia, PHP, MATLAB/Octave
+//   - half to even ("banker's rounding"): Python, Scheme, QB64, C#, R
 //
 // Initially documented and demonstrated as a deliberate, permanent
 // divergence (matching this project's precedent for QB64's select()
 // div-by-zero behavior). Revisited: unlike that precedent, this one had
 // a real, sound, already-majority convention to converge on instead of
-// just living with -- away-from-zero is what 10 of the 18 programming-language
+// just living with -- away-from-zero is what 11 of the 20 programming-language
 // targets already did NATIVELY, and Julia's own emitter already
 // made a deliberate, precedent-setting choice to match it
 // (RoundNearestTiesAway, not Julia's own ties-to-even default) before

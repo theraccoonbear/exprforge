@@ -138,4 +138,13 @@ declare module "exprforge" {
         selects: RangeSelect[];
     }
     export function analyzeRanges(def: FnDef, ranges?: Record<string, [number, number]>): RangeAnalysis;
+    // Duplicate-subexpression detection: see duplicates.js. Advisory only.
+    export interface DuplicateOccurrence { definition: string; node: Node; args: string[] }
+    export interface DuplicateCandidate {
+        name: string;
+        size: number;
+        macro: { name: string; params: string[]; body: Node };
+        occurrences: DuplicateOccurrence[];
+    }
+    export function findDuplicateSubexpressions(defs: FnDef[] | Record<string, FnDef>, opts?: { minSize?: number }): DuplicateCandidate[];
 }

@@ -5,7 +5,19 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+    paths:
+      - "**"
+      - "!**/*.md"
+      - "!docs/**"
+      - "!playground/**"
+      - "!vscode-extension/**"
+      - "!.github/**"
+      - ".github/workflows/test-qb64.yml"
   workflow_dispatch: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 env:
   # Exact release tag; bump deliberately (re-run the suite on the new tag).
@@ -47,11 +59,15 @@ jobs:
           path: qb64pe-bin
           key: qb64pe-${{ steps.qb64pe_release.outputs.version }}-${{ runner.os }}
 
+      # Runs on every job, not only on a cache miss: the cached build needs
+      # the same shared libraries (libGLU, ...) at run time. Skipping this on
+      # a cache hit left qb64pe unable to start, which the old
+      # `qb64pe -v` detection reported as "toolchain not available", so the
+      # whole QB64 suite was skipped while the job stayed green.
       - name: Install QB64-PE build dependencies
-        if: steps.cache_qb64pe.outputs.cache-hit != 'true'
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y libgl1-mesa-dev libglu1-mesa-dev libasound2-dev libx11-dev libxext-dev libpng-dev xvfb libcurl4-openssl-dev
+          sudo apt-get install -y libgl1-mesa-dev libglu1-mesa-dev libasound2-dev libx11-dev libxext-dev libxrandr-dev libpng-dev xvfb libcurl4-openssl-dev
 
       - name: Build QB64-PE
         if: steps.cache_qb64pe.outputs.cache-hit != 'true'
