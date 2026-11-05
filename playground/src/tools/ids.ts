@@ -13,3 +13,4 @@
 // App.tsx matches against TOOLS can never drift apart.
 export const PLAYGROUND_TOOL_ID = "playground";
 export const DIFFERENTIATOR_TOOL_ID = "differentiator";
+export const DUPLICATES_TOOL_ID = "duplicates";

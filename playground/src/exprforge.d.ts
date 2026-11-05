@@ -120,4 +120,13 @@ declare module "exprforge" {
     // ordinary AST emittable to all targets via emit()/emitMany() and
     // evaluable via evaluate(), unchanged.
     export function differentiate(node: Node, varName: string): Node;
+    // Duplicate-subexpression detection: see duplicates.js. Advisory only.
+    export interface DuplicateOccurrence { definition: string; node: Node; args: string[] }
+    export interface DuplicateCandidate {
+        name: string;
+        size: number;
+        macro: { name: string; params: string[]; body: Node };
+        occurrences: DuplicateOccurrence[];
+    }
+    export function findDuplicateSubexpressions(defs: FnDef[] | Record<string, FnDef>, opts?: { minSize?: number }): DuplicateCandidate[];
 }
