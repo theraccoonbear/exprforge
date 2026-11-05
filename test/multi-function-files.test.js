@@ -16,7 +16,7 @@
 // confirmed-against-a-real-compiler failure when concatenated, and each
 // has its own real fix (see the doc comment on emitFunction's own
 // `opts.includeHelpers` in emitters/base.js, and each affected emitter's
-// own comment on its specific fix). C, Rust, Python, Perl, Ruby, Lua, Julia,
+// own comment on its specific fix). C, Rust, Python, Perl, Lua, Julia,
 // Scheme, TypeScript, Fortran, and C# were all confirmed ALREADY correct
 // (no shared file-level declaration repeated per function) -- verified
 // here too, not just assumed, so a future change that accidentally
@@ -335,8 +335,10 @@ test("multi-function file: Perl -- concatenating 2 functions runs correctly", { 
 });
 
 test("multi-function file: Ruby -- concatenating 2 functions runs correctly", { skip: !TOOLS.ruby && "ruby not available" }, () => {
-    const out1 = emitters.ruby.emitFunction(fn1);
-    const out2 = emitters.ruby.emitFunction(fn2);
+    const out1 = emitters.ruby.emitFunction(fn1, undefined, { includeHelpers: true });
+    const out2 = emitters.ruby.emitFunction(fn2, undefined, { includeHelpers: false });
+    assert.strictEqual((out1.match(/^def _ef_sqrt\(/gm) || []).length, 1);
+    assert.ok(!out2.includes("def _ef_"), "second function must omit the helpers");
     const dir = tmpDir("ef-multi-rb-");
     const fnsPath = path.join(dir, "fns.rb");
     fs.writeFileSync(fnsPath, out1 + "\n" + out2);
