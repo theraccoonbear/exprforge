@@ -48,12 +48,12 @@ test("python helpers: every guarded primitive emits a helper call with its opera
     const operand = add(mul(v("x"), v("x")), num(1));
     for (const p of UNARY) {
         const src = emitters.python.emitFunction({ name: "f", params: ["x"], body: call(p, operand) });
-        const body = src.split("\n").find((l) => l.startsWith("    return "));
+        const body = src.split("\n").filter((l) => l.startsWith("    return ")).pop();
         assert.strictEqual(body, `    return ${helperOf(p)}(((x * x) + 1))`, p);
     }
     for (const p of BINARY) {
         const src = emitters.python.emitFunction({ name: "f", params: ["x", "y"], body: call(p, v("x"), v("y")) });
-        const body = src.split("\n").find((l) => l.startsWith("    return "));
+        const body = src.split("\n").filter((l) => l.startsWith("    return ")).pop();
         assert.strictEqual(body, `    return ${helperOf(p)}(x, y)`, p);
     }
 });
@@ -88,7 +88,7 @@ test("python helpers: one block with _exprforge_div, gated on includeHelpers", (
 test("python helpers: cheap unguarded calls stay inline", () => {
     const body = add(call("abs", v("x")), add(call("sin", v("x")), call("hypot", v("x"), v("y"))));
     const src = emitters.python.emitFunction({ name: "f", params: ["x", "y"], body });
-    const ret = src.split("\n").find((l) => l.startsWith("    return "));
+    const ret = src.split("\n").filter((l) => l.startsWith("    return ")).pop();
     assert.ok(ret.includes("abs(x)") && ret.includes("math.sin(x)") && ret.includes("math.hypot(x, y)"));
     assert.ok(!ret.includes("_ef_"));
 });
@@ -149,6 +149,26 @@ test("python helpers: real python3 agrees with the evaluator on edge inputs", { 
             );
             assert.ok(sameNumber(got, expected), `${c.p}(${c.args}): python ${got}, evaluator ${expected}`);
         }
+    } finally {
+        fs.rmSync(dir, { recursive: true, force: true });
+    }
+});
+
+test("python helpers: round is exact ties-away, sign preserves -0/NaN, pow IEEE specials", { skip: !PYTHON && "python3 not available" }, () => {
+    const src = emitters.python.emitFunction({ name: "r", params: ["x"], body: call("round", v("x")) }) + "\n\n" +
+        emitters.python.emitFunction({ name: "s", params: ["x"], body: call("sign", v("x")) }, undefined, { includeHelpers: false }) + "\n\n" +
+        "import math\n" +
+        "print(r(0.49999999999999994), r(4503599627370497.0), r(-0.4), r(-0.0), r(2.5), r(-2.5), r(1.5), r(-1.5), r(math.inf), r(-math.inf), r(math.nan))\n" +
+        "print(s(-0.0), s(0.0), s(math.nan), s(-3.0), s(2.0))\n" +
+        "print(math.pow(1, math.nan), math.pow(-1, math.inf), math.pow(-1, -math.inf))\n";
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ef-pyround-"));
+    try {
+        const file = path.join(dir, "gen.py");
+        fs.writeFileSync(file, src);
+        const out = execFileSync("python3", ["-I", file]).toString().trim().split("\n");
+        assert.strictEqual(out[0], "0.0 4503599627370497.0 -0.0 -0.0 3.0 -3.0 2.0 -2.0 inf -inf nan");
+        assert.strictEqual(out[1], "-0.0 0.0 nan -1.0 1.0");
+        assert.strictEqual(out[2], "1.0 1.0 1.0");
     } finally {
         fs.rmSync(dir, { recursive: true, force: true });
     }

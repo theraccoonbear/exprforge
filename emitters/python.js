@@ -50,8 +50,11 @@ const EF_HELPERS = [
     `def _ef_floor(x): return float(math.floor(x)) if math.isfinite(x) else x`,
     `def _ef_ceil(x): return float(math.ceil(x)) if math.isfinite(x) else x`,
     `def _ef_trunc(x): return float(math.trunc(x)) if math.isfinite(x) else x`,
-    `def _ef_round(x): return math.copysign(math.floor(abs(x) + 0.5), x) if math.isfinite(x) else x`,
-    `def _ef_sign(x): return 1.0 if x > 0 else (-1.0 if x < 0 else x + 0.0)`,
+    `def _ef_round(x):\n` +
+    `    if not math.isfinite(x): return x\n` +
+    `    f = math.floor(abs(x))\n` +
+    `    return math.copysign(f + (1.0 if abs(x) - f >= 0.5 else 0.0), x)`,
+    `def _ef_sign(x): return 1.0 if x > 0 else (-1.0 if x < 0 else x)`,
     `def _ef_wrap_index(i, m): return i % m if m != 0 else math.nan`,
 ].join("\n") + "\n";
 
