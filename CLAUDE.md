@@ -72,8 +72,8 @@ git log --oneline origin/main..HEAD
 
 ExprForge is a cross-language math expression code generator. Author a
 pure-arithmetic formula once as an AST, emit identical-behavior implementations
-in 17 programming languages (executable targets) plus a native JS evaluator,
-LaTeX typeset output, and a printer for ExprForge's own syntax (19 output
+in 18 programming languages (executable targets) plus a native JS evaluator,
+LaTeX typeset output, and a printer for ExprForge's own syntax (20 output
 targets in total).
 
 ### Architecture layers
@@ -161,9 +161,9 @@ numeric behavior or CI updates every doc that states it, in the same PR:
 - test comments
 
 Prefer count-free wording ("every registered target") where possible so docs
-don't go stale. Where a number is needed, use the convention: 17 programming
+don't go stale. Where a number is needed, use the convention: 18 programming
 languages (executable targets), LaTeX typeset output, ExprForge's own syntax
-printer, 19 output targets in total. Claims about identical computed behavior
+printer, 20 output targets in total. Claims about identical computed behavior
 cover the executable targets (plus the evaluator), not LaTeX or `expr`.
 
 Checklist when adding a new target:

@@ -19,7 +19,7 @@ auditing every target directly rather than assumed.
 
 Standardize `round()` on **ties away from zero** on every executable target,
 unconditionally, no opt-out. Chosen because it was already the majority
-(9 of the 17 programming-language targets), and because this
+(10 of the 18 programming-language targets), and because this
 project's own Julia emitter had already, independently, chosen to match
 it (`RoundNearestTiesAway`) before this decision existed — real
 precedent, not an arbitrary pick. Built from `sign(x) * floor(abs(x) +

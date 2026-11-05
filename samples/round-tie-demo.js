@@ -18,7 +18,7 @@
 // divergence (matching this project's precedent for QB64's select()
 // div-by-zero behavior). Revisited: unlike that precedent, this one had
 // a real, sound, already-majority convention to converge on instead of
-// just living with -- away-from-zero is what 9 of the 17 programming-language
+// just living with -- away-from-zero is what 10 of the 18 programming-language
 // targets already did NATIVELY, and Julia's own emitter already
 // made a deliberate, precedent-setting choice to match it
 // (RoundNearestTiesAway, not Julia's own ties-to-even default) before

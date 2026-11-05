@@ -79,9 +79,9 @@ Two shapes of real use this tends to fall into:
 ## Intents
 
 **What it does**: turns one small, pure-arithmetic AST into
-identical-behavior source text for 17 programming languages (executable
+identical-behavior source text for 18 programming languages (executable
 targets), a native evaluator, typeset LaTeX output, and a printer for
-ExprForge's own syntax (19 output targets in total) — all from the same
+ExprForge's own syntax (20 output targets in total) — all from the same
 tree, walked once per target. Symbolic differentiation (`differentiate`) works over
 that same AST too, so a derivative is just another tree, emittable and
 evaluable exactly the same way.
@@ -359,7 +359,7 @@ call regardless of target, checked unconditionally at the same tier as
 
 **If you're reading emitted code and expected `round()` to behave like
 your target language's own native rounding function, it doesn't, on 8
-of the 17 programming-language targets, by deliberate design.** `round(x)` ties **away from
+of the 18 programming-language targets, by deliberate design.** `round(x)` ties **away from
 zero** everywhere, unconditionally — `round(-0.5)` is `-1`,
 `round(1.5)` is `2`, `round(2.5)` is `3` — identical on every target,
 confirmed directly against a real compiler/interpreter for every one of
@@ -388,7 +388,7 @@ this library's entire value proposition is "author once, get identical
 behavior everywhere" — `round()` was the one primitive quietly not
 living up to that (three incompatible native conventions, silently
 inherited with zero normalization). Away-from-zero was chosen because
-it was already the majority (9 of the 17 programming-language
+it was already the majority (10 of the 18 programming-language
 targets), and because this project's own Julia emitter had already,
 independently, made a deliberate choice to match it
 (`RoundNearestTiesAway`, not Julia's own ties-to-even default) before
@@ -936,15 +936,16 @@ expression model without introducing control flow:
   emulation or an indexing idiom).
 
   **`select` is not a branch** — modeled as if both `then` and `else`
-  are always evaluated, matching the three real targets where that's
+  are always evaluated, matching the four real targets where that's
   literally true: QB64 (the arithmetic expression above genuinely
   computes both sides), Fortran (`MERGE`, an elemental intrinsic that
   doesn't short-circuit its arguments — confirmed against a real
   compiler), and COBOL (its picker helper spills both branches into
-  temps before the call). The other 14 programming-language targets — including
+  temps before the call), and MATLAB/Octave (its `ef_select` helper receives
+  both already-evaluated values as arguments). The other 14 programming-language targets — including
   `evaluate()` itself — happen to short-circuit via their native
   ternary/`if`-`else`/`and`-`or`, but that's an implementation detail
-  those 15 share and the other 3 don't, not part of this AST's own
+  those 14 share and the other 4 don't, not part of this AST's own
   contract — don't rely on it. Don't use `select` to guard division by
   zero or anything else undefined; clamp the operand itself with its
   own `select` first (see `safeDiv` in `samples/spline-frame.js`), or
