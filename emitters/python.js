@@ -28,6 +28,35 @@ const DIV_HELPER = `def _exprforge_div(a, b):
         return math.copysign(math.inf, a) * math.copysign(1.0, b)
 `;
 
+// Domain-guarded primitives as one-line helpers, emitted once per file in
+// the same block as _exprforge_div (same includeHelpers gate). Python's
+// math.sqrt/log/log2/log10/asin/acos raise ValueError out of domain, and
+// math.floor/ceil/trunc raise OverflowError (inf) or ValueError (nan);
+// builtin min/max are NaN-order-dependent; "%" by zero raises. An inline
+// guard would repeat its operand (evaluating it several times, with
+// nesting multiplying the text); a helper takes each operand once. The
+// _ef_ prefix is reserved in ast.js's identifier check. pow and exp are
+// deliberately not here: they live in the boundary-conformance work
+// (_ef_pow, _ef_exp) so the two changes do not collide.
+const EF_HELPERS = [
+    `def _ef_sqrt(x): return math.sqrt(x) if x >= 0 else math.nan`,
+    `def _ef_asin(x): return math.asin(x) if -1 <= x <= 1 else math.nan`,
+    `def _ef_acos(x): return math.acos(x) if -1 <= x <= 1 else math.nan`,
+    `def _ef_log(x): return math.log(x) if x > 0 else (-math.inf if x == 0 else math.nan)`,
+    `def _ef_log2(x): return math.log2(x) if x > 0 else (-math.inf if x == 0 else math.nan)`,
+    `def _ef_log10(x): return math.log10(x) if x > 0 else (-math.inf if x == 0 else math.nan)`,
+    `def _ef_min(a, b): return math.nan if (a != a or b != b) else min(a, b)`,
+    `def _ef_max(a, b): return math.nan if (a != a or b != b) else max(a, b)`,
+    `def _ef_floor(x): return float(math.floor(x)) if math.isfinite(x) else x`,
+    `def _ef_ceil(x): return float(math.ceil(x)) if math.isfinite(x) else x`,
+    `def _ef_trunc(x): return float(math.trunc(x)) if math.isfinite(x) else x`,
+    `def _ef_round(x): return math.copysign(math.floor(abs(x) + 0.5), x) if math.isfinite(x) else x`,
+    `def _ef_sign(x): return 1.0 if x > 0 else (-1.0 if x < 0 else x + 0.0)`,
+    `def _ef_wrap_index(i, m): return i % m if m != 0 else math.nan`,
+].join("\n") + "\n";
+
+const HELPER_BLOCK = DIV_HELPER + EF_HELPERS;
+
 const emitter = new Emitter({
     ext: "py",
     emitDiv: (l, r) => `_exprforge_div(${l}, ${r})`,
@@ -42,22 +71,18 @@ const emitter = new Emitter({
         // Python's math.sqrt/log/log2/log10/asin/acos/pow all RAISE
         // ValueError for an out-of-domain argument -- confirmed directly,
         // not assumed -- unlike every other target here (JS/C/Rust/Go/
-        // Java/Lua/PHP/Zig/C#), which return NaN/Infinity cleanly. Python's
-        // own ternary (`a if cond else b`) is short-circuiting (confirmed
-        // separately this session -- it's what already made normalizeX's
-        // QB64-only divergence possible in the first place), so a simple
-        // inline conditional expression is enough here, unlike QB64's
-        // arithmetic-only select() which needed real helper FUNCTIONs
-        // instead (see emitters/qb64.js's own SAFE_MATH_HELPERS comment
-        // for the full story this fix is the Python half of).
-        sqrt: ([x]) => `(math.sqrt(${x}) if ${x} >= 0 else float('nan'))`,
+        // Java/Lua/PHP/Zig/C#), which return NaN/Infinity cleanly. Each
+        // guarded primitive is a one-line _ef_ helper (see EF_HELPERS)
+        // rather than an inline conditional, so its operand is written
+        // and evaluated once instead of two or three times.
+        sqrt: ([x]) => `_ef_sqrt(${x})`,
         abs: ([x]) => `abs(${x})`, sin: fn1("sin"), cos: fn1("cos"), tan: fn1("tan"),
-        asin: ([x]) => `(math.asin(${x}) if -1 <= ${x} <= 1 else float('nan'))`,
-        acos: ([x]) => `(math.acos(${x}) if -1 <= ${x} <= 1 else float('nan'))`,
+        asin: ([x]) => `_ef_asin(${x})`,
+        acos: ([x]) => `_ef_acos(${x})`,
         atan: fn1("atan"), atan2: fn2("atan2"),
-        log: ([x]) => `(math.log(${x}) if ${x} > 0 else (float('-inf') if ${x} == 0 else float('nan')))`,
-        log2: ([x]) => `(math.log2(${x}) if ${x} > 0 else (float('-inf') if ${x} == 0 else float('nan')))`,
-        log10: ([x]) => `(math.log10(${x}) if ${x} > 0 else (float('-inf') if ${x} == 0 else float('nan')))`,
+        log: ([x]) => `_ef_log(${x})`,
+        log2: ([x]) => `_ef_log2(${x})`,
+        log10: ([x]) => `_ef_log10(${x})`,
         exp: fn1("exp"),
         pow: ([base, exp]) =>
             `(math.pow(${base}, ${exp}) if not (${base} < 0 and ${exp} != int(${exp})) else float('nan'))`,
@@ -69,15 +94,15 @@ const emitter = new Emitter({
         // "propagate" rule. JS/Go/Java/C#/Julia/Scheme/Fortran instead
         // propagate NaN through min/max the way this project now
         // standardizes on -- see docs/adr/0003-min-max-nan-propagation.md.
-        min: ([a, b]) => `(float('nan') if (math.isnan(${a}) or math.isnan(${b})) else min(${a}, ${b}))`,
-        max: ([a, b]) => `(float('nan') if (math.isnan(${a}) or math.isnan(${b})) else max(${a}, ${b}))`,
+        min: ([a, b]) => `_ef_min(${a}, ${b})`,
+        max: ([a, b]) => `_ef_max(${a}, ${b})`,
         hypot: fn2("hypot"),
         // math.floor/ceil/trunc and builtin round() all return int in
         // Python 3, not float -- wrap to stay float64 throughout, matching
         // every other target here, rather than silently switching types.
-        floor: ([x]) => `float(math.floor(${x}))`,
-        ceil: ([x]) => `float(math.ceil(${x}))`,
-        trunc: ([x]) => `float(math.trunc(${x}))`,
+        floor: ([x]) => `_ef_floor(${x})`,
+        ceil: ([x]) => `_ef_ceil(${x})`,
+        trunc: ([x]) => `_ef_trunc(${x})`,
         // Python's builtin round() ties to EVEN ("banker's rounding"),
         // NOT this project's standardized round-half-AWAY-from-zero
         // convention -- see js.js's own comment and the root README's
@@ -86,15 +111,16 @@ const emitter = new Emitter({
         // a cleaner fit here than a separate sign*floor(abs+0.5) ternary,
         // and correctly handles x == 0 too (floor(0 + 0.5) == 0, and
         // copysign(0, 0) == 0.0).
-        round: ([x]) => `math.copysign(math.floor(abs(${x}) + 0.5), ${x})`,
+        round: ([x]) => `_ef_round(${x})`,
         // No math.sign in Python's stdlib -- build it directly. Zero-aware
         // by construction (see Go's/Rust's sign() history in this project
         // for what happens when it isn't).
-        sign: ([x]) => `(1.0 if ${x} > 0 else (-1.0 if ${x} < 0 else 0.0))`,
+        sign: ([x]) => `_ef_sign(${x})`,
         // Python's % is documented, unambiguous floor-mod (result takes
         // the sign of the divisor) -- unlike most other targets here, no
-        // sign-correction wrapper is needed.
-        wrapIndex: ([i, m]) => `(${i} % ${m})`,
+        // sign-correction wrapper is needed; the helper only guards a
+        // zero modulus, which raises ZeroDivisionError.
+        wrapIndex: ([i, m]) => `_ef_wrap_index(${i}, ${m})`,
         clampIndex: ([i, lo, hi]) => `max(${lo}, min(${hi}, ${i}))`,
     },
     // Python list subscripts must be int, not float -- a float index
@@ -128,7 +154,7 @@ const emitter = new Emitter({
         const guardsBlock = guards ? guards + "\n" : "";
         const lets = letBindings.map(({ name, valueStr }) => `    ${name} = ${valueStr}`).join("\n");
         const letsBlock = lets ? lets + "\n" : "";
-        const helper = opts.includeHelpers === false ? "" : DIV_HELPER + "\n\n";
+        const helper = opts.includeHelpers === false ? "" : HELPER_BLOCK + "\n\n";
         return `# AUTO-GENERATED by ExprForge -- do not hand-edit.\n` +
                `import math\n\n\n` +
                helper +
@@ -153,7 +179,7 @@ const emitter = new Emitter({
         const ctorParams = outputNames.join(", ");
         const ctorAssigns = outputNames.map((n) => `        self.${n} = ${n}`).join("\n");
         const ctorArgs = outputNames.map((n) => outputStrs[n]).join(", ");
-        const helper = opts.includeHelpers === false ? "" : DIV_HELPER + "\n\n";
+        const helper = opts.includeHelpers === false ? "" : HELPER_BLOCK + "\n\n";
         return `# AUTO-GENERATED by ExprForge -- do not hand-edit.\n` +
                `import math\n\n\n` +
                helper +
