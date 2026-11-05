@@ -21,6 +21,7 @@ const test = require("node:test");
 const assert = require("node:assert");
 const { execFileSync } = require("node:child_process");
 const fs = require("node:fs");
+const { DOTNET_TFM } = require("./dotnet-tfm.js");
 const os = require("node:os");
 const path = require("node:path");
 
@@ -1017,12 +1018,19 @@ function runSuiteJava(ast, inputs, outputNames) {
 // as C/Go/Rust. InvariantGlobalization avoids any locale-dependent decimal
 // separator surprises when parsing argv.
 
+//
+// ImplicitUsings is OFF on purpose: the emitted source must compile with
+// no `using` directives at all (csharp.js fully qualifies global::System.Math).
+// Only the harness's own Program.cs imports System. TargetFramework comes
+// from test/dotnet-tfm.js (EXPRFORGE_DOTNET_TFM override, else the highest
+// installed SDK major).
+
 const CSPROJ = `<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFramework>net9.0</TargetFramework>
+    <TargetFramework>${DOTNET_TFM}</TargetFramework>
     <Nullable>disable</Nullable>
-    <ImplicitUsings>enable</ImplicitUsings>
+    <ImplicitUsings>disable</ImplicitUsings>
     <InvariantGlobalization>true</InvariantGlobalization>
   </PropertyGroup>
 </Project>
@@ -1058,7 +1066,7 @@ function runCSharp(ast, inputs) {
     fs.writeFileSync(path.join(dir, "app.csproj"), CSPROJ);
     const parses = csharpParamParses(ast);
     const callArgs = ast.params.join(", ");
-    const mainSrc = `${parses}\nConsole.WriteLine(${className}.${ast.name}(${callArgs}).ToString("G17"));\n`;
+    const mainSrc = `using System;\n${parses}\nConsole.WriteLine(${className}.${ast.name}(${callArgs}).ToString("G17"));\n`;
     fs.writeFileSync(path.join(dir, "Program.cs"), mainSrc);
     const outDir = path.join(dir, "out");
     execFileSync("dotnet", ["build", "-c", "Release", "-o", outDir], { cwd: dir });
@@ -1077,7 +1085,7 @@ function runSuiteCSharp(ast, inputs, outputNames) {
     const parses = csharpParamParses(ast);
     const callArgs = ast.params.join(", ");
     const prints = outputNames.map((n) => `Console.WriteLine(r.${n}.ToString("G17"));`).join("\n");
-    const mainSrc = `${parses}\nvar r = ${className}.${ast.name}(${callArgs});\n${prints}\n`;
+    const mainSrc = `using System;\n${parses}\nvar r = ${className}.${ast.name}(${callArgs});\n${prints}\n`;
     fs.writeFileSync(path.join(dir, "Program.cs"), mainSrc);
     const outDir = path.join(dir, "out");
     execFileSync("dotnet", ["build", "-c", "Release", "-o", outDir], { cwd: dir });

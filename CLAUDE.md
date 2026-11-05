@@ -143,3 +143,10 @@ toolchain and skip (not fail) when a toolchain is absent.
   `test/comparison-operators.test.js` for what closing this gap actually
   looked like -- both a real-compiler conformance sample AND a static
   per-emitter/per-value string check, not just one or the other.
+
+### Toolchain versions
+
+Adding a target, or raising the minimum toolchain version an emitter
+needs, requires updating the README table "Supported toolchain versions"
+and the matching `.github/workflows/test-<lang>.yml`. Keep Zig and
+GnuCOBOL pinned exactly; re-verification steps are in their workflows.
