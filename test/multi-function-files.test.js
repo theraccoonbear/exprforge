@@ -308,9 +308,11 @@ test("multi-function file: Rust -- concatenating 2 functions compiles and runs c
     fs.rmSync(dir, { recursive: true, force: true });
 });
 
-test("multi-function file: Python -- concatenating 2 functions runs correctly", { skip: !TOOLS.python && "python3 not available" }, () => {
-    const out1 = emitters.python.emitFunction(fn1);
-    const out2 = emitters.python.emitFunction(fn2);
+test("multi-function file: Python -- one concatenated file (helper block once) runs correctly", { skip: !TOOLS.python && "python3 not available" }, () => {
+    const out1 = emitters.python.emitFunction(fn1, undefined, { includeHelpers: true });
+    const out2 = emitters.python.emitFunction(fn2, undefined, { includeHelpers: false });
+    assert.ok(out1.includes("def _ef_sqrt(") && out1.includes("def _ef_log(") && out1.includes("def _exprforge_div("));
+    assert.ok(!out2.includes("def _ef_") && !out2.includes("def _exprforge_div("));
     const dir = tmpDir("ef-multi-py-");
     fs.writeFileSync(path.join(dir, "fns.py"), out1 + "\n" + out2);
     const output = execFileSync("python3", ["-c", `import fns; print(fns.f1(${F1_ARG})); print(fns.f2(${F2_ARG}))`], { cwd: dir })
@@ -318,6 +320,14 @@ test("multi-function file: Python -- concatenating 2 functions runs correctly", 
     assertClose(parseFloat(output[0]), F1_EXPECT, "f1");
     assertClose(parseFloat(output[1]), F2_EXPECT, "f2");
     fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test("multi-function file: Python -- includeHelpers defaults to true and false omits every helper", () => {
+    const out1 = emitters.python.emitFunction(fn1);
+    const out2 = emitters.python.emitFunction(fn2);
+    assert.ok(out1.includes("def _ef_sqrt(") && out2.includes("def _ef_sqrt("));
+    assert.ok(out1.includes("def _exprforge_div(") && out2.includes("def _exprforge_div("));
+    assert.ok(!emitters.python.emitFunction(fn2, undefined, { includeHelpers: false }).includes("_ef_log10"));
 });
 
 test("multi-function file: Perl -- concatenating 2 functions runs correctly", { skip: !TOOLS.perl && "perl not available" }, () => {
