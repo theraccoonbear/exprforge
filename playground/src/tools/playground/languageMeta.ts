@@ -1,6 +1,6 @@
 // Display metadata for each emitters/registry.js key -- labels and which
 // ones are toggled on by default. Deliberately a small curated default
-// set rather than all 18 at once (see the plan's "easily see multiple
+// set rather than every target at once (see the plan's "easily see multiple
 // toggleable outputs, not overwhelmed by all of them" requirement); the
 // full set is always one click away via the toggle chips.
 export interface LanguageMeta {
@@ -23,6 +23,7 @@ export const LANGUAGE_META: Record<string, LanguageMeta> = {
     perl: { label: "Perl", defaultOn: false, defaultOnMobile: false },
     php: { label: "PHP", defaultOn: false, defaultOnMobile: false },
     julia: { label: "Julia", defaultOn: false, defaultOnMobile: false },
+    matlab: { label: "MATLAB/Octave", defaultOn: false, defaultOnMobile: false },
     fortran: { label: "Fortran", defaultOn: false, defaultOnMobile: false },
     zig: { label: "Zig", defaultOn: false, defaultOnMobile: false },
     scheme: { label: "Scheme", defaultOn: true, defaultOnMobile: false },

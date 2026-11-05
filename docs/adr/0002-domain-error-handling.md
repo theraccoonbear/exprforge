@@ -46,6 +46,9 @@ that's achievable without disproportionate risk:
   constants (the identical value through a runtime variable compiles
   and returns NaN correctly). Loud and immediate, avoidable by
   construction. Not fixed.
+- **MATLAB/Octave** (added later): `sqrt`/`log`/`asin`/`acos`/`^` promote
+  to a complex number like Scheme. Fixed with `if`-guarded local helper
+  functions.
 - Every other target (JS, TypeScript, C, Rust, Go, Java, Lua, PHP, Zig,
   C#) was already correct.
 
