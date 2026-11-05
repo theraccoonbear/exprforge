@@ -335,10 +335,12 @@ test("multi-function file: Perl -- concatenating 2 functions runs correctly", { 
 });
 
 test("multi-function file: Ruby -- concatenating 2 functions runs correctly", { skip: !TOOLS.ruby && "ruby not available" }, () => {
-    const out1 = emitters.ruby.emitFunction(fn1, undefined, { includeHelpers: true });
-    const out2 = emitters.ruby.emitFunction(fn2, undefined, { includeHelpers: false });
+    const emittedHelpers = new Set();
+    const out1 = emitters.ruby.emitFunction(fn1, undefined, { emittedHelpers });
+    const out2 = emitters.ruby.emitFunction(fn2, undefined, { emittedHelpers });
     assert.strictEqual((out1.match(/^def _ef_sqrt\(/gm) || []).length, 1);
-    assert.ok(!out2.includes("def _ef_"), "second function must omit the helpers");
+    assert.ok(!out1.includes("def _ef_log("), "only used helpers are emitted");
+    assert.strictEqual((out2.match(/^def _ef_log\(/gm) || []).length, 1);
     const dir = tmpDir("ef-multi-rb-");
     const fnsPath = path.join(dir, "fns.rb");
     fs.writeFileSync(fnsPath, out1 + "\n" + out2);

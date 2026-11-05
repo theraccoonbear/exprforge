@@ -6,7 +6,7 @@
 const test = require("node:test");
 const assert = require("node:assert");
 const { execFileSync } = require("node:child_process");
-const { v, num, div, add, call, letIn } = require("../ast.js");
+const { v, num, div, add, sub, mul, call, letIn } = require("../ast.js");
 const { fn: parseFn } = require("../fn.js");
 const emitters = require("../emitters/registry.js");
 
@@ -114,17 +114,45 @@ test("ruby: addTypeGuards and arrayLengths guards actually raise in a real ruby"
     assert.throws(() => run("cyclicElem([1, 2, 3], 4, 5)"), /Command failed/);
 });
 
-test("ruby: helpers are emitted once per file and skipped with includeHelpers: false", () => {
-    const fn = { name: "f", params: ["x"], body: call("sqrt", v("x")) };
-    const withHelpers = emitters.ruby.emitFunction(fn);
-    const without = emitters.ruby.emitFunction(fn, undefined, { includeHelpers: false });
-    for (const name of ["sqrt", "asin", "acos", "log", "log2", "log10", "pow", "min", "max",
-        "floor", "ceil", "trunc", "round", "sign", "wrap", "clamp"]) {
-        assert.ok(withHelpers.includes(`def _ef_${name}(`), name);
-        assert.ok(!without.includes(`def _ef_${name}(`), name);
+const ALL_HELPERS = ["sqrt", "asin", "acos", "log", "log2", "log10", "pow", "min", "max",
+    "floor", "ceil", "trunc", "round", "sign", "wrap", "clamp"];
+const defsIn = (src) => [...src.matchAll(/^def (_ef_\w+)\(/gm)].map((m) => m[1]);
+
+test("ruby: a pure-arithmetic function emits no _ef_ helper definitions", () => {
+    const lerp = { name: "lerp", params: ["a", "b", "t"], body: add(v("a"), mul(sub(v("b"), v("a")), v("t"))) };
+    const src = emitters.ruby.emitFunction(lerp);
+    assert.deepStrictEqual(defsIn(src), []);
+    assert.ok(!src.includes("_ef_"), src);
+});
+
+test("ruby: each helper-triggering primitive emits exactly its own helper", () => {
+    const arity = { pow: 2, min: 2, max: 2, wrapIndex: 2, clampIndex: 3 };
+    const cases = { wrapIndex: "wrap", clampIndex: "clamp" };
+    for (const name of ALL_HELPERS) {
+        const prim = Object.keys(cases).find((k) => cases[k] === name) || name;
+        const args = ["x", "y", "z"].slice(0, arity[prim] || 1).map(v);
+        const src = emitters.ruby.emitFunction({ name: "f", params: ["x", "y", "z"], body: call(prim, ...args) });
+        assert.deepStrictEqual(defsIn(src), [`_ef_${name}`], prim);
     }
-    assert.ok(!withHelpers.includes("endless") && !/^def _ef_\w+\([^)]*\) =/m.test(withHelpers), "no endless def");
+});
+
+test("ruby: helpers come out in a fixed order, only those used, in suites too", () => {
+    const fn = { name: "f", params: ["x"], body: call("max", call("sqrt", v("x")), call("floor", v("x"))) };
+    assert.deepStrictEqual(defsIn(emitters.ruby.emitFunction(fn)), ["_ef_sqrt", "_ef_max", "_ef_floor"]);
+    const suite = { name: "s", params: ["x"], body: { type: "outputs", fields: { a: call("log", v("x")), b: num(1) } } };
+    assert.deepStrictEqual(defsIn(emitters.ruby.emitFunction(suite)), ["_ef_log"]);
+});
+
+test("ruby: includeHelpers: false emits none; a shared emittedHelpers Set defines each once", () => {
+    const f1 = { name: "f1", params: ["x"], body: call("sqrt", v("x")) };
+    const f2 = { name: "f2", params: ["x"], body: add(call("sqrt", v("x")), call("log", v("x"))) };
+    const without = emitters.ruby.emitFunction(f1, undefined, { includeHelpers: false });
+    assert.deepStrictEqual(defsIn(without), []);
     assert.ok(without.includes("_ef_sqrt(x)"), without);
+    const emittedHelpers = new Set();
+    const out = emitters.ruby.emitFunction(f1, undefined, { emittedHelpers }) +
+        emitters.ruby.emitFunction(f2, undefined, { emittedHelpers });
+    assert.deepStrictEqual(defsIn(out), ["_ef_sqrt", "_ef_log"]);
 });
 
 test("ruby: asin/acos helpers use comparisons, not between?", () => {
