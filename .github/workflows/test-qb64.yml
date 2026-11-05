@@ -55,7 +55,7 @@ jobs:
       - name: Install QB64-PE build dependencies
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y libgl1-mesa-dev libglu1-mesa-dev libasound2-dev libx11-dev libxext-dev libpng-dev xvfb libcurl4-openssl-dev
+          sudo apt-get install -y libgl1-mesa-dev libglu1-mesa-dev libasound2-dev libx11-dev libxext-dev libxrandr-dev libpng-dev xvfb libcurl4-openssl-dev
 
       - name: Build QB64-PE
         if: steps.cache_qb64pe.outputs.cache-hit != 'true'
