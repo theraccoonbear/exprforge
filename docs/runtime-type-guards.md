@@ -20,9 +20,9 @@ dimension(0:*)` etc. is declared simply fails to compile. `evaluate()`,
 ExprForge's own native interpreter, also already guards this itself (a
 real `Array.isArray()` check, thrown clearly, tested).
 
-But plain **emitted** source for the 8 dynamically-typed targets — JS,
+But plain **emitted** source for the dynamically-typed targets — JS,
 TypeScript (only at the type-check layer, erased at runtime), Python, PHP,
-Lua, Perl, Scheme, Julia — shipped with no guard at all. A caller passing
+Lua, Perl, Scheme, Julia, R — shipped with no guard at all. A caller passing
 a plain number where `arr: number[]` was declared would either hit an
 unrelated, confusing error several layers down (indexing a number), or in
 some cases silently produce a wrong result via coercion.
@@ -65,6 +65,7 @@ target's real idiom for "is this actually an array-shaped value":
 | PHP | `is_array($arr)` |
 | Lua | `type(arr) == "table"` |
 | Julia | `arr isa AbstractVector` |
+| R | `is.numeric(arr)` -- R has no scalar type distinct from a length-1 vector, so this rejects non-numeric values (strings, lists, `NULL`) but not a bare number |
 | Perl | `ref($arr) eq 'ARRAY'` — Perl's own array-param convention is an ARRAYREF (`$arr->[i]`), not a plain `@array` (see `emitters/perl.js`'s own comment), so the check is on the reference, not the value |
 | MATLAB / Octave | `~isnumeric(arr) \|\| ~isvector(arr)` |
 | Scheme | `(vector? arr)` — `emitters/scheme.js`'s own `emitIndex` uses `vector-ref`, so this checks for a vector specifically, not a list |
@@ -88,7 +89,7 @@ harmless as an unused trailing argument for the ~10 targets that never
 receive a non-empty array.
 
 Every guard template is written to stay exactly ONE physical line
-(`if x: raise ...` in Python, `;`-joined statements in Julia, `unless
+(`if x: raise ...` in Python, `;`-joined statements in Julia, `if (...) stop(...)` in R, `unless
 (...) { die ...; }` in Perl, etc.) so the splicing logic is identical
 everywhere — except Scheme, which needed real structural handling: its
 function body is a single expression, not a sequence of statements, so
@@ -143,7 +144,7 @@ documentation. Same 9-target availability as `typeGuard`, using each
 target's own length-of-array idiom, checked AFTER the type guard (so
 it's always safe to call): `.length` (JS/TS), `len()` (Python),
 `count()` (PHP), `#` (Lua), `scalar(@$arr)` (Perl — dereferencing the
-arrayref), `length()` (Julia), `numel()` (MATLAB/Octave), `(vector-length ...)` (Scheme).
+arrayref), `length()` (Julia, R), `numel()` (MATLAB/Octave), `(vector-length ...)` (Scheme).
 
 **This is deliberately not a complete fix** — a caller can still pass a
 mismatched array and a WRONG `m` that happens to agree with its actual

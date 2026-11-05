@@ -528,6 +528,7 @@ const TOOLS = {
     perl: hasTool("perl", ["-v"]),
     php: hasTool("php", ["--version"]),
     julia: hasTool("julia", ["--version"]),
+    rscript: hasTool("Rscript", ["--version"]),
     octave: hasTool("octave-cli", ["--version"]),
     gfortran: hasTool("gfortran", ["--version"]),
     zig: hasTool("zig", ["version"]),
@@ -1441,6 +1442,50 @@ function runSuiteJulia(ast, inputs, outputNames) {
     return results;
 }
 
+// --- R -----------------------------------------------------------------------
+//
+// No compile step -- Rscript interprets the emitted source directly.
+// Arguments arrive through commandArgs(trailingOnly = TRUE); array-typed
+// params are comma-joined strings split into a numeric vector. Output goes
+// through sprintf("%.17g") so doubles round-trip exactly; Inf/-Inf/NaN
+// spellings are handled by parseNumericOutput.
+
+function rParamParses(ast) {
+    return ast.params
+        .map((p, i) => {
+            if (ast.paramTypes?.[p] === "number[]") {
+                return `${p} <- as.numeric(strsplit(args[${i + 1}], ",")[[1]])`;
+            }
+            return `${p} <- as.numeric(args[${i + 1}])`;
+        })
+        .join("\n");
+}
+
+function runR(ast, inputs) {
+    const source = emitters.r.emitFunction(ast);
+    const dir = tmpDir("ef-r-");
+    const callArgs = ast.params.join(", ");
+    const harness = `${source}\nargs <- commandArgs(trailingOnly = TRUE)\n${rParamParses(ast)}\ncat(sprintf("%.17g", ${ast.name}(${callArgs})), "\\n", sep = "")\n`;
+    const srcPath = path.join(dir, "main.R");
+    fs.writeFileSync(srcPath, harness);
+    const results = inputs.map((args) => parseNumericOutput(execFileSync("Rscript", [srcPath, ...args.map(String)]).toString().trim()));
+    fs.rmSync(dir, { recursive: true, force: true });
+    return results;
+}
+
+function runSuiteR(ast, inputs, outputNames) {
+    const source = emitters.r.emitFunction(ast);
+    const dir = tmpDir("ef-r-");
+    const callArgs = ast.params.join(", ");
+    const prints = outputNames.map((n) => `cat(sprintf("%.17g", r$${n}), "\\n", sep = "")`).join("\n");
+    const harness = `${source}\nargs <- commandArgs(trailingOnly = TRUE)\n${rParamParses(ast)}\nr <- ${ast.name}(${callArgs})\n${prints}\n`;
+    const srcPath = path.join(dir, "main.R");
+    fs.writeFileSync(srcPath, harness);
+    const results = inputs.map((args) => parseSuiteOutput(execFileSync("Rscript", [srcPath, ...args.map(String)]), outputNames));
+    fs.rmSync(dir, { recursive: true, force: true });
+    return results;
+}
+
 // --- MATLAB / Octave ---------------------------------------------------------
 //
 // Run with octave-cli (never the GUI binary) against the emitted .m file,
@@ -1900,6 +1945,7 @@ function registerSuiteConformance(sampleName, { ast, inputs, skipTargets = [], t
         ["Perl", TOOLS.perl, runSuitePerl],
         ["PHP", TOOLS.php, runSuitePhp],
         ["Julia", TOOLS.julia, runSuiteJulia],
+        ["R", TOOLS.rscript, runSuiteR],
         ["Octave", TOOLS.octave, runSuiteOctave],
         ["Fortran", TOOLS.gfortran, runSuiteFortran],
         ["Zig", TOOLS.zig, runSuiteZig],
@@ -1962,6 +2008,7 @@ function registerConformance(sampleName, { ast, reference, inputs, skipTargets =
         ["Perl", TOOLS.perl, runPerl],
         ["PHP", TOOLS.php, runPhp],
         ["Julia", TOOLS.julia, runJulia],
+        ["R", TOOLS.rscript, runR],
         ["Octave", TOOLS.octave, runOctave],
         ["Fortran", TOOLS.gfortran, runFortran],
         ["Zig", TOOLS.zig, runZig],
