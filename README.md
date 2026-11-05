@@ -38,7 +38,11 @@ output for documenting the formula itself. No required dependencies.
 **[▶ Try it live](https://theraccoonbear.github.io/exprforge/)** — write
 a formula in the browser and watch it emitted across every target
 language at once, no install required, or switch to the Differentiation
-tab to get a formula's derivative and a numeric spot-check side by side.
+tab to get a formula's derivative and a numeric spot-check side by side,
+or the Duplicates tab to paste several definitions and see which
+computations they share under different variable names (with a live
+minimum-size control, each proposed macro, and each occurrence's argument
+mapping).
 Runs the real, current library (see `playground/`), not a frozen demo
 build.
 
@@ -688,7 +692,7 @@ and `x*y` do not.
   reads a file, or runs implicitly during loading or emitting. Acting on a
   candidate is a manual step.
 - **Each candidate** has `name` (a hash-derived placeholder such as
-  `shared_0f330956`; a tool cannot know what the shape means, so rename
+  `shared_c3eb44ec`; a tool cannot know what the shape means, so rename
   it), `size` (node count), `macro` (a proposed `{ name, params, body }`
   with params `p0`, `p1`, ..., usable with `loadMacro()` or printable with
   `emit(macro, "expr")`), and `occurrences` (`{ definition, node, args }`,

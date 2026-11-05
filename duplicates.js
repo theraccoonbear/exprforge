@@ -20,9 +20,21 @@
 // macro-expanded, so this runs against the reduced form: a computation
 // that was a shared macro in the source shows up as an inlined copy in
 // each definition that used it, and is re-detected here.
-const crypto = require("node:crypto");
 
 const DEFAULT_MIN_SIZE = 5;
+
+// 32-bit FNV-1a, as 8 hex digits. Pure JS rather than node:crypto so the
+// module also bundles for the browser (the playground); the digest only
+// names a placeholder macro, so it needs stability, not cryptographic
+// strength.
+function shortHash(text) {
+    let h = 0x811c9dc5;
+    for (let i = 0; i < text.length; i++) {
+        h ^= text.charCodeAt(i);
+        h = Math.imul(h, 0x01000193) >>> 0;
+    }
+    return h.toString(16).padStart(8, "0");
+}
 
 // Children in a stable order. Order matters: it is part of the
 // canonical key, so it must be the same for every occurrence.
@@ -244,7 +256,7 @@ function findDuplicateSubexpressions(defs, opts = {}) {
         if (new Set(accepted.map((m) => m.rec.def)).size < 2) continue;
         for (const m of accepted) markClaimed(m.rec);
 
-        const name = `shared_${crypto.createHash("sha1").update(key).digest("hex").slice(0, 8)}`;
+        const name = `shared_${shortHash(key)}`;
         results.push({
             name,
             size: g.size,

@@ -137,6 +137,11 @@ toolchain and skip (not fail) when a toolchain is absent.
   something yet, throw a clear "not supported for this target" error at
   generation time (same pattern `formatSuite` already uses) and treat it as
   tracked follow-up work, not settled scope.
+- **New user-facing functionality (an analysis, option, target or API) is
+  demonstrated in the playground as part of the same work, or a follow-up
+  issue is filed right away.** The playground is how people discover a
+  feature exists; a capability that ships without a tab or control there
+  stays invisible to most users.
 - **Any feature with more than one discrete operator/keyword value
   (comparison operators today; the next one won't be the last) needs real
   compiled/executed conformance coverage for EVERY value, not just one
