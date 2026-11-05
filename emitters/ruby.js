@@ -31,7 +31,9 @@ const RESERVED = new Set([
 // Float % 0.0 raises ZeroDivisionError; each is guarded here so the unified
 // behavior holds. See docs/adr/0001, 0002 and 0003. asin/acos use explicit
 // comparisons, not between?, because NaN.between? raises. round(half: :up)
-// ties away from zero.
+// ties away from zero. A zero result keeps the input's sign (-0.0), as in JS;
+// sign() returns its own argument for 0, -0 and NaN. pow is IEEE, so
+// pow(1, NaN) and pow(-1, +-Infinity) are 1.0 (Ruby's ** agrees).
 const HELPER_DEFS = [
     ["_ef_sqrt(x)", "x >= 0 ? Math.sqrt(x) : Float::NAN"],
     ["_ef_asin(x)", "(x >= -1 && x <= 1) ? Math.asin(x) : Float::NAN"],
@@ -42,11 +44,11 @@ const HELPER_DEFS = [
     ["_ef_pow(b, e)", "r = b ** e\n    r.is_a?(Float) ? r : Float::NAN"],
     ["_ef_min(a, b)", "(a != a || b != b) ? Float::NAN : (a < b ? a : b)"],
     ["_ef_max(a, b)", "(a != a || b != b) ? Float::NAN : (a > b ? a : b)"],
-    ["_ef_floor(x)", "x.finite? ? x.floor.to_f : x"],
-    ["_ef_ceil(x)", "x.finite? ? x.ceil.to_f : x"],
-    ["_ef_trunc(x)", "x.finite? ? x.truncate.to_f : x"],
-    ["_ef_round(x)", "x.finite? ? x.round(half: :up).to_f : x"],
-    ["_ef_sign(x)", "x > 0 ? 1.0 : (x < 0 ? -1.0 : 0.0)"],
+    ["_ef_floor(x)", "r = x.finite? ? x.floor.to_f : x\n    (r == 0 && (x < 0 || (x == 0 && 1.0 / x < 0))) ? -0.0 : r"],
+    ["_ef_ceil(x)", "r = x.finite? ? x.ceil.to_f : x\n    (r == 0 && (x < 0 || (x == 0 && 1.0 / x < 0))) ? -0.0 : r"],
+    ["_ef_trunc(x)", "r = x.finite? ? x.truncate.to_f : x\n    (r == 0 && (x < 0 || (x == 0 && 1.0 / x < 0))) ? -0.0 : r"],
+    ["_ef_round(x)", "r = x.finite? ? x.round(half: :up).to_f : x\n    (r == 0 && (x < 0 || (x == 0 && 1.0 / x < 0))) ? -0.0 : r"],
+    ["_ef_sign(x)", "x > 0 ? 1.0 : (x < 0 ? -1.0 : x)"],
     ["_ef_wrap(i, m)", "m == 0 ? Float::NAN : i % m"],
     ["_ef_clamp(i, lo, hi)", "i < lo ? lo : (i > hi ? hi : i)"],
 ];

@@ -155,3 +155,35 @@ test("ruby: floor/ceil/trunc/round pass NaN and Infinity through instead of rais
         assert.strictEqual(runRuby(fn, "h(-Float::INFINITY)"), "-Inf", op);
     }
 });
+
+test("ruby: sign returns its own argument for zero and NaN (preserves -0, propagates NaN)", { skip }, () => {
+    const fn = { name: "s", params: ["x"], body: call("sign", v("x")) };
+    assert.strictEqual(runRuby(fn, "s(-0.0)"), "-0");
+    assert.strictEqual(runRuby(fn, "s(0.0)"), "0");
+    assert.strictEqual(runRuby(fn, "s(Float::NAN)"), "NaN");
+    assert.strictEqual(runRuby(fn, "s(-3)"), "-1");
+    assert.strictEqual(runRuby(fn, "s(3)"), "1");
+});
+
+test("ruby: floor/ceil/trunc/round keep the sign of a zero result", { skip }, () => {
+    const cases = {
+        floor: { "-0.4": "-1", "-0.0": "-0", "0.4": "0", "-0.5": "-1" },
+        ceil: { "-0.4": "-0", "-0.0": "-0", "0.4": "1", "-0.5": "-0" },
+        trunc: { "-0.4": "-0", "-0.0": "-0", "0.4": "0", "-0.5": "-0" },
+        round: { "-0.4": "-0", "-0.0": "-0", "0.4": "0", "-0.5": "-1" },
+    };
+    for (const [op, table] of Object.entries(cases)) {
+        const fn = { name: "h", params: ["x"], body: call(op, v("x")) };
+        for (const [arg, want] of Object.entries(table)) {
+            assert.strictEqual(runRuby(fn, `h(${arg})`), want, `${op}(${arg})`);
+        }
+    }
+});
+
+test("ruby: pow follows IEEE for 1**NaN and (-1)**+-Infinity (all 1)", { skip }, () => {
+    const fn = { name: "p", params: ["b", "e"], body: call("pow", v("b"), v("e")) };
+    assert.strictEqual(runRuby(fn, "p(1, Float::NAN)"), "1");
+    assert.strictEqual(runRuby(fn, "p(-1, Float::INFINITY)"), "1");
+    assert.strictEqual(runRuby(fn, "p(-1, -Float::INFINITY)"), "1");
+    assert.strictEqual(runRuby(fn, "p(1, Float::INFINITY)"), "1");
+});

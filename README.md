@@ -1776,6 +1776,9 @@ compiling/running against a real toolchain rather than assumed to work:
   `def ... end` form; pass `{ includeHelpers: false }` on every call after
   the first when concatenating files. `pow` returns NaN for any non-Float
   result (a Complex), including a NaN exponent with a negative base.
+  `pow` is IEEE otherwise (`1 ** NaN` and `(-1) ** +-Infinity` are 1).
+  `floor`/`ceil`/`trunc`/`round` keep the sign of a zero result (`-0.0`,
+  as in JS), and `sign` returns its own argument for `-0.0` and NaN.
   `asin`/`acos` use explicit range comparisons because `NaN.between?`
   raises. The `_ef_` name prefix is reserved: a user name starting with
   it gets a leading underscore. `samples/non-finite-rounding-demo.js`
