@@ -649,6 +649,117 @@ Try it interactively in the [live playground](https://theraccoonbear.github.io/e
 Differentiation tab — enter a formula, see the derivative and a numeric
 spot-check side by side.
 
+## Range analysis (`analyzeRanges`)
+
+```js
+const { fn, analyzeRanges } = require("exprforge");
+
+const f = fn`
+    f(x, d):
+    return x / d;
+`;
+const r = analyzeRanges(f, { x: [1, 2], d: [-1, 1] });
+// r.range    -> { lo: -Infinity, hi: Infinity, nan: false }
+// r.warnings -> [{ kind: "div-by-zero", at: "body", certain: false,
+//                  denominator: { lo: -1, hi: 1, nan: false } }]
+```
+
+`analyzeRanges(fnDef, ranges)` is an opt-in static analysis: it propagates
+declared input ranges (`{ paramName: [min, max] }`) through the AST with
+interval arithmetic and reports a sound output range plus every `/` whose
+denominator can be zero. Nothing calls it implicitly, no AST node changes,
+and nothing is emitted; run it before `emit()` if you want the check. An
+undeclared parameter is unbounded; for an array parameter the range bounds
+every element. A function with `outputs()` gets one range per field.
+
+- **Range**: `{ lo, hi, nan }`. `lo`/`hi` bound every non-NaN value;
+  `nan` is true when NaN is possible (out-of-domain `sqrt`/`log*`/
+  `asin`/`acos`/`pow`, `0/0`, an opaque extern). Every built-in primitive
+  has a rule; macros are expanded first.
+- **`div-by-zero` warning**: the denominator's interval includes zero
+  even after taking enclosing `select()` guards into account.
+  `certain: true` means it is exactly `[0, 0]`.
+- **`div-guarded` warning**: the denominator includes zero on its own, and
+  an enclosing `select()` condition is what excludes it. That is safe
+  where `select` short-circuits, but `select` is modeled as evaluating both
+  branches and QB64, Fortran and COBOL do exactly that, so the division
+  still runs there with a zero denominator (the case
+  `test/conformance.test.js`'s `normalizeX` is excluded from QB64 for).
+  `guards` lists the `select()` paths the exclusion depends on. The
+  clamped-denominator pattern `safeDiv` and `normalize3` use produces
+  neither warning.
+- **`selects`**: one entry per `select()` with `outcome`
+  (`"always-then"`, `"always-else"` or `"either"`, i.e. whether the ranges
+  alone decide the condition, which makes the other branch provably dead
+  and the `select()` removable) and `loadBearing` (removing the guard
+  would expose a zero denominator).
+- **Guard refinement** understands all six comparison operators, with
+  the constant on either side, on any expression (including let-bound
+  names), and treats `abs(E) > c` / `abs(E) >= c` as excluding `(-c, c)`
+  from `E`.
+
+Bounds are conservative: a range may be wider than the true range, never
+narrower (interval arithmetic cannot see correlation between two different
+subexpressions, e.g. `x - x` is reported as `[-w, w]`; `x * x` is special-cased).
+`test/analyze.test.js` checks soundness by evaluating random points inside
+the declared ranges against `evaluate()` for every primitive, every
+comparison operator, random expression trees and every shipped sample.
+Sessions expose the same function as `session.analyzeRanges`.
+
+Try it interactively in the [live playground](https://theraccoonbear.github.io/exprforge/)'s
+Range analysis tab.
+
+## Finding duplicate computation (`findDuplicateSubexpressions`)
+
+```js
+const { loadExprSource, findDuplicateSubexpressions, emit } = require("exprforge");
+
+const defs = loadExprSource(`
+    fn crossX(ay, az, by, bz):
+    return ay * bz - az * by;
+
+    fn other(qy, qz, ry, rz):
+    return (qy * rz - qz * ry) * 2;
+`);
+
+for (const c of findDuplicateSubexpressions(defs)) {
+    console.log(c.name, c.occurrences.map((o) => `${o.definition}(${o.args})`));
+    console.log(emit(c.macro, "expr").source); // a proposed macro to review
+}
+```
+
+`findDuplicateSubexpressions(defs, { minSize = 5 })` takes an array of
+`{ name, params, body }` definitions, or the object `loadExprSource()`/
+`loadExpr()` returns, and reports computations that appear, up to variable
+renaming, in two or more of them. Each free variable is replaced by a
+positional placeholder in first-appearance order (let-bound names by
+nesting depth), so `ay*bz - az*by` and `qy*rz - qz*ry` match while `x*x`
+and `x*y` do not.
+
+- **Advisory only.** It returns a report and never rewrites a definition,
+  reads a file, or runs implicitly during loading or emitting. Acting on a
+  candidate is a manual step.
+- **Each candidate** has `name` (a hash-derived placeholder such as
+  `shared_0f330956`; a tool cannot know what the shape means, so rename
+  it), `size` (node count), `macro` (a proposed `{ name, params, body }`
+  with params `p0`, `p1`, ..., usable with `loadMacro()` or printable with
+  `emit(macro, "expr")`), and `occurrences` (`{ definition, node, args }`,
+  where `args` lists the variables the occurrence passes, in `macro.params`
+  order).
+- **Maximal matches only**: a piece of a larger reported match is not
+  reported separately. Matches must span at least two definitions; a repeat
+  within one definition is a missing `let`, a separate question.
+- **`minSize`** (node count, default 5) keeps trivial matches such as
+  `a + b` out of the report.
+- **Runs on the reduced form.** `loadExprSource()` inlines macros, so a
+  computation that was shared in the source appears as one copy per
+  definition that used it and is detected again, which suits checking
+  whether a file is as factored as it could be.
+
+Verified by running the proposed macro against every occurrence (see
+`test/duplicates.test.js`). No emitter is involved, so no per-target
+behavior applies.
+
 ## Math utilities (`exprforge/math`)
 
 A separate, additive export — `require("exprforge")` is unchanged — of
