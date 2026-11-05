@@ -140,7 +140,7 @@ const emitter = new Emitter({
         // float64-only model everywhere else (same reasoning as Python's
         // float(math.floor(...))).
         floor: ([x]) => `(AINT(${x}) - MERGE(1.0D0, 0.0D0, (${x}) < AINT(${x})))`,
-        ceil: ([x]) => `(AINT(${x}) + MERGE(1.0D0, 0.0D0, (${x}) > AINT(${x})))`,
+        ceil: ([x]) => `SIGN(AINT(${x}) + MERGE(1.0D0, 0.0D0, (${x}) > AINT(${x})), ${x})`,
         // No LOG2 intrinsic -- derive it.
         log2: ([x]) => `(LOG(${x}) / LOG(2.0D0))`,
         // The native SIGN(A, B) intrinsic ("magnitude of A, sign of B") is

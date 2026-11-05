@@ -123,14 +123,24 @@ const SAFE_MATH_HELPERS =
     `    END IF\n` +
     `END FUNCTION\n\n` +
     `FUNCTION ef_safe_round# (x AS DOUBLE)\n` +
+    `    DIM ef_m AS DOUBLE, ef_f AS DOUBLE\n` +
     `    IF x <> x THEN\n` +
     `        ef_safe_round# = x\n` +
     `    ELSEIF ABS(x) >= 4503599627370496# THEN\n` +
     `        ef_safe_round# = x\n` +
-    `    ELSEIF x < 0# THEN\n` +
-    `        ef_safe_round# = -INT(-x + 0.5#)\n` +
+    `    ELSEIF x = 0# THEN\n` +
+    `        ef_safe_round# = x\n` +
     `    ELSE\n` +
-    `        ef_safe_round# = INT(x + 0.5#)\n` +
+    `        ef_m = ABS(x)\n` +
+    `        ef_f = INT(ef_m)\n` +
+    `        IF ef_m - ef_f >= 0.5# THEN ef_f = ef_f + 1#\n` +
+    `        IF ef_f = 0# THEN\n` +
+    `            ef_safe_round# = x * 0#\n` +
+    `        ELSEIF x < 0# THEN\n` +
+    `            ef_safe_round# = -ef_f\n` +
+    `        ELSE\n` +
+    `            ef_safe_round# = ef_f\n` +
+    `        END IF\n` +
     `    END IF\n` +
     `END FUNCTION\n\n` +
     `FUNCTION ef_safe_sgn# (x AS DOUBLE)\n` +

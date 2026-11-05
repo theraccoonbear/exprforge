@@ -9,6 +9,12 @@ function fn2(name) {
     return ([a, b]) => `math.${name}(${a}, ${b})`;
 }
 
+// floor/ceil/trunc of -0 or of a negative fraction round toward a zero that
+// must keep the sign of the operand (JS gives -0); math.floor/ceil return
+// an integer in Lua 5.3+, which has no negative zero, so the sign is
+// restored from 1 / a.
+const LUA_ZERO_SIGN = "(function(a, r) if r == 0 and 1 / a < 0 then return -0.0 end; return r end)";
+
 const emitter = new Emitter({
     ext: "lua",
     // Lua accepts JS-style numeric literal syntax directly, including
@@ -48,8 +54,8 @@ const emitter = new Emitter({
         // math.floor/math.ceil return Lua's integer subtype (5.3+), not
         // float -- +0.0 coerces back, matching this project's float64-only
         // model everywhere else.
-        floor: ([x]) => `(math.floor(${x}) + 0.0)`,
-        ceil: ([x]) => `(math.ceil(${x}) + 0.0)`,
+        floor: ([x]) => `${LUA_ZERO_SIGN}(${x}, math.floor(${x}) + 0.0)`,
+        ceil: ([x]) => `${LUA_ZERO_SIGN}(${x}, math.ceil(${x}) + 0.0)`,
         // No math.round in Lua at any version -- the standard manual idiom
         // (floor(x+0.5)) matches JS's/Java's round-half-up convention, not
         // C/Go/Rust's round-half-away-from-zero -- same already-documented,
@@ -61,13 +67,16 @@ const emitter = new Emitter({
         // "round() at exact .5 boundaries" section. Sign built inline
         // (Lua has no math.sign), same ternary shape as this file's own
         // sign: entry below.
-        round: ([x]) => `((((${x} > 0) and 1.0 or ((${x} < 0) and -1.0 or 0.0))) * (math.floor(math.abs(${x}) + 0.5)))`,
+        round: ([x]) =>
+            `(function(a) local m = math.abs(a); local f = math.floor(m) + 0.0; ` +
+            `local r = f + ((m - f >= 0.5) and 1.0 or 0.0); ` +
+            `return ((a > 0) and 1.0 or ((a < 0) and -1.0 or a)) * r end)(${x})`,
         // No math.trunc either -- math.modf(x) returns (integral,
         // fractional) parts as its two results; parenthesizing the call
         // selects just the first (Lua's standard idiom for narrowing a
         // multi-return to one value), which is exactly trunc(x), and
         // already float-typed.
-        trunc: ([x]) => `(math.modf(${x}))`,
+        trunc: ([x]) => `${LUA_ZERO_SIGN}(${x}, (math.modf(${x})))`,
         // No math.sign either. Lua's and/or conditional idiom is safe here
         // specifically because only nil/false are falsy in Lua -- 0.0 (or
         // any number) is always truthy, unlike JS/Python/C. Zero-aware by

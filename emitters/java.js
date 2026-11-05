@@ -37,7 +37,9 @@ const emitter = new Emitter({
         // and the root README's "round() at exact .5 boundaries" section.
         // Math.signum already returns double for a double argument, so no
         // cast is needed here the way the plain Math.round path above did.
-        round: ([x]) => `(Math.signum(${x}) * Math.floor(Math.abs(${x}) + 0.5))`,
+        round: ([x]) =>
+            `((java.util.function.DoubleUnaryOperator) (a) -> Math.signum(a) * ` +
+            `(Math.floor(Math.abs(a)) + (Math.abs(a) - Math.floor(Math.abs(a)) >= 0.5 ? 1.0 : 0.0))).applyAsDouble(${x})`,
         trunc: ([x]) => `((${x}) < 0.0 ? Math.ceil(${x}) : Math.floor(${x}))`,
         sign: fn1("signum"),
         wrapIndex: ([i, m]) => `(((${i} % ${m}) + ${m}) % ${m})`,

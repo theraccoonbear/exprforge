@@ -43,7 +43,16 @@ const CALLS = {
     // comment and the root README's "round() at exact .5 boundaries"
     // section). The interpreter has to agree with every emitted target,
     // not just be internally consistent with itself.
-    round: (x) => Math.sign(x) * Math.floor(Math.abs(x) + 0.5),
+    // The exact form: floor(|x|) plus one when the fractional part
+    // |x| - floor(|x|), which is computed without rounding, is at least
+    // 0.5. Math.abs(x) + 0.5 is inexact at 0.49999999999999994 and above
+    // 2^52 (docs/adr/0001-round-tie-breaking.md). Math.sign(x) reapplies
+    // the sign, so -0 and (-0.5, 0) stay -0.
+    round: (x) => {
+        const m = Math.abs(x);
+        const f = Math.floor(m);
+        return Math.sign(x) * (f + (m - f >= 0.5 ? 1 : 0));
+    },
     pow: Math.pow, atan2: Math.atan2, min: Math.min, max: Math.max, hypot: Math.hypot,
     // See primitives.js's own comment -- ((i % m) + m) % m rather than a
     // plain `i % m`, so a negative `i` still wraps into [0, m) instead of

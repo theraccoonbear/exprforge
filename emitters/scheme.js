@@ -124,7 +124,10 @@ const emitter = new SchemeEmitter({
         // see js.js's own comment and the root README's "round() at
         // exact .5 boundaries" section. Sign built inline, same ternary
         // shape as this file's own sign: entry below.
-        round: ([x]) => `(* (if (> ${x} 0.0) 1.0 (if (< ${x} 0.0) -1.0 0.0)) (floor (+ (abs ${x}) 0.5)))`,
+        round: ([x]) =>
+            `(let* ((ef-a ${x}) (ef-m (abs ef-a)) (ef-f (floor ef-m))) ` +
+            `(* (if (> ef-a 0.0) 1.0 (if (< ef-a 0.0) -1.0 ef-a)) ` +
+            `(+ ef-f (if (>= (- ef-m ef-f) 0.5) 1.0 0.0))))`,
         trunc: fn1("truncate"),
         min: fn2("min"), max: fn2("max"),
         // No hypot procedure -- derive it directly.

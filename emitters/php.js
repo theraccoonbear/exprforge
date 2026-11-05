@@ -53,7 +53,7 @@ const emitter = new PhpEmitter({
         // (found by samples/boundary-conditions-demo.js). Ties away from
         // zero, exact for every finite double, NaN/Infinity pass through.
         round: ([x]) =>
-            `(${x} >= 0 ? floor(${x}) + (((${x}) - floor(${x})) >= 0.5 ? 1.0 : 0.0) : ceil(${x}) - ((ceil(${x}) - (${x})) >= 0.5 ? 1.0 : 0.0))`,
+            `(${x} > 0 ? floor(${x}) + (((${x}) - floor(${x})) >= 0.5 ? 1.0 : 0.0) : ceil(${x}) - ((ceil(${x}) - (${x})) >= 0.5 ? 1.0 : 0.0))`,
         // No trunc() anywhere in PHP core. floor for non-negatives, ceil
         // for negatives -- avoids an (int) cast, which would silently
         // misbehave outside PHP's platform integer range.

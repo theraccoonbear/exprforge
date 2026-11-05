@@ -26,7 +26,8 @@ const emitter = new Emitter({
         ceil: fn1("ceil"), trunc: fn1("trunc"), sign: fn1("sign"),
         // See js.js's own comment -- same fix, same reasoning, same
         // runtime (Math.*).
-        round: ([x]) => `(Math.sign(${x}) * Math.floor(Math.abs(${x}) + 0.5))`,
+        round: ([x]) =>
+            `((a: number): number => { const f = Math.floor(Math.abs(a)); return Math.sign(a) * (f + (Math.abs(a) - f >= 0.5 ? 1 : 0)); })(${x})`,
         pow: fn2("pow"), atan2: fn2("atan2"), min: fn2("min"), max: fn2("max"), hypot: fn2("hypot"),
         wrapIndex: ([i, m]) => `(((${i} % ${m}) + ${m}) % ${m})`,
         clampIndex: ([i, lo, hi]) => `Math.max(${lo}, Math.min(${hi}, ${i}))`,

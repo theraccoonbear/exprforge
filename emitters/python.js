@@ -24,6 +24,14 @@ const POW_HELPER =
     `            return -math.inf if (math.copysign(1.0, b) < 0 and e == math.floor(e) and e % 2 == 1) else math.inf\n` +
     `        return math.nan\n\n\n`;
 
+const ROUND_HELPER =
+    `def _ef_round(a):\n` +
+    `    if not math.isfinite(a):\n` +
+    `        return a\n` +
+    `    m = abs(a)\n` +
+    `    f = float(math.floor(m))\n` +
+    `    return math.copysign(f + (1.0 if m - f >= 0.5 else 0.0), a)\n\n\n`;
+
 const EXP_HELPER =
     `def _ef_exp(x):\n` +
     `    try:\n` +
@@ -32,7 +40,8 @@ const EXP_HELPER =
     `        return math.inf\n\n\n`;
 
 function helpersFor(text) {
-    return (text.includes("_ef_pow(") ? POW_HELPER : "") + (text.includes("_ef_exp(") ? EXP_HELPER : "");
+    return (text.includes("_ef_pow(") ? POW_HELPER : "") + (text.includes("_ef_exp(") ? EXP_HELPER : "") +
+        (text.includes("_ef_round(") ? ROUND_HELPER : "");
 }
 
 // Python's "/" raises ZeroDivisionError for a zero denominator, unlike the
@@ -96,9 +105,9 @@ const emitter = new Emitter({
         // math.floor/ceil/trunc and builtin round() all return int in
         // Python 3, not float -- wrap to stay float64 throughout, matching
         // every other target here, rather than silently switching types.
-        floor: ([x]) => `(float(math.floor(${x})) if math.isfinite(${x}) else ${x})`,
-        ceil: ([x]) => `(float(math.ceil(${x})) if math.isfinite(${x}) else ${x})`,
-        trunc: ([x]) => `(float(math.trunc(${x})) if math.isfinite(${x}) else ${x})`,
+        floor: ([x]) => `(math.copysign(float(math.floor(${x})), ${x}) if math.isfinite(${x}) else ${x})`,
+        ceil: ([x]) => `(math.copysign(float(math.ceil(${x})), ${x}) if math.isfinite(${x}) else ${x})`,
+        trunc: ([x]) => `(math.copysign(float(math.trunc(${x})), ${x}) if math.isfinite(${x}) else ${x})`,
         // Python's builtin round() ties to EVEN ("banker's rounding"),
         // NOT this project's standardized round-half-AWAY-from-zero
         // convention -- see js.js's own comment and the root README's
@@ -107,7 +116,7 @@ const emitter = new Emitter({
         // a cleaner fit here than a separate sign*floor(abs+0.5) ternary,
         // and correctly handles x == 0 too (floor(0 + 0.5) == 0, and
         // copysign(0, 0) == 0.0).
-        round: ([x]) => `(math.copysign(math.floor(abs(${x}) + 0.5), ${x}) if math.isfinite(${x}) else ${x})`,
+        round: ([x]) => `_ef_round(${x})`,
         // No math.sign in Python's stdlib -- build it directly. Zero-aware
         // by construction (see Go's/Rust's sign() history in this project
         // for what happens when it isn't).

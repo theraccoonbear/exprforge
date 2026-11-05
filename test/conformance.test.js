@@ -2429,11 +2429,12 @@ test("mathDemo: round-trips through the expr-syntax emitter and back through fn(
         COBOL: (args) => nonFiniteOrNegZero(args) || args.some((a) => /e/i.test(argText(a))),
     };
 
-    // The reference round() is the sign(x)*floor(abs(x)+0.5) formula from
-    // ADR 0001, which is off by one at 0.49999999999999994 and above 2^52;
-    // targets with a native round() disagree with it there. Registered as
-    // todo until the open decision in docs/adr/0005-boundary-conditions.md
-    // is made.
+    // GnuCOBOL has no negative zero: a result in (-1, 0) is plain 0.
+    const COBOL_NO_NEGZERO = { COBOL: { signedZero: false } };
+
+    // round() uses the exact floor-plus-fraction form (ADR 0001), so
+    // 0.49999999999999994 and values above 2^52 round correctly. The sign
+    // of a zero result must match too: ceil/round/trunc of (-1, 0) are -0.
     registerSuiteConformance("boundary.rounding", {
         ast: B.roundingBoundaryAst,
         inputs: [
@@ -2442,13 +2443,20 @@ test("mathDemo: round-trips through the expr-syntax emitter and back through fn(
             [2.5], [-2.5],
         ],
         maxUlps: 0,
+        signedZero: true,
+        targetCmp: COBOL_NO_NEGZERO,
         skipRows: COBOL_PLAIN_ONLY,
     });
     registerSuiteConformance("boundary.roundPrecisionEdge", {
         ast: B.roundingBoundaryAst,
-        inputs: [[4503599627370497], [-4503599627370497], [0.49999999999999994], [-0.49999999999999994]],
+        inputs: [
+            [4503599627370497], [-4503599627370497], [0.49999999999999994], [-0.49999999999999994],
+            [2.5], [-2.5], [0.5], [-0.5], [0], [NZ], [1.5], [-1.5], [4503599627370495.5],
+        ],
         maxUlps: 0,
-        todo: "open decision: reference round() formula is off by one at 0.49999999999999994 and above 2^52",
+        signedZero: true,
+        targetCmp: COBOL_NO_NEGZERO,
+        skipRows: COBOL_PLAIN_ONLY,
     });
     registerConformance("boundary.sign", {
         ast: B.signBoundaryAst,
