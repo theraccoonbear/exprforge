@@ -1,0 +1,219 @@
+"use strict";
+
+// Shared helpers for the compile-and-run conformance harnesses, so that
+// several `npm test` invocations (and the several test files inside one
+// invocation, which node --test runs as parallel processes) can run at
+// the same time on one machine without interfering.
+//
+// - tmpDir(): every scratch directory is a fresh fs.mkdtemp directory under
+//   os.tmpdir(); anything still present at process exit is removed unless
+//   EXPRFORGE_KEEP_TMP=1 is set (then leftovers, i.e. the directories of
+//   failed cases, are kept and listed on stderr).
+// - hasQb64() / compileQb64(): QB64-PE compiles inside its own install
+//   directory (internal/temp, internal/c, ...), which is shared by every
+//   compile of that install. Detection is a PATH lookup that executes
+//   nothing, and the compile step is serialised by a cross-process lock.
+// - withFileLock(): the lock primitive (O_EXCL lock file, retry with
+//   backoff, stale-holder detection).
+
+const { execFileSync } = require("node:child_process");
+const crypto = require("node:crypto");
+const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
+
+const KEEP_TMP = process.env.EXPRFORGE_KEEP_TMP === "1";
+
+// --- Temp directories -------------------------------------------------------
+
+const liveDirs = new Set();
+let exitHooked = false;
+
+function cleanupTmpDirs() {
+    for (const dir of liveDirs) {
+        if (!fs.existsSync(dir)) continue;
+        if (KEEP_TMP) {
+            process.stderr.write(`EXPRFORGE_KEEP_TMP: kept ${dir}\n`);
+        } else {
+            fs.rmSync(dir, { recursive: true, force: true });
+        }
+    }
+    liveDirs.clear();
+}
+
+function hookExit() {
+    if (exitHooked) return;
+    exitHooked = true;
+    process.on("exit", cleanupTmpDirs);
+    for (const sig of ["SIGINT", "SIGTERM"]) {
+        process.on(sig, () => {
+            cleanupTmpDirs();
+            process.exit(128 + (sig === "SIGINT" ? 2 : 15));
+        });
+    }
+}
+
+function tmpDir(prefix) {
+    hookExit();
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
+    liveDirs.add(dir);
+    return dir;
+}
+
+// Callers that already remove their directory on success can keep doing so.
+function removeTmpDir(dir) {
+    fs.rmSync(dir, { recursive: true, force: true });
+    liveDirs.delete(dir);
+}
+
+// --- Cross-process lock -----------------------------------------------------
+
+const LOCK_STALE_AGE_MS = 5 * 60 * 1000;
+const LOCK_MAX_WAIT_MS = 15 * 60 * 1000;
+
+function sleepSync(ms) {
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+function pidAlive(pid) {
+    try {
+        process.kill(pid, 0);
+        return true;
+    } catch (e) {
+        return e.code === "EPERM";
+    }
+}
+
+function readLockPid(lockPath) {
+    try {
+        return Number.parseInt(fs.readFileSync(lockPath, "utf8"), 10);
+    } catch {
+        return null;
+    }
+}
+
+function lockIsStale(lockPath) {
+    return fs.existsSync(lockPath) && lockIsStaleFile(lockPath);
+}
+
+// Remove a stale lock without clobbering a fresh lock that another process
+// created between the staleness check and the removal: move it aside, check
+// it is still the file that was judged stale, and put it back if it is not.
+function breakStaleLock(lockPath) {
+    const aside = `${lockPath}.stale.${process.pid}`;
+    try {
+        fs.renameSync(lockPath, aside);
+    } catch {
+        return;
+    }
+    if (!lockIsStaleFile(aside)) {
+        try {
+            fs.linkSync(aside, lockPath);
+        } catch {
+            // someone else already took the lock; theirs wins
+        }
+    }
+    fs.rmSync(aside, { force: true });
+}
+
+// A holder that is gone is stale; so is a lock older than any real compile.
+// An empty/garbled file means the holder died (or is mid-write) between
+// create and write, so it gets a short grace period.
+function lockIsStaleFile(file) {
+    const pid = readLockPid(file);
+    if (Number.isInteger(pid) && !pidAlive(pid)) return true;
+    try {
+        return Date.now() - fs.statSync(file).mtimeMs > (Number.isInteger(pid) ? LOCK_STALE_AGE_MS : 2000);
+    } catch {
+        return true;
+    }
+}
+
+function acquireLock(lockPath) {
+    const start = Date.now();
+    let delay = 10;
+    for (;;) {
+        try {
+            const fd = fs.openSync(lockPath, "wx");
+            fs.writeSync(fd, String(process.pid));
+            fs.closeSync(fd);
+            return;
+        } catch (e) {
+            if (e.code !== "EEXIST") throw e;
+        }
+        if (lockIsStale(lockPath)) {
+            breakStaleLock(lockPath);
+            continue;
+        }
+        if (Date.now() - start > LOCK_MAX_WAIT_MS) {
+            throw new Error(`timed out waiting for lock ${lockPath}`);
+        }
+        sleepSync(delay + Math.floor(Math.random() * delay));
+        delay = Math.min(delay * 2, 250);
+    }
+}
+
+function releaseLock(lockPath) {
+    if (readLockPid(lockPath) === process.pid) fs.rmSync(lockPath, { force: true });
+}
+
+function withFileLock(lockPath, fn) {
+    acquireLock(lockPath);
+    try {
+        return fn();
+    } finally {
+        releaseLock(lockPath);
+    }
+}
+
+// --- QB64-PE ----------------------------------------------------------------
+
+let qb64Cache;
+
+// Locates qb64pe on PATH without executing it (an invocation is itself a
+// compiler run that touches the shared install, and its exit status was an
+// unreliable presence signal).
+function findQb64() {
+    if (qb64Cache !== undefined) return qb64Cache;
+    qb64Cache = null;
+    for (const dir of (process.env.PATH || "").split(path.delimiter)) {
+        if (!dir) continue;
+        const candidate = path.join(dir, "qb64pe");
+        try {
+            fs.accessSync(candidate, fs.constants.X_OK);
+            if (!fs.statSync(candidate).isFile()) continue;
+            qb64Cache = { bin: candidate, real: fs.realpathSync(candidate) };
+            break;
+        } catch {
+            // not here
+        }
+    }
+    return qb64Cache;
+}
+
+function hasQb64() {
+    return findQb64() !== null;
+}
+
+function qb64LockPath() {
+    const real = findQb64().real;
+    const key = crypto.createHash("sha1").update(real).digest("hex").slice(0, 12);
+    return path.join(os.tmpdir(), `exprforge-qb64pe-${key}.lock`);
+}
+
+// qb64pe works inside <install>/internal/temp* and shares that tree between
+// every compile, so concurrent compiles corrupt each other (wrong or empty
+// binaries, spurious C++ errors). Only the compile is serialised; running
+// the produced binaries stays parallel.
+function compileQb64(srcPath, outPath) {
+    return withFileLock(qb64LockPath(), () => execFileSync("qb64pe", ["-x", srcPath, "-o", outPath]));
+}
+
+module.exports = {
+    KEEP_TMP,
+    tmpDir,
+    removeTmpDir,
+    withFileLock,
+    hasQb64,
+    compileQb64,
+};
