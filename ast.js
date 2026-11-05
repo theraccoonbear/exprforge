@@ -59,7 +59,7 @@
 // expr`...`'s own tokenizer already only ever produces safe identifier
 // characters, so these builders were the one place a malicious/malformed
 // name -- e.g. `v('x); process.exit(1); //')` -- could reach emitted
-// output completely unchecked, verbatim, in all 16 targets at once.
+// output completely unchecked, verbatim, in every target at once.
 // Confirmed, not assumed, before this existed.
 
 // Matches fn`...`/expr`...`'s own tokenizer IDENT rule exactly (see
@@ -187,7 +187,7 @@ function cmp(left, op, right) {
 // form -- confirmed directly: this is true of evaluate() itself, and of
 // JS/TS/Java/C/C#/Python/Rust/Go/Lua/Scheme/Zig/Julia/Perl/PHP's emitted
 // output) -- relying on that isn't part of this AST's own contract, only
-// an implementation detail of 15 of 18 targets that the remaining 3 don't
+// an implementation detail of most executable targets that QB64, Fortran and COBOL don't
 // share, so it breaks silently and unevenly rather than being something
 // safe to build on. Ensure the operands are already safe instead (e.g.
 // clamp a denominator with its own select before dividing by it), or keep
@@ -358,7 +358,7 @@ function collectVarRefs(node, refs = new Set()) {
 // notices, with wildly inconsistent timing and clarity (a real compile
 // error in Java, a silent-until-called ReferenceError in JS). Confirmed
 // the gap first, not assumed: before this existed, emitAll() silently
-// succeeded across all 18 targets for a body referencing a completely
+// succeeded across every registered target for a body referencing a completely
 // undeclared name.
 //
 // Also validates fn.name and every fn.params entry as safe identifiers

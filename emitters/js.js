@@ -20,7 +20,7 @@ const emitter = new Emitter({
         // Math.round ties toward +Infinity (round(-0.5) === -0, round(-1.5)
         // === -1) -- NOT the convention this project standardizes round()
         // on everywhere (round half AWAY from zero, matching the majority
-        // of this project's 18 targets -- see the root README's "round()
+        // of this project's executable targets -- see the root README's "round()
         // at exact .5 boundaries" section for the full, directly-verified
         // breakdown of why this convention specifically). Built from
         // Math.sign/Math.floor/Math.abs, which already agree with every

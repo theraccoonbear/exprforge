@@ -31,7 +31,7 @@ tooling:
    authored right now.
 2. **As standalone files**: `emitters/exprsyntax.js` (registry key
    `expr`, `.ext = "fn"`) really does produce bare `.fn` source text as
-   one of the 18 output targets, so a real `.fn` file on disk is also a
+   one of the registered output targets, so a real `.fn` file on disk is also a
    legitimate artifact, not hypothetical.
 
 These need different VS Code mechanisms and should be scoped/decided

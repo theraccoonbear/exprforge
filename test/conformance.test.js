@@ -147,7 +147,7 @@ function normalizeXReference(x, y, z) {
 // renameConflictingParams there, and
 // https://github.com/theraccoonbear/exprforge/issues/18 for the design
 // rationale -- "c" is proven to actually work here, in the real
-// conformance suite, across all 18 targets, not just in an isolated
+// conformance suite, across every executable target, not just in an isolated
 // throwaway script.
 //
 // sqrt(a^2 + b^2) here specifically -- not simplified to avoid it -- is
@@ -294,7 +294,7 @@ const SAMPLES = {
     // A real, PERMANENT divergence, not a bug -- see
     // samples/round-tie-demo.js's own header comment for the full,
     // directly-verified breakdown (three distinct tie-breaking
-    // conventions across this project's 18 targets) and the root
+    // conventions across this project's targets) and the root
     // README's "round() at exact .5 boundaries" section for why this is
     // documented and demonstrated rather than unified. Reference is
     // JS's own Math.round (half-up, ties toward +Infinity) -- the same
