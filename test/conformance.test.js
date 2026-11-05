@@ -24,6 +24,7 @@ const fs = require("node:fs");
 const { DOTNET_TFM } = require("./dotnet-tfm.js");
 const os = require("node:os");
 const path = require("node:path");
+const { tmpDir, hasQb64, compileQb64, runQb64, QB64_ERROR_PROLOGUE, QB64_ERROR_HANDLER } = require("./harness-util.js");
 
 const {
     num,
@@ -52,6 +53,7 @@ const {
     arrayMacroDemoAst,
     mathEdgeCasesAst,
     divisionByZeroAst,
+    nonFiniteRoundingAst,
     differentiateDemoAst,
     zeroParamDemoAst,
     cyclicElemAst,
@@ -473,11 +475,12 @@ const TOOLS = {
     // If tsc isn't installed wherever this runs, these tests just skip,
     // same as Java does without a local JDK.
     tsc: hasTool("tsc", ["--version"]),
-    qb64: hasTool("qb64pe", ["-v"]),
+    qb64: hasQb64(),
     dotnet: hasTool("dotnet", ["--version"]),
     python: hasTool("python3", ["--version"]),
     lua: hasTool("lua", ["-v"]),
     perl: hasTool("perl", ["-v"]),
+    ruby: hasTool("ruby", ["-v"]),
     php: hasTool("php", ["--version"]),
     julia: hasTool("julia", ["--version"]),
     rscript: hasTool("Rscript", ["--version"]),
@@ -503,10 +506,6 @@ const TARGET_FILTER = process.env.EXPRFORGE_TEST_TARGETS
 
 function targetAllowed(label) {
     return !TARGET_FILTER || TARGET_FILTER.has(label);
-}
-
-function tmpDir(prefix) {
-    return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
 }
 
 // The emitted JS implementation, loaded in-process, is the baseline every
@@ -826,12 +825,12 @@ function runQB64(ast, inputs) {
     // this call site never hit the empty case before.
     const callExpr = callArgs ? `${ast.name}#(${callArgs})` : `${ast.name}#`;
     const harness =
-        `$CONSOLE:ONLY\n${source}\n${argReads}\nPRINT ${callExpr}\nSYSTEM\n`;
+        `$CONSOLE:ONLY\n${source}\n${QB64_ERROR_PROLOGUE}${argReads}\nPRINT ${callExpr}\nSYSTEM\n${QB64_ERROR_HANDLER}`;
     const srcPath = path.join(dir, "main.bas");
     fs.writeFileSync(srcPath, harness);
     const bin = path.join(dir, "bin");
-    execFileSync("qb64pe", ["-x", srcPath, "-o", bin]);
-    const results = inputs.map((args) => qb64ToNumber(execFileSync(bin, args.map(String)).toString().trim()));
+    compileQb64(srcPath, bin);
+    const results = inputs.map((args) => qb64ToNumber(runQb64(bin, args.map(String)).toString().trim()));
     fs.rmSync(dir, { recursive: true, force: true });
     return results;
 }
@@ -851,14 +850,14 @@ function runSuiteQB64(ast, inputs, outputNames) {
     // stays correct if one ever does.
     const allCallArgs = [callArgs, outputNames.join(", ")].filter(Boolean).join(", ");
     const harness =
-        `$CONSOLE:ONLY\n${source}\n${argReads}\n${outDecl}\n` +
-        `CALL ${ast.name}(${allCallArgs})\n${prints}\nSYSTEM\n`;
+        `$CONSOLE:ONLY\n${source}\n${QB64_ERROR_PROLOGUE}${argReads}\n${outDecl}\n` +
+        `CALL ${ast.name}(${allCallArgs})\n${prints}\nSYSTEM\n${QB64_ERROR_HANDLER}`;
     const srcPath = path.join(dir, "main.bas");
     fs.writeFileSync(srcPath, harness);
     const bin = path.join(dir, "bin");
-    execFileSync("qb64pe", ["-x", srcPath, "-o", bin]);
+    compileQb64(srcPath, bin);
     const results = inputs.map((args) => {
-        const lines = execFileSync(bin, args.map(String)).toString().trim().split("\n");
+        const lines = runQb64(bin, args.map(String)).toString().trim().split("\n");
         const record = {};
         outputNames.forEach((name, i) => {
             record[name] = qb64ToNumber(lines[i]);
@@ -1240,6 +1239,51 @@ function runSuitePerl(ast, inputs, outputNames) {
     const srcPath = path.join(dir, "main.pl");
     fs.writeFileSync(srcPath, harness);
     const results = inputs.map((args) => parseSuiteOutput(execFileSync("perl", [srcPath, ...args.map(String)]), outputNames));
+    fs.rmSync(dir, { recursive: true, force: true });
+    return results;
+}
+
+// --- Ruby --------------------------------------------------------------
+//
+// No compile step -- ruby interprets the emitted source directly. Args
+// come in via ARGV (0-indexed). Array-typed params: comma-joined CLI
+// string -> an Array of Floats. Scalar params are passed as the raw ARGV
+// String on purpose: the emitted function coerces them with Float() on
+// entry (see emitters/ruby.js), so this also exercises that coercion.
+function rubyParamParses(ast) {
+    return ast.params
+        .map((p, i) => {
+            if (ast.paramTypes?.[p] === "number[]") {
+                return `${p} = ARGV[${i}].split(',').map { |s| Float(s) }`;
+            }
+            return `${p} = ARGV[${i}]`;
+        })
+        .join("\n");
+}
+
+function runRuby(ast, inputs) {
+    const source = emitters.ruby.emitFunction(ast);
+    const dir = tmpDir("ef-rb-");
+    const parses = rubyParamParses(ast);
+    const callArgs = ast.params.join(", ");
+    const harness = `${source}\n${parses}\nputs format("%.17g", ${ast.name}(${callArgs}))\n`;
+    const srcPath = path.join(dir, "main.rb");
+    fs.writeFileSync(srcPath, harness);
+    const results = inputs.map((args) => parseNumericOutput(execFileSync("ruby", [srcPath, ...args.map(String)]).toString().trim()));
+    fs.rmSync(dir, { recursive: true, force: true });
+    return results;
+}
+
+function runSuiteRuby(ast, inputs, outputNames) {
+    const source = emitters.ruby.emitFunction(ast);
+    const dir = tmpDir("ef-rb-");
+    const parses = rubyParamParses(ast);
+    const callArgs = ast.params.join(", ");
+    const prints = outputNames.map((n) => `puts format("%.17g", r[:${n}])`).join("\n");
+    const harness = `${source}\n${parses}\nr = ${ast.name}(${callArgs})\n${prints}\n`;
+    const srcPath = path.join(dir, "main.rb");
+    fs.writeFileSync(srcPath, harness);
+    const results = inputs.map((args) => parseSuiteOutput(execFileSync("ruby", [srcPath, ...args.map(String)]), outputNames));
     fs.rmSync(dir, { recursive: true, force: true });
     return results;
 }
@@ -1826,7 +1870,10 @@ function runSuiteCobol(ast, inputs, outputNames) {
     return results;
 }
 
-function registerSuiteConformance(sampleName, { ast, inputs, skipTargets = [] }) {
+// todoTargets: { label: reason } -- a real, recorded divergence on that
+// target. The test still runs and is reported, but as a node:test TODO so
+// it does not fail the suite.
+function registerSuiteConformance(sampleName, { ast, inputs, skipTargets = [], todoTargets = {} }) {
     const outputNames = suiteOutputNames(ast);
     const targets = [
         ["Interpreter", true, runEval],
@@ -1840,6 +1887,7 @@ function registerSuiteConformance(sampleName, { ast, inputs, skipTargets = [] })
         ["Python", TOOLS.python, runSuitePython],
         ["Lua", TOOLS.lua, runSuiteLua],
         ["Perl", TOOLS.perl, runSuitePerl],
+        ["Ruby", TOOLS.ruby, runSuiteRuby],
         ["PHP", TOOLS.php, runSuitePhp],
         ["Julia", TOOLS.julia, runSuiteJulia],
         ["R", TOOLS.rscript, runSuiteR],
@@ -1853,7 +1901,7 @@ function registerSuiteConformance(sampleName, { ast, inputs, skipTargets = [] })
     for (const [label, available, run] of targets) {
         test(
             `${sampleName}: ${label} emitted output matches JS`,
-            { skip: !available && `${label} toolchain not available` },
+            { skip: !available && `${label} toolchain not available`, todo: todoTargets[label] },
             () => {
                 const jsFn = loadJsFn(ast);
                 const expected = inputs.map((args) => jsFn(...args));
@@ -1897,6 +1945,7 @@ function registerConformance(sampleName, { ast, reference, inputs, skipTargets =
         ["Python", TOOLS.python, runPython],
         ["Lua", TOOLS.lua, runLua],
         ["Perl", TOOLS.perl, runPerl],
+        ["Ruby", TOOLS.ruby, runRuby],
         ["PHP", TOOLS.php, runPhp],
         ["Julia", TOOLS.julia, runJulia],
         ["R", TOOLS.rscript, runR],
@@ -2125,6 +2174,30 @@ registerSuiteConformance("divisionByZero", {
     // cannot survive any COMPUTE (confirmed: COMPUTE y = inf stores 0),
     // so IEEE results are not reachable inside an expression.
     skipTargets: ["COBOL"],
+});
+
+// Proves floor/ceil/trunc/round return NaN and +-Infinity unchanged on
+// every target (see samples/non-finite-rounding-demo.js). The non-finite
+// values are built inside the expression from a runtime zero.
+registerSuiteConformance("nonFiniteRounding", {
+    ast: nonFiniteRoundingAst,
+    inputs: [
+        [2.5, 0],
+        [-2.5, 0],
+    ],
+    // GnuCOBOL's COMPUTE is decimal arithmetic with no Infinity or NaN;
+    // same documented exception as divisionByZero above.
+    skipTargets: ["COBOL"],
+    // Real divergences found by this sample on targets other than Ruby,
+    // recorded rather than fixed here. Each is the emitted target's result
+    // for the NaN / +Infinity / -Infinity inputs against the interpreter's
+    // unchanged pass-through.
+    todoTargets: {
+        Java: "truncate of NaN/+-Infinity: trunc gives NaN->0, +Inf->9.223372036854776E18, -Inf->-9.223372036854776E18 (long cast), expected NaN/Infinity/-Infinity",
+        Python: "math.floor/ceil/trunc raise ValueError for NaN and OverflowError for +-Infinity instead of returning them unchanged",
+        "C#": "round is emitted as Math.Sign(x) * Math.Floor(Math.Abs(x) + 0.5) and Math.Sign throws ArithmeticException for NaN instead of passing it through; round's formula is being rewritten on every target in the boundary-conformance work (PR #53), and the integer-cast rounding fixes are tracked in fix/nonfinite-rounding",
+        Fortran: "floor/ceil of NaN/+-Infinity go through an integer conversion (NaN->2147483647, +Inf->-2147483648, -Inf->2147483647 for floor; NaN/+Inf->-2147483647, -Inf->-2147483648 for ceil), expected NaN/Infinity/-Infinity",
+    },
 });
 
 // --- samples/math-demo.js -------------------------------------------------

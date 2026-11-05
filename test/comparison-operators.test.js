@@ -51,6 +51,8 @@ const EXPECTED = {
     // r: a comparison involving NaN is NA in R and `if (NA)` is an error,
     // so every operator goes through isTRUE(); "!=" is the negated "=="
     // because NaN != x is true in JS but NA in R.
+    // ruby: same spelling as JS/C for every operator (ternary select).
+    ruby: { eq: "==", ne: "!=" },
     matlab: { eq: "==", ne: "~=", forbidNe: "!=" },
     // scheme: prefix notation, not an infix token -- "(=" for equality,
     // "(not (=" for inequality (R7RS has no single not-equal procedure).

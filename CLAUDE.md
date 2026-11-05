@@ -72,8 +72,8 @@ git log --oneline origin/main..HEAD
 
 ExprForge is a cross-language math expression code generator. Author a
 pure-arithmetic formula once as an AST, emit identical-behavior implementations
-in 19 programming languages (executable targets) plus a native JS evaluator,
-LaTeX typeset output, and a printer for ExprForge's own syntax (21 output
+in 20 programming languages (executable targets) plus a native JS evaluator,
+LaTeX typeset output, and a printer for ExprForge's own syntax (22 output
 targets in total).
 
 ### Architecture layers
@@ -106,6 +106,14 @@ targets in total).
 npm test                    # run all tests (skips missing toolchains)
 npm run test:coverage       # with coverage
 ```
+
+Several `npm test` runs may execute at once. Scratch directories come from
+`tmpDir()` in `test/harness-util.js` (unique `fs.mkdtemp` dirs, removed at
+exit; `EXPRFORGE_KEEP_TMP=1` keeps the leftovers of failed cases), and the
+qb64pe compile step goes through `compileQb64()`, which holds a cross-process
+lock because qb64pe compiles inside its shared install directory. New
+harness code must use these helpers rather than `mkdtempSync` or a direct
+`qb64pe` call.
 
 Tests use Node's built-in test runner (`node:test` + `node:assert`).
 Conformance tests compile/interpret emitted code against every available
@@ -167,9 +175,9 @@ numeric behavior or CI updates every doc that states it, in the same PR:
 - test comments
 
 Prefer count-free wording ("every registered target") where possible so docs
-don't go stale. Where a number is needed, use the convention: 19 programming
+don't go stale. Where a number is needed, use the convention: 20 programming
 languages (executable targets), LaTeX typeset output, ExprForge's own syntax
-printer, 21 output targets in total. Claims about identical computed behavior
+printer, 22 output targets in total. Claims about identical computed behavior
 cover the executable targets (plus the evaluator), not LaTeX or `expr`.
 
 Checklist when adding a new target:
