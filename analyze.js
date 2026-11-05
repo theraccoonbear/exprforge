@@ -55,6 +55,7 @@
 const { collectLets, checkUnboundVars } = require("./ast.js");
 const { expandMacros } = require("./macros.js");
 const { PRIMITIVE_ARITY } = require("./primitives.js");
+const exprSyntax = require("./emitters/exprsyntax.js");
 
 const INF = Infinity;
 const TWO_PI = 2 * Math.PI;
@@ -233,6 +234,42 @@ const key = (() => {
     };
 })();
 
+
+// ---- plain-language rendering --------------------------------------------
+
+function stripOuterParens(s) {
+    if (s[0] !== "(" || s[s.length - 1] !== ")") return s;
+    let depth = 0;
+    for (let i = 0; i < s.length; i++) {
+        if (s[i] === "(") depth++;
+        else if (s[i] === ")" && --depth === 0 && i < s.length - 1) return s;
+    }
+    return s.slice(1, -1);
+}
+
+// Source text of a sub-expression, via the project's own expr-syntax emitter.
+function show(node) {
+    try {
+        return stripOuterParens(exprSyntax.emitExpr(node));
+    } catch {
+        return node.type;
+    }
+}
+
+const showCond = (c) => `${show(c.left)} ${c.op} ${show(c.right)}`;
+
+function fmtNum(n) {
+    if (n === INF) return "\u221e";
+    if (n === -INF) return "\u2212\u221e";
+    return String(Number(n.toPrecision(6))).replace("-", "\u2212");
+}
+
+function fmtRange(i) {
+    return i.lo === i.hi ? fmtNum(i.lo) : `${fmtNum(i.lo)}\u2026${fmtNum(i.hi)}`;
+}
+
+const code = (s) => `\`${s}\``;
+
 const NEGATE = { ">": "<=", "<": ">=", ">=": "<", "<=": ">", "==": "!=", "!=": "==" };
 const FLIP = { ">": "<", "<": ">", ">=": "<=", "<=": ">=", "==": "==", "!=": "!=" };
 
@@ -322,7 +359,7 @@ function checkRanges(fnDef, ranges) {
 }
 
 /**
- * analyzeRanges(fnDef, ranges, registry?) -> { range, warnings, selects }
+ * analyzeRanges(fnDef, ranges, registry?) -> { range, warnings, selects, findings }
  * See this file's header comment for the result shape.
  */
 function analyzeRanges(fnDef, ranges = {}, registry = undefined) {
@@ -330,7 +367,7 @@ function analyzeRanges(fnDef, ranges = {}, registry = undefined) {
     const fn = expandMacros(fnDef, null, registry);
     checkUnboundVars(fn);
 
-    const warnings = [];
+    const findings = [];
     const selects = [];
     const selectInfo = new Map();
     let nextSelectId = 0;
@@ -410,14 +447,27 @@ function analyzeRanges(fnDef, ranges = {}, registry = undefined) {
         const result = divI(l, r);
         if (ctx.mute) return result;
         const at = path.join(" > ");
+        const text = show(node);
+        const denomText = show(node.right);
+        if (ctx.dead) {
+            if (containsZero(r)) {
+                findings.push({
+                    kind: "div-unreachable", severity: "info", at, expr: text,
+                    denominator: strip(r), inDeadBranch: true,
+                    message: `${code(text)} never runs for these inputs (${ctx.dead}), so its zero denominator is not a hazard.`,
+                });
+            }
+            return result;
+        }
         if (containsZero(r)) {
-            const w = {
-                kind: "div-by-zero", at,
-                certain: r.lo === 0 && r.hi === 0 && !r.nz,
-                denominator: strip(r),
-            };
-            if (ctx.dead) w.inDeadBranch = true;
-            warnings.push(w);
+            const certain = r.lo === 0 && r.hi === 0 && !r.nz;
+            findings.push({
+                kind: "div-by-zero", severity: "warning", at, expr: text,
+                certain, denominator: strip(r),
+                message: certain
+                    ? `${code(text)} always divides by zero: ${code(denomText)} is always 0.`
+                    : `${code(text)} can divide by zero: ${code(denomText)} can be 0 (range ${fmtRange(r)}).`,
+            });
             return result;
         }
         if (!ctx.facts.length) return result;
@@ -426,13 +476,17 @@ function analyzeRanges(fnDef, ranges = {}, registry = undefined) {
         const owners = [...new Set(ctx.facts.map((e) => e.owner))];
         const needed = owners.filter((o) => zeroPossible(node.right, ctx.facts.filter((e) => e.owner !== o)));
         for (const o of needed) selectInfo.get(o).loadBearing = true;
-        const w = {
-            kind: "div-guarded", at,
+        const denominator = strip(an(node.right, { facts: [], mute: true }));
+        const conds = needed.map((o) => code(selectInfo.get(o).condition)).join(", ");
+        findings.push({
+            kind: "div-guarded", severity: "warning", at, expr: text,
             guards: needed.map((o) => selectInfo.get(o).at),
-            denominator: strip(an(node.right, { facts: [], mute: true })),
-        };
-        if (ctx.dead) w.inDeadBranch = true;
-        warnings.push(w);
+            guardConditions: needed.map((o) => selectInfo.get(o).condition),
+            denominator,
+            message: `${code(text)} is protected from a zero denominator only by the condition ${conds} ` +
+                `(${code(denomText)} can be 0 on its own, range ${fmtRange(denominator)}). ` +
+                `Targets that evaluate both branches of a select (QB64, Fortran, COBOL) still run the division.`,
+        });
         return result;
     }
 
@@ -488,9 +542,9 @@ function analyzeRanges(fnDef, ranges = {}, registry = undefined) {
 
     function selectI(node, ctx) {
         const id = nextSelectId++;
-        const info = { at: path.join(" > ") || "body", outcome: "either", loadBearing: false };
+        const condition = showCond(node.cond);
+        const info = { at: path.join(" > ") || "body", outcome: "either", loadBearing: false, condition };
         selectInfo.set(id, info);
-        if (!ctx.mute) selects.push(info);
 
         const { left, right, op } = node.cond;
         const l = step("select.cond.left", left, ctx);
@@ -498,7 +552,26 @@ function analyzeRanges(fnDef, ranges = {}, registry = undefined) {
         const { canTrue, canFalse } = decide(op, l, r);
         if (!canFalse) info.outcome = "always-then";
         else if (!canTrue) info.outcome = "always-else";
+        info.severity = "info";
+        if (info.outcome === "always-then") {
+            info.message = `Condition ${code(condition)} is always true for these inputs, so this always returns ${code(show(node.then))}.`;
+        } else if (info.outcome === "always-else") {
+            info.message = `Condition ${code(condition)} is never true for these inputs, so this always returns ${code(show(node.else))}.`;
+        } else {
+            info.message = `Condition ${code(condition)} can be true or false for these inputs.`;
+        }
+        if (!ctx.mute) {
+            selects.push(info);
+            if (!ctx.dead && info.outcome !== "either") {
+                findings.push({
+                    kind: "condition-decided", severity: "info", at: info.at, expr: condition,
+                    outcome: info.outcome, message: info.message,
+                });
+            }
+        }
 
+        // Each branch is analysed with the operand ranges narrowed by the
+        // condition (then) or its negation (else); see factsFor().
         const branch = (truth, can, label, sub) => {
             const bop = truth ? op : NEGATE[op];
             const entries = [];
@@ -506,7 +579,8 @@ function analyzeRanges(fnDef, ranges = {}, registry = undefined) {
                 for (const [e, f] of factsFor(left, bop, r)) entries.push({ key: key(e), fact: f, owner: id });
                 for (const [e, f] of factsFor(right, FLIP[bop], l)) entries.push({ key: key(e), fact: f, owner: id });
             }
-            const bctx = { facts: ctx.facts.concat(entries), mute: ctx.mute, dead: ctx.dead || !can };
+            const reason = `${code(condition)} is ${truth ? "never true" : "always true"} here`;
+            const bctx = { facts: ctx.facts.concat(entries), mute: ctx.mute, dead: ctx.dead || (can ? false : reason) };
             return step(label, sub, bctx);
         };
         const t = branch(true, canTrue, "select.then", node.then);
@@ -535,7 +609,8 @@ function analyzeRanges(fnDef, ranges = {}, registry = undefined) {
         range = strip(an(body, top));
         path.pop();
     }
-    return { range, warnings, selects };
+    const warnings = findings.filter((f) => f.severity !== "info");
+    return { range, warnings, selects, findings };
 }
 
 module.exports = { analyzeRanges };
