@@ -220,7 +220,7 @@ emission of the same function, so callers don't need per-language-different
 call sites.
 
 **Every other registered emitter (c, cobol, csharp, exprsyntax, fortran, go,
-java, julia, lua, perl, php, python, r, rust, scheme, zig).** Full support is
+java, julia, lua, matlab, perl, php, python, r, rust, scheme, zig).** Full support is
 the default expectation for any AST-level addition, not an opt-in stretch
 goal for "the languages that need it right now" — an emitter not
 implementing something a new primitive/node type needs is a gap to close,
@@ -236,7 +236,7 @@ Grouped by what each target actually needs:
   java, csharp, php, perl, scheme, zig, exprsyntax): an array param is
   just that language's own array/slice/list type; `index` emits as that
   language's native subscript syntax directly.
-- **Native array type, but 1-indexed** (julia, lua, r): same as above,
+- **Native array type, but 1-indexed** (julia, lua, matlab, r): same as above,
   except `index`'s emission adds the `+1` translation at the one point
   it actually matters — `wrapIndex`/`clampIndex` themselves stay 0-based
   and portable everywhere; only the final subscript expression needs to

@@ -34,6 +34,7 @@ const DYNAMIC_TARGETS = {
     julia: "arr isa AbstractVector",
     r: "!is.numeric(arr)",
     scheme: "(vector? arr)",
+    matlab: "~isnumeric(arr)",
 };
 
 // Every OTHER registered target -- addTypeGuards should be a silent
@@ -129,6 +130,7 @@ const LENGTH_GUARD_TARGETS = {
     julia: "length(arr) != m",
     r: "length(arr) != m",
     scheme: "(vector-length arr) m",
+    matlab: "numel(arr) ~= m",
 };
 
 test("arrayLengths has no effect without addTypeGuards, even when declared", () => {

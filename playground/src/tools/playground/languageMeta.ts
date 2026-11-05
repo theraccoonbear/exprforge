@@ -24,6 +24,7 @@ export const LANGUAGE_META: Record<string, LanguageMeta> = {
     php: { label: "PHP", defaultOn: false, defaultOnMobile: false },
     julia: { label: "Julia", defaultOn: false, defaultOnMobile: false },
     r: { label: "R", defaultOn: false, defaultOnMobile: false },
+    matlab: { label: "MATLAB/Octave", defaultOn: false, defaultOnMobile: false },
     fortran: { label: "Fortran", defaultOn: false, defaultOnMobile: false },
     zig: { label: "Zig", defaultOn: false, defaultOnMobile: false },
     scheme: { label: "Scheme", defaultOn: true, defaultOnMobile: false },

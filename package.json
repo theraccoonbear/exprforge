@@ -40,6 +40,8 @@
     "transpiler",
     "qb64",
     "r",
+    "matlab",
+    "octave",
     "differentiation",
     "calculus"
   ],
@@ -49,7 +51,7 @@
     "url": "https://github.com/theraccoonbear"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=22"
   },
   "repository": {
     "type": "git",

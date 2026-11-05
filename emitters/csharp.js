@@ -1,12 +1,17 @@
 // exprforge/emitters/csharp.js
 const Emitter = require("./base.js");
 
+// Fully qualified so emitted code needs no `using` directive (ImplicitUsings
+// off) and cannot be shadowed by a consumer's own `Math` type or `System`
+// namespace.
+const MATH = "global::System.Math";
+
 function fn1(name) {
-    return ([x]) => `Math.${name}(${x})`;
+    return ([x]) => `${MATH}.${name}(${x})`;
 }
 
 function fn2(name) {
-    return ([a, b]) => `Math.${name}(${a}, ${b})`;
+    return ([a, b]) => `${MATH}.${name}(${a}, ${b})`;
 }
 
 function capitalize(s) {
@@ -39,7 +44,7 @@ const emitter = new Emitter({
         ceil: fn1("Ceiling"), trunc: fn1("Truncate"),
         pow: fn2("Pow"), atan2: fn2("Atan2"), min: fn2("Min"), max: fn2("Max"),
         // Math.Sign returns int, not double -- our AST is float64-only throughout.
-        sign: ([x]) => `((double) Math.Sign(${x}))`,
+        sign: ([x]) => `((double) ${MATH}.Sign(${x}))`,
         // .NET's Math.Round(double) ties to EVEN ("banker's rounding") by
         // default, NOT this project's standardized round-half-AWAY-from-
         // zero convention -- see js.js's own comment and the root
@@ -48,14 +53,15 @@ const emitter = new Emitter({
         // multiplication -- no explicit cast needed the way the sign:
         // entry above needs one on its own (there, the WHOLE expression
         // needs to already read as a double, since nothing else in it is).
-        round: ([x]) => `(Math.Sign(${x}) * Math.Floor(Math.Abs(${x}) + 0.5))`,
+        round: ([x]) => `(${MATH}.Sign(${x}) * ${MATH}.Floor(${MATH}.Abs(${x}) + 0.5))`,
         // No Math.Hypot in .NET -- same manual formula as QB64's/C's.
-        hypot: ([a, b]) => `Math.Sqrt((${a}) * (${a}) + (${b}) * (${b}))`,
+        hypot: ([a, b]) => `${MATH}.Sqrt((${a}) * (${a}) + (${b}) * (${b}))`,
         wrapIndex: ([i, m]) => `(((${i} % ${m}) + ${m}) % ${m})`,
-        // Math.Clamp (.NET Core 2.0+) is a direct stdlib match for
-        // clampIndex's semantics -- no hand-built max(lo, min(hi, i))
-        // needed here, unlike most other targets.
-        clampIndex: ([i, lo, hi]) => `Math.Clamp(${i}, ${lo}, ${hi})`,
+        // max(lo, min(hi, i)), same form as evaluate() and the other
+        // targets. Math.Clamp (.NET Core 2.0+) is avoided: it throws when
+        // lo > hi, whereas this form returns lo, matching evaluate().
+        // Math.Min/Max propagate NaN on every .NET version.
+        clampIndex: ([i, lo, hi]) => `${MATH}.Max(${lo}, ${MATH}.Min(${hi}, ${i}))`,
     },
     // C# array indexing requires an integral index type, not double.
     emitIndex: function (targetNode, atNode) {
