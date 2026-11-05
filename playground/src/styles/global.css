@@ -637,6 +637,50 @@ pre,
     color: var(--text-dim);
 }
 
+.ranges-body {
+    display: flex;
+    flex-direction: column;
+    gap: 0.9rem;
+    padding: 0.75rem 0.9rem;
+    font-size: 0.85rem;
+}
+
+.ranges-row {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+}
+
+.ranges-label {
+    color: var(--text-dim);
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.ranges-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+}
+
+.ranges-warn-error {
+    color: var(--error-text);
+}
+
+.ranges-warn-guarded {
+    color: #fbbf24;
+}
+
+.ranges-note {
+    color: var(--text-dim);
+    font-size: 0.78rem;
+    margin-top: 0.15rem;
+}
+
 /* ---- responsive / mobile ------------------------------------------- */
 
 @media (max-width: 640px) {

@@ -17,6 +17,7 @@
     "fn.js",
     "evaluate.js",
     "differentiate.js",
+    "analyze.js",
     "duplicates.js",
     "macros.js",
     "primitives.js",

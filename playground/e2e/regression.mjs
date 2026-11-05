@@ -171,6 +171,31 @@ async function main() {
             "a playground share link must activate the Playground tab",
         );
 
+        // --- Range analysis tab ---------------------------------------------
+        // A share link must activate the tab, restore source and ranges, and
+        // the analysis must flag the unguarded division, then react to an
+        // edited range.
+        await page.evaluate(() => localStorage.clear());
+        const RANGE_SRC = "f(x, d):\n  return x / d;\n";
+        await page.goto(
+            `http://localhost:${PORT}/?tool=ranges&src=${encodeURIComponent(RANGE_SRC)}&ranges=${encodeURIComponent(JSON.stringify({ x: "1, 2", d: "-1, 1" }))}`,
+        );
+        await page.waitForSelector(".ranges-result .ranges-body", { timeout: 15000 });
+        assert.strictEqual(
+            await page.$eval(".shell-nav-item--active", (el) => el.textContent),
+            "Range analysis",
+            "a ranges share link must activate the Range analysis tab",
+        );
+        assert.ok(
+            (await page.$eval(".ranges-result", (el) => el.textContent)).includes("div-by-zero"),
+            "an unguarded division over a zero-spanning range must be flagged",
+        );
+        await page.fill('.ranges-input[data-param="d"]', "2, 4");
+        await page.waitForTimeout(300);
+        const rangesText = await page.$eval(".ranges-result", (el) => el.textContent);
+        assert.ok(!rangesText.includes("div-by-zero"), "a nonzero denominator range must clear the warning");
+        assert.ok(rangesText.includes("[0.25, 1]"), `expected output range [0.25, 1], got: ${rangesText}`);
+
         // --- Duplicates tab ------------------------------------------------
         // The bundled sample must report the shared distance computation
         // across the three renamed definitions, must not report the
