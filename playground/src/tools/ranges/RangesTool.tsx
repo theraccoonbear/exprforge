@@ -5,7 +5,7 @@ import { exprForgeLanguage } from "../playground/exprForgeMode";
 import { ExprForge } from "../../lib/exprforge";
 import { RANGE_EXAMPLES } from "./examples";
 import { readStorageString, writeStorageString } from "../../lib/storage";
-import type { FnDef, Interval, RangeAnalysis } from "../../lib/exprforgeTypes";
+import type { FnDef, Interval, RangeAnalysis, RangeFinding } from "../../lib/exprforgeTypes";
 import { RANGES_TOOL_ID } from "../ids";
 
 const { fn, loadExprSource, analyzeRanges } = ExprForge;
@@ -68,6 +68,27 @@ function fmt(n: number): string {
 
 function fmtInterval(i: Interval): string {
     return `[${fmt(i.lo)}, ${fmt(i.hi)}]${i.nan ? " or NaN" : ""}`;
+}
+
+// Messages mark source snippets with backticks; render those as <code>.
+function MessageText({ text }: { text: string }) {
+    return (
+        <>
+            {text.split("`").map((part, i) => (i % 2 === 1 ? <code key={i}>{part}</code> : part))}
+        </>
+    );
+}
+
+function FindingItem({ f }: { f: RangeFinding }) {
+    const cls = f.severity === "info"
+        ? "ranges-finding-info"
+        : f.kind === "div-by-zero" ? "ranges-warn-error" : "ranges-warn-guarded";
+    return (
+        <li className={`ranges-finding ${cls}`} data-severity={f.severity} data-kind={f.kind} title={`debug path: ${f.at}`}>
+            <span className="ranges-badge">{f.severity === "info" ? "Note" : "Warning"}</span>{" "}
+            <MessageText text={f.message} />
+        </li>
+    );
 }
 
 function parseRange(raw: string): [number, number] | null {
@@ -174,6 +195,9 @@ export function RangesTool() {
 
                 <div className="diff-result-pane ranges-result">
                     <div className="diff-pane-header">Analysis</div>
+                    <p className="ranges-explainer">
+                        Given a range for each input, this shows the range the result can take and flags divisions that could hit zero.
+                    </p>
                     {analysis ? (
                         <div className="ranges-body">
                             <div className="ranges-row">
@@ -189,37 +213,17 @@ export function RangesTool() {
                                 )}
                             </div>
                             <div className="ranges-row">
-                                <span className="ranges-label">Division warnings</span>
-                                {analysis.warnings.length === 0 ? (
-                                    <span className="diff-verify-match ranges-no-warnings">None: no division can see a zero denominator</span>
+                                <span className="ranges-label">Findings</span>
+                                {analysis.findings.length === 0 ? (
+                                    <span className="diff-verify-match ranges-no-warnings">Nothing to report: no division can see a zero denominator.</span>
                                 ) : (
                                     <ul className="ranges-list">
-                                        {analysis.warnings.map((w, i) => (
-                                            <li key={i} className={w.kind === "div-by-zero" ? "ranges-warn-error" : "ranges-warn-guarded"}>
-                                                <strong>{w.kind}</strong>{w.certain ? " (certain)" : ""} at <code>{w.at}</code>, denominator {fmtInterval(w.denominator)}
-                                                {w.kind === "div-guarded" && (
-                                                    <div className="ranges-note">
-                                                        Only an enclosing select excludes zero. Targets that evaluate both select branches (QB64, Fortran, COBOL) still run this division.
-                                                    </div>
-                                                )}
-                                                {w.inDeadBranch && <div className="ranges-note">In a branch these ranges never take.</div>}
-                                            </li>
-                                        ))}
+                                        {[...analysis.findings]
+                                            .sort((x, y) => Number(x.severity === "info") - Number(y.severity === "info"))
+                                            .map((f, i) => <FindingItem key={i} f={f} />)}
                                     </ul>
                                 )}
                             </div>
-                            {analysis.selects.length > 0 && (
-                                <div className="ranges-row">
-                                    <span className="ranges-label">Selects</span>
-                                    <ul className="ranges-list">
-                                        {analysis.selects.map((s, i) => (
-                                            <li key={i}>
-                                                <code>{s.at}</code>: {s.outcome}{s.loadBearing ? ", guard is load-bearing" : ""}
-                                            </li>
-                                        ))}
-                                    </ul>
-                                </div>
-                            )}
                         </div>
                     ) : (
                         <div className="diff-result-empty">{error || parseError ? "" : "Enter an expression to analyze"}</div>

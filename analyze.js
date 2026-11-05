@@ -13,7 +13,8 @@
 // Result:
 //   {
 //     range:    { lo, hi, nan }   or, for an outputs() body, { name: {lo,hi,nan} }
-//     warnings: [ ... ]            see below
+//     findings: [ ... ]            everything worth telling a human, see below
+//     warnings: [ ... ]            the findings whose severity is "warning"
 //     selects:  [ ... ]            one entry per select() node, see below
 //   }
 //
@@ -23,21 +24,35 @@
 // wider than the true range, never narrower. When an expression can only
 // ever be NaN, `lo`/`hi` are 0 and `nan` is true.
 //
-// Warnings (each has `kind`, `at`, `denominator`):
-//   "div-by-zero"  the denominator's interval includes zero even after taking
-//                  every enclosing select() guard into account. `certain` is
-//                  true when the denominator is exactly [0, 0].
-//   "div-guarded"  the denominator includes zero on its own but an enclosing
-//                  select() condition excludes it. Safe where select() short-
-//                  circuits, but select() is modeled as evaluating both
-//                  branches (see ast.js), and QB64, Fortran and COBOL do exactly
-//                  that, so the division still executes there with a zero
-//                  denominator. `guards` lists the `at` path of each enclosing
-//                  select() the exclusion depends on.
-//   Each warning also carries `inDeadBranch: true` when it sits in a select()
-//   branch the intervals prove is never taken.
+// Every finding has:
+//   kind      what it is (below)
+//   severity  "warning" (a hazard worth acting on) or "info" (a note)
+//   message   a plain-language sentence quoting the source expression, e.g.
+//             "`1 / x` can divide by zero: `x` can be 0 (range -20…20)."
+//   expr      the source text the finding is about
+//   at        internal AST path, for debugging; not meant for display
 //
-// selects entries: { at, outcome, loadBearing }
+// Finding kinds:
+//   "div-by-zero"   severity "warning". The denominator's interval includes
+//                   zero even after narrowing by every enclosing select()
+//                   condition. `certain` is true when it is exactly [0, 0].
+//   "div-guarded"   severity "warning". The denominator includes zero on its
+//                   own but an enclosing select() condition excludes it. Safe
+//                   where select() short-circuits, but select() is modeled as
+//                   evaluating both branches (see ast.js), and QB64, Fortran
+//                   and COBOL do exactly that, so the division still executes
+//                   there with a zero denominator. `guards` lists the `at`
+//                   path of each enclosing select() the exclusion depends on,
+//                   `guardConditions` their condition text.
+//   "div-unreachable"  severity "info". A division whose denominator includes
+//                   zero sits in a select() branch the ranges prove is never
+//                   taken, so it is not a hazard. Also `inDeadBranch: true`.
+//   "condition-decided"  severity "info". A select() condition is always
+//                   true / never true for the declared ranges (`outcome`).
+// `warnings` is exactly the "warning" findings, so unreachable divisions are
+// no longer in it (they used to appear there with `inDeadBranch: true`).
+//
+// selects entries: { at, outcome, loadBearing, condition, severity, message }
 //   outcome      "always-then" | "always-else" | "either": whether the
 //                condition is decided by the declared ranges alone. A decided
 //                condition means the other branch is provably dead and the
@@ -45,12 +60,26 @@
 //   loadBearing  true when removing the guard would let a division in one of
 //                its branches see a zero denominator.
 //
-// Guards understood by the refinement: any of the six comparison operators
-// where one side is an expression and the other has a known interval. The
-// refined facts apply to every structurally identical occurrence of that
-// expression inside the branch. `abs(E) > c` / `abs(E) >= c` with c > 0 is
-// recognized as excluding the open interval (-c, c) from E, which is the shape
-// safeDiv and the EPS-compared selects in samples/spline-frame.js use.
+// Branch narrowing: the then-branch of select(L op R, ...) is analysed with
+// the range of each side narrowed by `L op R`, the else-branch with the range
+// narrowed by the negated comparison (> <-> <=, < <-> >=, == <-> !=). Either
+// side may be the narrowed one (`x > c` and `c < x`), and it can be any
+// expression, including a let-bound name. The narrowed facts apply to every
+// structurally identical occurrence of that expression inside the branch.
+// If the condition cannot be true (resp. false) once both sides carry their
+// own narrowed ranges, that branch is unreachable: it gets no narrowing and
+// anything hazardous in it is reported as "div-unreachable", not a warning.
+//
+// Open bounds: intervals are closed, so a strict bound is approximated by
+// its closed hull (x > c becomes x >= c). That only ever widens the range,
+// never drops a reachable value. Zero is the one point whose openness
+// matters (it decides whether a division is safe), so a separate "nonzero"
+// fact is recorded when a strict bound is >= 0 (x > 0, x > 3) or a non-strict
+// one is > 0 (x >= 1); x >= 0 keeps zero reachable and stays a hazard.
+// `!=` narrows nothing except x != 0, which records "nonzero"; its negation
+// (==) narrows to the compared range. abs(E) > c / abs(E) >= c with c > 0
+// is recognized as excluding the open interval (-c, c) from E, which is the
+// shape safeDiv and the EPS-compared selects in samples/spline-frame.js use.
 
 const { collectLets, checkUnboundVars } = require("./ast.js");
 const { expandMacros } = require("./macros.js");
