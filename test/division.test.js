@@ -41,7 +41,21 @@ const VARIABLE_DENOMINATOR = {
     perl: "_exprforge_div($x, $y)",
     php: "fdiv($x, $y)",
     cobol: "(x / y)",
+    matlab: "(x / y)",
 };
+
+// LaTeX is typeset, not executed, so there is no runtime behavior to
+// observe: the check is on the rendered fraction.
+const TYPESET = {
+    latex: "\\frac{x}{y}",
+};
+
+for (const [lang, expected] of Object.entries(TYPESET)) {
+    test(`${lang}: division by a variable denominator is typeset as ${expected}`, () => {
+        assert.ok(emitters[lang], `no emitter registered for ${lang}`);
+        assert.ok(emitBody(lang, div(v("x"), v("y"))).includes(expected));
+    });
+}
 
 for (const [lang, expected] of Object.entries(VARIABLE_DENOMINATOR)) {
     test(`${lang}: division by a variable denominator is emitted as ${expected}`, () => {
@@ -51,7 +65,7 @@ for (const [lang, expected] of Object.entries(VARIABLE_DENOMINATOR)) {
 }
 
 test("every registered emitter is covered by the division table above", () => {
-    const covered = new Set([...Object.keys(VARIABLE_DENOMINATOR), "expr"]);
+    const covered = new Set([...Object.keys(VARIABLE_DENOMINATOR), ...Object.keys(TYPESET), "expr"]);
     for (const lang of Object.keys(emitters)) {
         assert.ok(covered.has(lang), `emitter "${lang}" has no division check in test/division.test.js`);
     }
@@ -102,7 +116,7 @@ test("perl: includeHelpers false omits the division helper", () => {
 });
 
 test("targets with native IEEE division emit no helper", () => {
-    for (const lang of ["js", "c", "go", "rust", "lua", "qb64"]) {
+    for (const lang of ["js", "c", "go", "rust", "lua", "qb64", "matlab"]) {
         const out = emitBody(lang, div(v("x"), v("y")));
         assert.ok(!out.includes("_exprforge_div"), `${lang} should not use a division helper`);
     }
