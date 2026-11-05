@@ -29,7 +29,8 @@ that's achievable without disproportionate risk:
   ternary (confirmed short-circuiting).
 - **Ruby**: `Math.sqrt`/`log`/`log2`/`log10`/`asin`/`acos` raise
   `Math::DomainError`; `Float ** Float` with a negative base and
-  non-integer exponent returns a `Complex`. Guarded inline.
+  non-integer exponent returns a `Complex` (and `pow(-8, NaN)` does too).
+  Guarded in `_ef_*` helper methods emitted once per file.
 - **Perl**: the builtin `sqrt`/`log`/`log2` raise a fatal error;
   `asin`/`acos`/`pow` were already fine. Fixed with an inline ternary
   and a confirmed-safe NaN/Infinity synthesis idiom.

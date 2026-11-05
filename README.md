@@ -429,7 +429,7 @@ number":
   **raise `ValueError`**.
 - **Ruby**: `Math.sqrt`/`log`/`log2`/`log10`/`asin`/`acos` **raise
   `Math::DomainError`**, and `Float ** Float` with a negative base and a
-  non-integer exponent returns a **`Complex`**.
+  non-integer exponent (or a NaN exponent) returns a **`Complex`**.
 - **Perl**: the builtin `sqrt`/`log` (and `log2`, built from `log`)
   **raise a fatal error** ("Can't take sqrt of -1") — `asin`/`acos`
   (via `POSIX`) and `pow` (via `**`) were already fine.
@@ -1770,7 +1770,16 @@ compiling/running against a real toolchain rather than assumed to work:
   instead of reading `nil` as `0.0`). `Float % 0.0` raises in Ruby, so
   `wrapIndex` with a zero modulus returns NaN explicitly. `floor`/`ceil`/
   `trunc`/`round` return Integer and raise on NaN/Infinity natively, so
-  non-finite values are passed through. Names starting with an uppercase
+  non-finite values are passed through. All of these guards (plus `sqrt`,
+  `asin`, `acos`, `log*`, `pow`, `min`, `max`, `sign` and `clampIndex`) live
+  in 16 `_ef_*` helper methods, a preamble emitted once per file in plain
+  `def ... end` form; pass `{ includeHelpers: false }` on every call after
+  the first when concatenating files. `pow` returns NaN for any non-Float
+  result (a Complex), including a NaN exponent with a negative base.
+  `asin`/`acos` use explicit range comparisons because `NaN.between?`
+  raises. The `_ef_` name prefix is reserved: a user name starting with
+  it gets a leading underscore. `samples/non-finite-rounding-demo.js`
+  covers floor/ceil/trunc/round of NaN and infinities across targets. Names starting with an uppercase
   letter (a Ruby constant) or equal to a reserved word get a leading
   underscore. Needs Ruby 2.4+ (`round(half: :up)`); CI uses 3.3.
 - **Julia**: `round()` defaults to ties-to-even (banker's rounding), not
