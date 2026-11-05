@@ -30,7 +30,7 @@ export const LANGUAGE_META: Record<string, LanguageMeta> = {
     scheme: { label: "Scheme", defaultOn: true, defaultOnMobile: false },
     cobol: { label: "COBOL", defaultOn: true, defaultOnMobile: true },
     qb64: { label: "QB64", defaultOn: false, defaultOnMobile: false },
-    // A non-language "target" -- emitters/exprsyntax.js, the printer that
+    // The non-language "target" -- emitters/exprsyntax.js, the printer that
     // round-trips back through fn() itself. Labeled distinctly from the
     // others since it's not a third-party language.
     expr: { label: "ExprForge syntax (printer)", defaultOn: false, defaultOnMobile: false },

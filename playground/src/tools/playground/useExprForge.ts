@@ -111,7 +111,7 @@ export function useExprForge(source: string): ExprForgeResult {
             // below. Every registered target would throw the
             // IDENTICAL "unbound variable" message (checkUnboundVars
             // runs inside every emitter's own emitFunction() too, see
-            // ast.js), which would otherwise render as one duplicate per target
+            // ast.js), which would otherwise render as duplicate
             // error cards instead of one clear message next to the
             // editor. One bad definition blanks the WHOLE buffer's
             // results, not just its own -- consistent with

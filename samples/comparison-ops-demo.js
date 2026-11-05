@@ -5,7 +5,7 @@
 // evaluate(). Written after a real, shipped bug: qb64.js/fortran.js/
 // lua.js all passed cmp()'s op straight through as a raw JS/C token in
 // their emitSelect, and every one of ">" "<" ">=" "<=" happens to be
-// spelled identically across all 18 targets -- so the bug (QB64 has
+// spelled identically across every target -- so the bug (QB64 has
 // neither "==" nor "!="; Fortran has no "!="; Lua has no "!=") went
 // completely uncaught. The reason: no sample ANYWHERE in this project,
 // including the ones already wired into this file's own real-compiler

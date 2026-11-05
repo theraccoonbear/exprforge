@@ -17,7 +17,7 @@ interface LanguageCardProps {
 // <pre><code> block -- real per-language tokenizing (see
 // highlighting.ts) instead of no highlighting at all, at the cost of
 // one CodeMirror instance per visible card. Fine at this scale (a
-// handful of toggled-on cards, not every target rendered simultaneously by
+// handful of toggled-on cards, not every card rendered simultaneously by
 // default).
 const READONLY_THEME = EditorView.theme({
     "&": { fontSize: "0.8rem" },

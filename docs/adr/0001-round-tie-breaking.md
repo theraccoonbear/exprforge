@@ -17,9 +17,9 @@ auditing every target directly rather than assumed.
 
 ## Decision
 
-Standardize `round()` on **ties away from zero** on all 18 targets,
+Standardize `round()` on **ties away from zero** on every executable target,
 unconditionally, no opt-out. Chosen because it was already the majority
-(9 of the pre-existing 17 non-JS-family targets), and because this
+(10 of the 18 programming-language targets), and because this
 project's own Julia emitter had already, independently, chosen to match
 it (`RoundNearestTiesAway`) before this decision existed — real
 precedent, not an arbitrary pick. Built from `sign(x) * floor(abs(x) +
