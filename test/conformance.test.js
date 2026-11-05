@@ -53,6 +53,7 @@ const {
     mathEdgeCasesAst,
     divisionByZeroAst,
     roundingEdgeCasesAst,
+    roundingZeroSignAst,
     differentiateDemoAst,
     zeroParamDemoAst,
     cyclicElemAst,
@@ -2130,8 +2131,7 @@ registerSuiteConformance("divisionByZero", {
 
 // Proves floor/ceil/trunc/round handle NaN, +-Infinity, +-0 and finite
 // values beyond the integer range identically on every target (see
-// samples/rounding-edge-cases-demo.js). Sign of zero is checked through
-// 1/op(x) fields.
+// samples/rounding-edge-cases-demo.js).
 registerSuiteConformance("roundingEdgeCases", {
     ast: roundingEdgeCasesAst,
     inputs: [
@@ -2146,6 +2146,19 @@ registerSuiteConformance("roundingEdgeCases", {
     ],
     // GnuCOBOL's COMPUTE is decimal arithmetic with no Infinity or NaN;
     // same documented exception as divisionByZero above.
+    skipTargets: ["COBOL"],
+});
+
+// Sign of zero through the same four operations, observed as 1/op(v).
+registerSuiteConformance("roundingZeroSign", {
+    ast: roundingZeroSignAst,
+    inputs: [
+        [-0.4, 0],
+        [0.4, 0],
+        [0, 0],
+        [-2.5, 0],
+        [2.5, 0],
+    ],
     skipTargets: ["COBOL"],
 });
 

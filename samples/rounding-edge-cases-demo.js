@@ -18,7 +18,7 @@
 // target. A -0 cannot cross a CLI argument either (String(-0) is "0"), so
 // it is synthesized as zeroSrc * -0.5 (non-integer factor so Perl keeps the
 // float path). The sign of a zero result is observable only through
-// division, so every op also emits 1/op(x) and 1/op(-0).
+// division, so roundingZeroSignAst emits 1/op(x) and 1/op(-0) per op.
 //
 // Overlaps in intent with samples/non-finite-rounding-demo.js (open PR for
 // the Ruby emitter): the NaN/Infinity field names here use the same
@@ -35,10 +35,11 @@ const negZero = mul(zeroSrc, num(-0.5));
 
 const ops = ["floor", "ceil", "trunc", "round"];
 const fields = {};
+const signFields = {};
 for (const op of ops) {
     fields[`${op}X`] = call(op, x);
-    fields[`${op}XSign`] = div(num(1), call(op, x));
-    fields[`${op}NegZeroSign`] = div(num(1), call(op, negZero));
+    signFields[`${op}XSign`] = div(num(1), call(op, x));
+    signFields[`${op}NegZeroSign`] = div(num(1), call(op, negZero));
     fields[`${op}Nan`] = call(op, nan);
     fields[`${op}PosInf`] = call(op, posInf);
     fields[`${op}NegInf`] = call(op, negInf);
@@ -50,4 +51,12 @@ const roundingEdgeCasesAst = {
     body: outputs(fields),
 };
 
-module.exports = { roundingEdgeCasesAst };
+// Sign of zero is a separate suite: it is a different (and on several
+// targets still open) class of divergence from the integer-cast bugs above.
+const roundingZeroSignAst = {
+    name: "roundingZeroSign",
+    params: ["x", "zeroSrc"],
+    body: outputs(signFields),
+};
+
+module.exports = { roundingEdgeCasesAst, roundingZeroSignAst };
