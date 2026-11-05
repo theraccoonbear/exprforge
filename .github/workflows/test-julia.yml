@@ -9,16 +9,17 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
           cache: npm
+      - run: node --version
       - run: npm ci
 
-      # No apt package -- confirmed the hard way ("Package julia is not
+      # Exact pin; bump deliberately. No apt package -- confirmed the hard way ("Package julia is not
       # available") that Ubuntu's default repos don't carry one. Same
       # "download a release tarball, add it to PATH" recipe as the
       # QB64/Zig workflows use for the same reason.

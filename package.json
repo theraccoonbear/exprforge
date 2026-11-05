@@ -1,7 +1,7 @@
 {
   "name": "exprforge",
   "version": "0.9.0",
-  "description": "Author a math expression once as an AST (or readable infix text via expr/fn), emit identical-behavior implementations in JS, TypeScript, Python, C#, Lua, QB64, C, Java, Go, Rust, Perl, Ruby, PHP, Julia, Fortran, Zig, Scheme, and COBOL, plus a native evaluator, its own readable syntax printer, and typeset LaTeX output.",
+  "description": "Author a math expression once as an AST (or readable infix text via expr/fn), emit identical-behavior implementations in JS, TypeScript, Python, C#, Lua, QB64, C, Java, Go, Rust, Perl, Ruby, PHP, Julia, MATLAB/Octave, Fortran, Zig, Scheme, and COBOL, plus a native evaluator, its own readable syntax printer, and typeset LaTeX output.",
   "main": "index.js",
   "type": "commonjs",
   "exports": {
@@ -40,6 +40,8 @@
     "transpiler",
     "qb64",
     "ruby",
+    "matlab",
+    "octave",
     "differentiation",
     "calculus"
   ],
@@ -49,7 +51,7 @@
     "url": "https://github.com/theraccoonbear"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=22"
   },
   "repository": {
     "type": "git",

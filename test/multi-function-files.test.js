@@ -33,6 +33,7 @@ const os = require("node:os");
 const path = require("node:path");
 const { v, num, call, add, sub } = require("../ast.js");
 const emitters = require("../emitters/registry.js");
+const { DOTNET_TFM } = require("./dotnet-tfm.js");
 
 function hasTool(cmd, args) {
     try {
@@ -67,6 +68,7 @@ const TOOLS = {
     ruby: hasTool("ruby", ["-v"]),
     php: hasTool("php", ["--version"]),
     julia: hasTool("julia", ["--version"]),
+    octave: hasTool("octave-cli", ["--version"]),
     gfortran: hasTool("gfortran", ["--version"]),
     zig: hasTool("zig", ["version"]),
     guile: GUILE_BIN !== null,
@@ -370,6 +372,46 @@ test("multi-function file: Julia -- concatenating 2 functions runs correctly", {
     fs.rmSync(dir, { recursive: true, force: true });
 });
 
+test("multi-function file: MATLAB/Octave -- one concatenated file (helpers once) runs correctly", { skip: !TOOLS.octave && "octave-cli not available" }, () => {
+    const out1 = emitters.matlab.emitFunction(fn1, undefined, { includeHelpers: true });
+    const out2 = emitters.matlab.emitFunction(fn2, undefined, { includeHelpers: false });
+    const dir = tmpDir("ef-multi-octave-");
+    // Octave only runs a file's later functions after source() when the
+    // file is a script file; a leading "1;" statement makes it one. MATLAB
+    // has no equivalent: only the first function of a file is callable from
+    // outside it, so a MATLAB consumer uses one file per public function.
+    fs.writeFileSync(path.join(dir, "fns.m"), "1;\n" + out1 + "\n" + out2);
+    fs.writeFileSync(
+        path.join(dir, "ef_driver.m"),
+        `source("fns.m");\nprintf("%.17g\\n", f1(${F1_ARG}));\nprintf("%.17g\\n", f2(${F2_ARG}));\n`,
+    );
+    const output = execFileSync("octave-cli", ["--norc", "ef_driver.m"], { cwd: dir }).toString().trim().split("\n");
+    assertClose(parseFloat(output[0]), F1_EXPECT, "f1");
+    assertClose(parseFloat(output[1]), F2_EXPECT, "f2");
+    fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test("multi-function file: MATLAB/Octave -- includeHelpers defaults to true and false omits every helper", () => {
+    const out1 = emitters.matlab.emitFunction(fn1);
+    const out2 = emitters.matlab.emitFunction(fn2);
+    assert.ok(out1.includes("function ef_r = ef_select") && out2.includes("function ef_r = ef_select"));
+    assert.ok(!emitters.matlab.emitFunction(fn2, undefined, { includeHelpers: false }).includes("ef_select"));
+});
+
+test("multi-function file: MATLAB/Octave -- one function per file, each self-contained (the MATLAB layout)", { skip: !TOOLS.octave && "octave-cli not available" }, () => {
+    const dir = tmpDir("ef-multi-octave-files-");
+    fs.writeFileSync(path.join(dir, "f1.m"), emitters.matlab.emitFunction(fn1));
+    fs.writeFileSync(path.join(dir, "f2.m"), emitters.matlab.emitFunction(fn2));
+    fs.writeFileSync(
+        path.join(dir, "ef_driver.m"),
+        `printf("%.17g\\n", f1(${F1_ARG}));\nprintf("%.17g\\n", f2(${F2_ARG}));\n`,
+    );
+    const output = execFileSync("octave-cli", ["--norc", "ef_driver.m"], { cwd: dir }).toString().trim().split("\n");
+    assertClose(parseFloat(output[0]), F1_EXPECT, "f1");
+    assertClose(parseFloat(output[1]), F2_EXPECT, "f2");
+    fs.rmSync(dir, { recursive: true, force: true });
+});
+
 test("multi-function file: Scheme -- concatenating 2 functions runs correctly", { skip: !TOOLS.guile && "guile not available" }, () => {
     const out1 = emitters.scheme.emitFunction(fn1);
     const out2 = emitters.scheme.emitFunction(fn2);
@@ -424,17 +466,14 @@ test("multi-function file: C# -- concatenating 2 classes into one file compiles 
     const out1 = emitters.csharp.emitFunction(fn1);
     const out2 = emitters.csharp.emitFunction(fn2);
     const dir = tmpDir("ef-multi-cs-");
-    // net9.0 -- matches test/conformance.test.js's own CSPROJ constant;
-    // a net8.0 target failed to LAUNCH (not compile) in a real container
-    // whose only installed runtime is 9.0.16 ("You must install or
-    // update .NET") -- a real environment-matching issue, not something
-    // to chase per-environment, so this just mirrors the value already
-    // confirmed to work in every environment this project's CI runs in.
+    // TargetFramework from test/dotnet-tfm.js (highest installed SDK, or
+    // EXPRFORGE_DOTNET_TFM). Fns.cs deliberately has NO using directive:
+    // the emitted classes must stand alone.
     fs.writeFileSync(
         path.join(dir, "csproj.csproj"),
-        `<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net9.0</TargetFramework></PropertyGroup></Project>\n`,
+        `<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><OutputType>Exe</OutputType><TargetFramework>${DOTNET_TFM}</TargetFramework><ImplicitUsings>disable</ImplicitUsings></PropertyGroup></Project>\n`,
     );
-    fs.writeFileSync(path.join(dir, "Fns.cs"), `using System;\n${out1}\n${out2}\n`);
+    fs.writeFileSync(path.join(dir, "Fns.cs"), `${out1}\n${out2}\n`);
     fs.writeFileSync(
         path.join(dir, "Program.cs"),
         `using System;\nclass Program { static void Main() {\n` +
