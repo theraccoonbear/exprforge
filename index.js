@@ -5,6 +5,7 @@ const { expr } = require("./expr.js");
 const { fn } = require("./fn.js");
 const { evaluate } = require("./evaluate.js");
 const { differentiate } = require("./differentiate.js");
+const { analyzeRanges } = require("./analyze.js");
 const { loadMacro, loadExtern, expandMacros, createRegistry } = require("./macros.js");
 const { loadExpr, loadExprSource } = require("./load-expr.js");
 const emitters = require("./emitters/registry.js");
@@ -135,6 +136,7 @@ function createSession() {
         loadExtern: (name, def) => loadExtern(name, def, registry),
         expandMacros: (fnOrNode, extraRegistry = null) => expandMacros(fnOrNode, extraRegistry, registry),
         evaluate: (fn, args) => evaluate(fn, args, registry),
+        analyzeRanges: (fnDef, ranges) => analyzeRanges(fnDef, ranges, registry),
         emit: (fnDef, lang, opts) => emit(fnDef, lang, registry, opts),
         emitMany: (fnDef, langs = Object.keys(emitters), opts) => emitMany(fnDef, langs, registry, opts),
         loadExpr: (path) => loadExpr(path, registry),
@@ -159,6 +161,10 @@ module.exports = {
     // Symbolic differentiation: differentiate(node, varName) returns an
     // AST node for the derivative. See differentiate.js.
     differentiate,
+    // Opt-in interval/range analysis: propagates declared input ranges
+    // through a function definition and flags divisions whose denominator
+    // can be zero. See analyze.js.
+    analyzeRanges,
     // Register a macro: a name usable inside fn`...`/expr`...` text
     // beyond the built-in primitives, inline-expanded at build time,
     // never emitted as a real call. See macros.js's own header comment.
