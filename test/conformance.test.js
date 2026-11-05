@@ -2198,6 +2198,7 @@ registerSuiteConformance("nonFiniteRounding", {
     todoTargets: {
         Java: "truncate of NaN/+-Infinity: trunc gives NaN->0, +Inf->9.223372036854776E18, -Inf->-9.223372036854776E18 (long cast), expected NaN/Infinity/-Infinity",
         Python: "math.floor/ceil/trunc raise ValueError for NaN and OverflowError for +-Infinity instead of returning them unchanged",
+        "C#": "round is emitted as Math.Sign(x) * Math.Floor(Math.Abs(x) + 0.5) and Math.Sign throws ArithmeticException for NaN instead of passing it through; round's formula is being rewritten on every target in the boundary-conformance work (PR #53), and the integer-cast rounding fixes are tracked in fix/nonfinite-rounding",
         Fortran: "floor/ceil of NaN/+-Infinity go through an integer conversion (NaN->2147483647, +Inf->-2147483648, -Inf->2147483647 for floor; NaN/+Inf->-2147483647, -Inf->-2147483648 for ceil), expected NaN/Infinity/-Infinity",
     },
 });
