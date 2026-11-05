@@ -138,7 +138,7 @@ const emitter = new SchemeEmitter({
         // No sign procedure either -- build it directly. Zero-aware by
         // construction (see Go's/Rust's sign() history in this project for
         // what happens when it isn't).
-        sign: ([x]) => `(if (> ${x} 0.0) 1.0 (if (< ${x} 0.0) -1.0 (+ ${x} 0.0)))`,
+        sign: ([x]) => `(if (> ${x} 0.0) 1.0 (if (< ${x} 0.0) -1.0 ${x}))`,
         // modulo is traditional Scheme's floor-mod procedure (result
         // takes the sign of the divisor), distinct from remainder
         // (dividend's sign) -- the right one here, no correction needed.

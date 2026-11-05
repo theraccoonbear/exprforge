@@ -73,7 +73,7 @@ const emitter = new Emitter({
         // any number) is always truthy, unlike JS/Python/C. Zero-aware by
         // construction (see Go's/Rust's sign() history in this project for
         // what happens when it isn't).
-        sign: ([x]) => `((${x} > 0) and 1.0 or ((${x} < 0) and -1.0 or (${x} + 0.0)))`,
+        sign: ([x]) => `((${x} > 0) and 1.0 or ((${x} < 0) and -1.0 or ${x}))`,
         // No math.hypot in Lua's standard library at any version.
         hypot: ([a, b]) =>
             `(function(a, b) a = math.abs(a); b = math.abs(b); local s = a * a + b * b; ` +

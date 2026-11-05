@@ -37,7 +37,12 @@ const emitter = new Emitter({
         log2: fn1("log2"),
         log10: fn1("log10"),
         exp: ([x]) => `exp(${x})`,
-        pow: ([x, y]) => `((${x}) ^ (${y}))`,
+        // R's ^ ignores the sign of a zero base: (-0)^-1 is +Inf and (-0)^3
+        // is +0. For -0 raised to an odd integer the result is taken from
+        // |base| and negated, as IEEE 754 requires.
+        pow: ([x, y]) =>
+            `(function(a, b) if (!is.na(a) && !is.na(b) && a == 0 && 1 / a < 0 && is.finite(b) && ` +
+            `b == floor(b) && b %% 2 == 1) -(abs(a) ^ b) else a ^ b)(${x}, ${y})`,
         floor: ([x]) => `floor(${x})`,
         ceil: ([x]) => `ceiling(${x})`,
         trunc: ([x]) => `trunc(${x})`,
@@ -48,9 +53,26 @@ const emitter = new Emitter({
         // R's round() is round-half-to-even; docs/adr/0001 standardizes on
         // ties away from zero. sign(x) * floor(abs(x) + 0.5) is the shared
         // formula.
-        round: ([x]) => `(sign(${x}) * floor(abs(${x}) + 0.5))`,
-        sign: ([x]) => `sign(${x})`,
-        hypot: ([a, b]) => `sqrt((${a}) * (${a}) + (${b}) * (${b}))`,
+        // The exact form: floor(|a|) plus 1 when the fractional part
+        // |a| - floor(|a|) (computed without rounding) is at least 0.5.
+        // abs(a) + 0.5 is inexact at 0.49999999999999994 and above 2^52.
+        // The sign is read from 1 / a so -0 and (-0.5, 0) give -0.
+        round: ([x]) =>
+            `(function(a) if (is.na(a) || is.infinite(a)) a else { m <- abs(a); f <- floor(m); ` +
+            `r <- f + (m - f >= 0.5); if (1 / a < 0) -r else r })(${x})`,
+        // R's sign(-0) is +0; the zero branch returns the argument itself
+        // so -0 stays -0 (as Math.sign does), and NaN/NA stay NaN.
+        sign: ([x]) => `(function(a) if (is.na(a) || a != 0) sign(a) else a)(${x})`,
+        // Plain sqrt(a*a + b*b) when the sum is in [1e-290, 1e300] (it
+        // would otherwise overflow or underflow), else the scaled form
+        // with explicit Inf/NaN handling. Inf wins over NaN, as in libm.
+        hypot: ([a, b]) =>
+            `(function(a, b) { a <- abs(a); b <- abs(b); s <- a * a + b * b; ` +
+            `if (!is.na(s) && s < 1e300 && s > 1e-290) return(sqrt(s)); ` +
+            `if (is.infinite(a) || is.infinite(b)) return(Inf); ` +
+            `if (is.na(a) || is.na(b)) return(NaN); ` +
+            `if (a < b) { t <- a; a <- b; b <- t }; if (a == 0) return(0); ` +
+            `r <- b / a; a * sqrt(1 + r * r) })(${a}, ${b})`,
         // R's %% is floor-mod: the result takes the sign of the divisor.
         wrapIndex: ([i, m]) => `((${i}) %% (${m}))`,
         clampIndex: ([i, lo, hi]) => `max(${lo}, min(${hi}, ${i}))`,

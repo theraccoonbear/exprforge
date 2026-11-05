@@ -82,6 +82,13 @@ const HELPERS =
         `        ef_r = NaN;\n` +
         `    end\n` +
         `end\n\n`).join("") +
+    `function ef_r = ef_sign(ef_x)\n` +
+    `    if ef_x == 0\n` +
+    `        ef_r = ef_x;\n` +
+    `    else\n` +
+    `        ef_r = sign(ef_x);\n` +
+    `    end\n` +
+    `end\n\n` +
     `function ef_r = ef_pow(ef_x, ef_y)\n` +
     `    if ef_x < 0 && ef_y ~= fix(ef_y)\n` +
     `        ef_r = NaN;\n` +
@@ -149,8 +156,9 @@ const emitter = new Emitter({
         round: ([x]) => `round(${x})`,
         // fix() is truncation toward zero.
         trunc: ([x]) => `fix(${x})`,
-        // sign(0) is 0 and sign(NaN) is NaN natively.
-        sign: ([x]) => `sign(${x})`,
+        // Native sign(-0) is +0; ef_sign returns the zero itself so -0
+        // stays -0, matching Math.sign. sign(NaN) is NaN natively.
+        sign: ([x]) => `ef_sign(${x})`,
         min: ([a, b]) => `ef_min(${a}, ${b})`,
         max: ([a, b]) => `ef_max(${a}, ${b})`,
         hypot: ([a, b]) => `hypot(${a}, ${b})`,

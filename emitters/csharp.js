@@ -44,7 +44,7 @@ const emitter = new Emitter({
         ceil: fn1("Ceiling"), trunc: fn1("Truncate"),
         pow: fn2("Pow"), atan2: fn2("Atan2"), min: fn2("Min"), max: fn2("Max"),
         // Math.Sign returns int, not double -- our AST is float64-only throughout.
-        sign: ([x]) => `(${x} > 0.0 ? 1.0 : (${x} < 0.0 ? -1.0 : ${x} + 0.0))`,
+        sign: ([x]) => `(${x} > 0.0 ? 1.0 : (${x} < 0.0 ? -1.0 : ${x}))`,
         // .NET's Math.Round(double) ties to EVEN ("banker's rounding") by
         // default, NOT this project's standardized round-half-AWAY-from-
         // zero convention -- see js.js's own comment and the root

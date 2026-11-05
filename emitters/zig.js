@@ -87,7 +87,7 @@ const emitter = new Emitter({
         // hand-built to get the zero case right (see Go's/Rust's sign()
         // history in this project for what happens when a language's
         // native sign function isn't).
-        sign: ([x]) => `(if (${x} > 0) @as(f64, 1.0) else if (${x} < 0) @as(f64, -1.0) else ${x} + @as(f64, 0.0))`,
+        sign: ([x]) => `(if (${x} > 0) @as(f64, 1.0) else if (${x} < 0) @as(f64, -1.0) else ${x})`,
         // @mod is Zig's compiler builtin for floor-mod specifically
         // (Zig distinguishes it from @rem, the truncated/sign-of-
         // dividend version, precisely for this case) -- no sign

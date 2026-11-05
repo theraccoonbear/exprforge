@@ -136,6 +136,8 @@ const SAFE_MATH_HELPERS =
     `FUNCTION ef_safe_sgn# (x AS DOUBLE)\n` +
     `    IF x <> x THEN\n` +
     `        ef_safe_sgn# = x\n` +
+    `    ELSEIF x = 0# THEN\n` +
+    `        ef_safe_sgn# = x\n` +
     `    ELSE\n` +
     `        ef_safe_sgn# = SGN(x)\n` +
     `    END IF\n` +

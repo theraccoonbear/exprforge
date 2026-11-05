@@ -111,7 +111,7 @@ const emitter = new Emitter({
         // No math.sign in Python's stdlib -- build it directly. Zero-aware
         // by construction (see Go's/Rust's sign() history in this project
         // for what happens when it isn't).
-        sign: ([x]) => `(1.0 if ${x} > 0 else (-1.0 if ${x} < 0 else ${x} + 0.0))`,
+        sign: ([x]) => `(1.0 if ${x} > 0 else (-1.0 if ${x} < 0 else ${x}))`,
         // Python's % is documented, unambiguous floor-mod (result takes
         // the sign of the divisor) -- unlike most other targets here, no
         // sign-correction wrapper is needed.

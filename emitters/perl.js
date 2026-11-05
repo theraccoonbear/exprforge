@@ -93,7 +93,7 @@ const emitter = new PerlEmitter({
         // No sign() anywhere in core, POSIX, or List::Util -- build it
         // directly. Zero-aware by construction (see Go's/Rust's sign()
         // history in this project for what happens when it isn't).
-        sign: ([x]) => `(${x} > 0 ? 1.0 : (${x} < 0 ? -1.0 : ${x} + 0.0))`,
+        sign: ([x]) => `(${x} > 0 ? 1.0 : (${x} < 0 ? -1.0 : ${x}))`,
         // Perl's % on non-integer operands has enough real-world edge-
         // case ambiguity (see perlop's own caveats) that this uses the
         // same self-correcting double-application wrap as the definitely-

@@ -24,10 +24,13 @@ const roundingBoundaryAst = {
     }),
 };
 
+// Double negation instead of `* 1`: it keeps the sign call inside an
+// arithmetic expression for GnuCOBOL (see passThroughAst) and preserves -0,
+// whereas Perl's `-0.0 * 1` takes an integer fast path and returns +0.
 const signBoundaryAst = {
     name: "signBoundary",
     params: ["x"],
-    body: mul(call("sign", x), num(1)),
+    body: neg(neg(call("sign", x))),
 };
 
 const hypotBoundaryAst = {

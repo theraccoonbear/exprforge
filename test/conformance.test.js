@@ -1468,7 +1468,7 @@ function runR(ast, inputs) {
     const harness = `${source}\nargs <- commandArgs(trailingOnly = TRUE)\n${rParamParses(ast)}\ncat(sprintf("%.17g", ${ast.name}(${callArgs})), "\\n", sep = "")\n`;
     const srcPath = path.join(dir, "main.R");
     fs.writeFileSync(srcPath, harness);
-    const results = inputs.map((args) => parseNumericOutput(execFileSync("Rscript", [srcPath, ...args.map(String)]).toString().trim()));
+    const results = inputs.map((args) => parseNumericOutput(execFileSync("Rscript", [srcPath, ...args.map(argText)]).toString().trim()));
     fs.rmSync(dir, { recursive: true, force: true });
     return results;
 }
@@ -1481,7 +1481,7 @@ function runSuiteR(ast, inputs, outputNames) {
     const harness = `${source}\nargs <- commandArgs(trailingOnly = TRUE)\n${rParamParses(ast)}\nr <- ${ast.name}(${callArgs})\n${prints}\n`;
     const srcPath = path.join(dir, "main.R");
     fs.writeFileSync(srcPath, harness);
-    const results = inputs.map((args) => parseSuiteOutput(execFileSync("Rscript", [srcPath, ...args.map(String)]), outputNames));
+    const results = inputs.map((args) => parseSuiteOutput(execFileSync("Rscript", [srcPath, ...args.map(argText)]), outputNames));
     fs.rmSync(dir, { recursive: true, force: true });
     return results;
 }
@@ -2454,6 +2454,7 @@ test("mathDemo: round-trips through the expr-syntax emitter and back through fn(
         ast: B.signBoundaryAst,
         inputs: [[5], [-5], [0], [NZ], [NaN_], [INF], [-INF], [5e-324], [-5e-324]],
         maxUlps: 0,
+        signedZero: true,
         skipRows: COBOL_PLAIN_ONLY,
     });
     registerConformance("boundary.hypot", {

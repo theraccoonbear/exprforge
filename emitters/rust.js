@@ -43,7 +43,7 @@ const emitter = new Emitter({
         // reads the sign bit), unlike JS's Math.sign(0) === 0 (and C's/
         // Java's sign, which both special-case zero). Found by the
         // kitchen-sink conformance test at exactly x - y == 0.
-        sign: ([x]) => `(if ${x} > 0.0 { 1.0f64 } else if ${x} < 0.0 { -1.0f64 } else { ${x} + 0.0f64 })`,
+        sign: ([x]) => `(if ${x} > 0.0 { 1.0f64 } else if ${x} < 0.0 { -1.0f64 } else { ${x} })`,
         pow: method1("powf"), atan2: method1("atan2"), hypot: method1("hypot"),
         // NOT bare .min()/.max(): Rust's f64::min/f64::max are documented
         // NaN-IGNORING -- if exactly one operand is NaN, the OTHER (real)
