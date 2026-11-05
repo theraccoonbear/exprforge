@@ -107,6 +107,14 @@ npm test                    # run all tests (skips missing toolchains)
 npm run test:coverage       # with coverage
 ```
 
+Several `npm test` runs may execute at once. Scratch directories come from
+`tmpDir()` in `test/harness-util.js` (unique `fs.mkdtemp` dirs, removed at
+exit; `EXPRFORGE_KEEP_TMP=1` keeps the leftovers of failed cases), and the
+qb64pe compile step goes through `compileQb64()`, which holds a cross-process
+lock because qb64pe compiles inside its shared install directory. New
+harness code must use these helpers rather than `mkdtempSync` or a direct
+`qb64pe` call.
+
 Tests use Node's built-in test runner (`node:test` + `node:assert`).
 Conformance tests compile/interpret emitted code against every available
 toolchain and skip (not fail) when a toolchain is absent.

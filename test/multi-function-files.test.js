@@ -31,6 +31,7 @@ const { execFileSync } = require("node:child_process");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
+const { tmpDir, hasQb64, compileQb64, runQb64, QB64_ERROR_PROLOGUE, QB64_ERROR_HANDLER } = require("./harness-util.js");
 const { v, num, call, add, sub } = require("../ast.js");
 const emitters = require("../emitters/registry.js");
 const { DOTNET_TFM } = require("./dotnet-tfm.js");
@@ -60,7 +61,7 @@ const TOOLS = {
     rustc: hasTool("rustc", ["--version"]),
     java: hasTool("javac", ["-version"]) && hasTool("java", ["-version"]),
     tsc: hasTool("tsc", ["--version"]),
-    qb64: hasTool("qb64pe", ["-v"]),
+    qb64: hasQb64(),
     dotnet: hasTool("dotnet", ["--version"]),
     python: hasTool("python3", ["--version"]),
     lua: LUA_BIN !== null,
@@ -75,10 +76,6 @@ const TOOLS = {
     guile: GUILE_BIN !== null,
     cobc: hasTool("cobc", ["--version"]),
 };
-
-function tmpDir(prefix) {
-    return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
-}
 
 // Two real functions, deliberately using DIFFERENT primitives (sqrt/log)
 // so a mixup between them is obvious in the results -- f1(16) == 4,
@@ -101,12 +98,12 @@ test("multi-function file: QB64 -- concatenating 2 functions compiles and runs c
     const out1 = emitters.qb64.emitFunction(fn1, undefined, { includeHelpers: true });
     const out2 = emitters.qb64.emitFunction(fn2, undefined, { includeHelpers: false });
     const dir = tmpDir("ef-multi-qb64-");
-    const harness = `$CONSOLE:ONLY\n${out1}\n${out2}\nPRINT f1#(${F1_ARG}#)\nPRINT f2#(${F2_ARG}#)\nSYSTEM\n`;
+    const harness = `$CONSOLE:ONLY\n${out1}\n${out2}\n${QB64_ERROR_PROLOGUE}PRINT f1#(${F1_ARG}#)\nPRINT f2#(${F2_ARG}#)\nSYSTEM\n${QB64_ERROR_HANDLER}`;
     const srcPath = path.join(dir, "main.bas");
     fs.writeFileSync(srcPath, harness);
     const bin = path.join(dir, "bin");
-    execFileSync("qb64pe", ["-x", srcPath, "-o", bin]);
-    const lines = execFileSync(bin, [], { input: "" }).toString().trim().split("\n");
+    compileQb64(srcPath, bin);
+    const lines = runQb64(bin, []).toString().trim().split("\n");
     assertClose(parseFloat(lines[0]), F1_EXPECT, "f1");
     assertClose(parseFloat(lines[1]), F2_EXPECT, "f2");
     fs.rmSync(dir, { recursive: true, force: true });
