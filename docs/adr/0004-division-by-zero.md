@@ -8,7 +8,8 @@ Every `bin` node with op `/` is emitted as a plain division. With a zero
 denominator at runtime the targets diverged in kind, not just in value:
 
 - JS (the reference interpreter), TypeScript, C, Go, Rust, Java, Lua, C#,
-  Zig, Julia, Fortran, Scheme and QB64 return IEEE 754 results:
+  Zig, Julia, Fortran, Scheme, QB64 and MATLAB/Octave (verified under
+  Octave 11.1) return IEEE 754 results:
   `x/0` is `+Infinity` or `-Infinity`, `0/0` is `NaN`.
 - **Python** raises `ZeroDivisionError`.
 - **Perl** dies with "Illegal division by zero".
