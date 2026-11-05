@@ -6,7 +6,7 @@ const { spawn, spawnSync } = require("node:child_process");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
-const { tmpDir, removeTmpDir, withFileLock } = require("./harness-util.js");
+const { tmpDir, removeTmpDir, withFileLock, hasQb64, compileQb64, runQb64, QB64_ERROR_PROLOGUE, QB64_ERROR_HANDLER } = require("./harness-util.js");
 
 const UTIL = path.join(__dirname, "harness-util.js");
 
@@ -96,5 +96,34 @@ test("withFileLock: releases the lock when the callback throws", () => {
     const lock = path.join(dir, "throw.lock");
     assert.throws(() => withFileLock(lock, () => { throw new Error("boom"); }), /boom/);
     assert.ok(!fs.existsSync(lock));
+    removeTmpDir(dir);
+});
+
+test("runQb64: a QB64 runtime error fails fast with a clear message", { skip: !hasQb64() && "qb64pe not available" }, () => {
+    const dir = tmpDir("ef-util-qb64-");
+    const src =
+        `$CONSOLE:ONLY\n${QB64_ERROR_PROLOGUE}` +
+        `DIM a(0 TO 3) AS DOUBLE\nDIM n AS INTEGER : n = VAL(COMMAND$(1))\na(n) = 1\nPRINT a(n)\nSYSTEM\n${QB64_ERROR_HANDLER}`;
+    const srcPath = path.join(dir, "main.bas");
+    fs.writeFileSync(srcPath, src);
+    const bin = path.join(dir, "bin");
+    compileQb64(srcPath, bin);
+    assert.strictEqual(runQb64(bin, ["2"]).toString().trim(), "1");
+    const start = Date.now();
+    assert.throws(() => runQb64(bin, ["5"]), /EF_RUNTIME_ERROR 9 line/);
+    assert.ok(Date.now() - start < 10000, "runtime error must not hang");
+    removeTmpDir(dir);
+});
+
+test("runQb64: a binary without the error handler is bounded and does not hang", { skip: !hasQb64() && "qb64pe not available" }, () => {
+    const dir = tmpDir("ef-util-qb64-");
+    const src = `$CONSOLE:ONLY\nDIM a(0 TO 3) AS DOUBLE\nDIM n AS INTEGER : n = VAL(COMMAND$(1))\na(n) = 1\nPRINT a(n)\nSYSTEM\n`;
+    const srcPath = path.join(dir, "main.bas");
+    fs.writeFileSync(srcPath, src);
+    const bin = path.join(dir, "bin");
+    compileQb64(srcPath, bin);
+    const start = Date.now();
+    assert.throws(() => runQb64(bin, ["5"]), /QB64 binary .* (exited|timed out|was killed|exceeded)/);
+    assert.ok(Date.now() - start < 30000);
     removeTmpDir(dir);
 });

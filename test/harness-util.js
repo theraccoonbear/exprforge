@@ -244,7 +244,55 @@ function compileQb64(srcPath, outPath) {
     });
 }
 
+// --- Bounded, headless QB64 binary execution ---------------------------------
+//
+// A QB64 runtime error (e.g. #9 "Subscript out of range") in a compiled
+// binary either opens a blocking tinyfiledialogs dialog when a display is
+// reachable, or loops printing "Continue? y/n:" when it is not. Either one
+// hangs the test run, and the binary is orphaned if the parent dies. So
+// binaries run with no display variables, no stdin, a hard timeout and an
+// output cap; and the test drivers install QB64_ERROR_HANDLER so a runtime
+// error exits immediately with a message instead.
+
+const QB64_RUN_TIMEOUT_MS = 20000;
+
+const QB64_ERROR_PROLOGUE = "ON ERROR GOTO ef_err\n";
+const QB64_ERROR_HANDLER =
+    "ef_err:\n" +
+    'PRINT "EF_RUNTIME_ERROR " + LTRIM$(STR$(ERR)) + " line " + LTRIM$(STR$(_ERRORLINE))\n' +
+    "SYSTEM 1\n";
+
+function headlessEnv() {
+    const env = { ...process.env };
+    for (const k of ["DISPLAY", "WAYLAND_DISPLAY", "XAUTHORITY"]) delete env[k];
+    return env;
+}
+
+function runQb64(binPath, args = []) {
+    try {
+        return execFileSync(binPath, args, {
+            timeout: QB64_RUN_TIMEOUT_MS,
+            killSignal: "SIGKILL",
+            maxBuffer: 1 << 20,
+            stdio: ["ignore", "pipe", "pipe"],
+            env: headlessEnv(),
+        });
+    } catch (e) {
+        const out = Buffer.concat([e.stdout, e.stderr].map((b) => (b ? Buffer.from(b) : Buffer.alloc(0))))
+            .subarray(0, 300)
+            .toString("utf8");
+        let why = `exited with status ${e.status}`;
+        if (e.code === "ETIMEDOUT") why = `timed out after ${QB64_RUN_TIMEOUT_MS}ms`;
+        else if (e.code === "ENOBUFS") why = "exceeded the output limit";
+        else if (e.signal) why = `was killed by ${e.signal}`;
+        throw new Error(`QB64 binary ${binPath} ${why}; output: ${JSON.stringify(out)}`);
+    }
+}
+
 module.exports = {
+    runQb64,
+    QB64_ERROR_PROLOGUE,
+    QB64_ERROR_HANDLER,
     KEEP_TMP,
     tmpDir,
     removeTmpDir,
