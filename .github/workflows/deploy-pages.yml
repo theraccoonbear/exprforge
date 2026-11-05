@@ -30,18 +30,29 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+    paths:
+      - "playground/**"
+      - "*.js"
+      - "emitters/**"
+      - "math/**"
+      - "samples/**"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/scripts/publish-gh-pages.sh"
+      - ".github/workflows/deploy-pages.yml"
   workflow_dispatch: {}
 
-# Shared with deploy-pr-preview.yml's deploy/cleanup jobs, not just this
-# workflow: every job that pushes to the gh-pages branch needs to be
-# mutually exclusive with every other one, or two concurrent pushes
-# (e.g. a main deploy and a PR preview landing at the same moment) can
-# race. Queue rather than cancel -- cancel-in-progress would drop a
-# legitimate PR preview or live deploy just because something else
-# touched gh-pages at the same time.
+# One run per PR / ref; a newer push to a PR cancels that PR's superseded
+# run, and runs on main are never cancelled (they queue per ref, so the
+# newest main push is the one that ends up published). Pushes to gh-pages
+# from this workflow, PR previews and preview cleanup may still happen at
+# the same moment; that is handled by the retried push in
+# .github/scripts/publish-gh-pages.sh rather than by a shared lock (a lock
+# with cancel-in-progress: false keeps only one pending run and would drop
+# the others, including a production deploy).
 concurrency:
-  group: gh-pages-deploy
-  cancel-in-progress: false
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   build-deploy:
@@ -67,12 +78,10 @@ jobs:
       # candidate for deploy.
       - run: npm run test:e2e
         working-directory: playground
+      # Overlays the build onto the branch root and leaves every pr-<N>/
+      # preview directory in place.
       - if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-        uses: peaceiris/actions-gh-pages@v4
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: playground/dist
-          # Without this, every live deploy would wipe out every PR
-          # preview subdirectory sitting alongside it on the gh-pages
-          # branch.
-          keep_files: true
+        run: |
+          .github/scripts/publish-gh-pages.sh publish playground/dist . "deploy: ${GITHUB_SHA}"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
