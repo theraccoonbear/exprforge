@@ -21,6 +21,36 @@ const RESERVED = new Set([
     "__ENCODING__",
 ]);
 
+// Guard helpers, emitted once per file (formatFunction/formatSuite skip them
+// when opts.includeHelpers === false, for concatenated files). Classic
+// `def ... end`, not endless `def`, so the documented Ruby 2.4 minimum holds.
+// Ruby's Math.sqrt/log/asin/acos raise Math::DomainError out of domain,
+// Float ** Float can return a Complex, Float#floor/ceil/truncate/round raise
+// FloatDomainError for NaN/Infinity, [a, b].min raises on NaN, and
+// Float % 0.0 raises ZeroDivisionError; each is guarded here so the unified
+// behavior holds. See docs/adr/0001, 0002 and 0003. asin/acos use explicit
+// comparisons, not between?, because NaN.between? raises. round(half: :up)
+// ties away from zero.
+const HELPER_DEFS = [
+    ["_ef_sqrt(x)", "x >= 0 ? Math.sqrt(x) : Float::NAN"],
+    ["_ef_asin(x)", "(x >= -1 && x <= 1) ? Math.asin(x) : Float::NAN"],
+    ["_ef_acos(x)", "(x >= -1 && x <= 1) ? Math.acos(x) : Float::NAN"],
+    ["_ef_log(x)", "x > 0 ? Math.log(x) : (x == 0 ? -Float::INFINITY : Float::NAN)"],
+    ["_ef_log2(x)", "x > 0 ? Math.log2(x) : (x == 0 ? -Float::INFINITY : Float::NAN)"],
+    ["_ef_log10(x)", "x > 0 ? Math.log10(x) : (x == 0 ? -Float::INFINITY : Float::NAN)"],
+    ["_ef_pow(b, e)", "r = b ** e\n    r.is_a?(Float) ? r : Float::NAN"],
+    ["_ef_min(a, b)", "(a != a || b != b) ? Float::NAN : (a < b ? a : b)"],
+    ["_ef_max(a, b)", "(a != a || b != b) ? Float::NAN : (a > b ? a : b)"],
+    ["_ef_floor(x)", "x.finite? ? x.floor.to_f : x"],
+    ["_ef_ceil(x)", "x.finite? ? x.ceil.to_f : x"],
+    ["_ef_trunc(x)", "x.finite? ? x.truncate.to_f : x"],
+    ["_ef_round(x)", "x.finite? ? x.round(half: :up).to_f : x"],
+    ["_ef_sign(x)", "x > 0 ? 1.0 : (x < 0 ? -1.0 : 0.0)"],
+    ["_ef_wrap(i, m)", "m == 0 ? Float::NAN : i % m"],
+    ["_ef_clamp(i, lo, hi)", "i < lo ? lo : (i > hi ? hi : i)"],
+];
+const HELPERS = HELPER_DEFS.map(([sig, body]) => `def ${sig}\n    ${body}\nend\n`).join("");
+
 function rb(name) {
     return /^[A-Z]/.test(name) || RESERVED.has(name) ? `_${name}` : name;
 }
@@ -66,42 +96,20 @@ const emitter = new RubyEmitter({
         // out-of-domain argument (unlike JS/C, which return NaN). Guarded
         // inline so the unified domain-error behavior holds: NaN, or
         // -Infinity for log of zero. See docs/adr/0002-domain-error-handling.md.
-        sqrt: ([x]) => `(${x} >= 0 ? Math.sqrt(${x}) : Float::NAN)`,
+        sqrt: ([x]) => `_ef_sqrt(${x})`,
         abs: ([x]) => `(${x}).abs`, sin: fn1("sin"), cos: fn1("cos"), tan: fn1("tan"),
-        asin: ([x]) => `((${x} >= -1 && ${x} <= 1) ? Math.asin(${x}) : Float::NAN)`,
-        acos: ([x]) => `((${x} >= -1 && ${x} <= 1) ? Math.acos(${x}) : Float::NAN)`,
+        asin: ([x]) => `_ef_asin(${x})`, acos: ([x]) => `_ef_acos(${x})`,
         atan: fn1("atan"), atan2: fn2("atan2"),
-        log: ([x]) => `(${x} > 0 ? Math.log(${x}) : (${x} == 0 ? -Float::INFINITY : Float::NAN))`,
-        log2: ([x]) => `(${x} > 0 ? Math.log2(${x}) : (${x} == 0 ? -Float::INFINITY : Float::NAN))`,
-        log10: ([x]) => `(${x} > 0 ? Math.log10(${x}) : (${x} == 0 ? -Float::INFINITY : Float::NAN))`,
+        log: ([x]) => `_ef_log(${x})`, log2: ([x]) => `_ef_log2(${x})`, log10: ([x]) => `_ef_log10(${x})`,
         exp: fn1("exp"),
-        // Float ** Float with a negative base and a non-integer exponent
-        // returns a Complex in Ruby, not NaN. Guarded; an infinite
-        // exponent is integer-valued for this purpose, as in JS.
-        pow: ([b, e]) =>
-            `((${b} < 0 && (${e}).finite? && (${e}) % 1 != 0) ? Float::NAN : ((${b}) ** (${e})))`,
-        // Not [a, b].min / .max: a comparison against NaN is false, so the
-        // result would depend on argument position. NaN propagates instead.
-        // See docs/adr/0003-min-max-nan-propagation.md.
-        min: ([a, b]) => `((${a} != ${a} || ${b} != ${b}) ? Float::NAN : (${a} < ${b} ? ${a} : ${b}))`,
-        max: ([a, b]) => `((${a} != ${a} || ${b} != ${b}) ? Float::NAN : (${a} > ${b} ? ${a} : ${b}))`,
+        pow: ([b, e]) => `_ef_pow(${b}, ${e})`,
+        min: ([a, b]) => `_ef_min(${a}, ${b})`, max: ([a, b]) => `_ef_max(${a}, ${b})`,
         hypot: fn2("hypot"),
-        // Float#floor/ceil/truncate/round return Integer and raise
-        // FloatDomainError for NaN and +-Infinity; non-finite values pass
-        // through unchanged and finite results are converted back to Float.
-        floor: ([x]) => `((${x}).finite? ? (${x}).floor.to_f : (${x}))`,
-        ceil: ([x]) => `((${x}).finite? ? (${x}).ceil.to_f : (${x}))`,
-        trunc: ([x]) => `((${x}).finite? ? (${x}).truncate.to_f : (${x}))`,
-        // Float#round(half: :up) rounds ties away from zero, matching
-        // docs/adr/0001-round-tie-breaking.md.
-        round: ([x]) => `((${x}).finite? ? (${x}).round(half: :up).to_f : (${x}))`,
-        sign: ([x]) => `(${x} > 0 ? 1.0 : (${x} < 0 ? -1.0 : 0.0))`,
-        // Ruby's % is floor-mod (result takes the sign of the divisor), but
-        // Float % 0.0 raises ZeroDivisionError instead of returning NaN
-        // (confirmed on Ruby 3.3), so a zero modulus is guarded.
-        wrapIndex: ([i, m]) => `(${m} == 0 ? Float::NAN : (${i} % ${m}))`,
-        clampIndex: ([i, lo, hi]) =>
-            `(${i} < ${lo} ? ${lo} : (${i} > ${hi} ? ${hi} : ${i}))`,
+        floor: ([x]) => `_ef_floor(${x})`, ceil: ([x]) => `_ef_ceil(${x})`,
+        trunc: ([x]) => `_ef_trunc(${x})`, round: ([x]) => `_ef_round(${x})`,
+        sign: ([x]) => `_ef_sign(${x})`,
+        wrapIndex: ([i, m]) => `_ef_wrap(${i}, ${m})`,
+        clampIndex: ([i, lo, hi]) => `_ef_clamp(${i}, ${lo}, ${hi})`,
     },
     // Array#[] with an out-of-range index returns nil, which .to_f would
     // silently turn into 0.0; Float() raises TypeError for nil instead,
@@ -116,8 +124,9 @@ const emitter = new RubyEmitter({
         `raise TypeError, ${JSON.stringify(`${fnName}: "${p}" must be an array`)} unless ${rb(p)}.is_a?(Array)`,
     lengthGuard: (p, lenP, fnName) =>
         `raise ArgumentError, ${JSON.stringify(`${fnName}: ${p}.length must equal "${lenP}"`)} if ${rb(p)}.length != ${rb(lenP)}`,
-    formatFunction: (fn, body, letBindings = [], guardLines = []) => {
+    formatFunction: (fn, body, letBindings = [], guardLines = [], opts = {}) => {
         return `# AUTO-GENERATED by ExprForge -- do not hand-edit.\n` +
+               (opts.includeHelpers === false ? "" : HELPERS) +
                `def ${fn.name}(${fn.params.map(rb).join(", ")})\n` +
                bodyPrelude(fn, letBindings, guardLines) +
                `    ${body}\n` +
@@ -125,10 +134,11 @@ const emitter = new RubyEmitter({
     },
     // Multiple named outputs from one call: a Hash with Symbol keys
     // (result[:rx]).
-    formatSuite: (fn, outputStrs, letBindings = [], guardLines = []) => {
+    formatSuite: (fn, outputStrs, letBindings = [], guardLines = [], opts = {}) => {
         const outputNames = Object.keys(outputStrs);
         const fields = outputNames.map((n) => `        ${n}: ${outputStrs[n]},`).join("\n");
         return `# AUTO-GENERATED by ExprForge -- do not hand-edit.\n` +
+               (opts.includeHelpers === false ? "" : HELPERS) +
                `def ${fn.name}(${fn.params.map(rb).join(", ")})\n` +
                bodyPrelude(fn, letBindings, guardLines) +
                `    {\n` +
