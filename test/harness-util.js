@@ -213,6 +213,23 @@ function qb64LockPath() {
     return path.join(os.tmpdir(), `exprforge-qb64pe-${key}.lock`);
 }
 
+// qb64pe reports compile errors on stdout (mixed with progress bars) and
+// leaves the C++ compiler's output in the install's own compilelog.txt.
+function qb64Diagnostics(e) {
+    const out = `${e.stdout || ""}${e.stderr || ""}`
+        .split("\n")
+        .filter((l) => !/^\[\.*\s*\]/.test(l))
+        .join("\n");
+    let log = "";
+    try {
+        const file = path.join(path.dirname(findQb64().real), "internal", "temp", "compilelog.txt");
+        log = `\n--- ${file} (tail) ---\n${fs.readFileSync(file, "utf8").split("\n").slice(-40).join("\n")}`;
+    } catch {
+        // no log available
+    }
+    return `${e.message.split("\n")[0]}\n${out}${log}`;
+}
+
 // qb64pe works inside <install>/internal/temp* and shares that tree between
 // every compile, so concurrent compiles corrupt each other (wrong or empty
 // binaries, spurious C++ errors). Only the compile is serialised; running
@@ -222,8 +239,7 @@ function compileQb64(srcPath, outPath) {
         try {
             return execFileSync("qb64pe", ["-x", srcPath, "-o", outPath], { stdio: ["ignore", "pipe", "pipe"] });
         } catch (e) {
-            // qb64pe reports compile errors on stdout; surface them.
-            throw new Error(`${e.message}\n${e.stdout || ""}${e.stderr || ""}`);
+            throw new Error(qb64Diagnostics(e));
         }
     });
 }
