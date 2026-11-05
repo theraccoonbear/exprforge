@@ -12,7 +12,8 @@ function fn2(name) {
 // A Ruby local variable must start with a lowercase letter or underscore
 // (an uppercase first letter makes it a constant, which cannot be a formal
 // argument or be assigned inside a method), and a reserved word cannot be
-// a variable name. Such names get a leading underscore.
+// a variable name. Such names get a leading underscore, as does anything
+// starting with the reserved helper prefix _ef_.
 const RESERVED = new Set([
     "BEGIN", "END", "alias", "and", "begin", "break", "case", "class", "def", "defined?",
     "do", "else", "elsif", "end", "ensure", "false", "for", "if", "in", "module", "next",
@@ -52,7 +53,7 @@ const HELPER_DEFS = [
 const HELPERS = HELPER_DEFS.map(([sig, body]) => `def ${sig}\n    ${body}\nend\n`).join("");
 
 function rb(name) {
-    return /^[A-Z]/.test(name) || RESERVED.has(name) ? `_${name}` : name;
+    return /^[A-Z]/.test(name) || /^_ef_/.test(name) || RESERVED.has(name) ? `_${name}` : name;
 }
 
 class RubyEmitter extends Emitter {

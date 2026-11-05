@@ -113,3 +113,45 @@ test("ruby: addTypeGuards and arrayLengths guards actually raise in a real ruby"
     assert.throws(() => run("cyclicElem(5, 4, 5)"), /Command failed/);
     assert.throws(() => run("cyclicElem([1, 2, 3], 4, 5)"), /Command failed/);
 });
+
+test("ruby: helpers are emitted once per file and skipped with includeHelpers: false", () => {
+    const fn = { name: "f", params: ["x"], body: call("sqrt", v("x")) };
+    const withHelpers = emitters.ruby.emitFunction(fn);
+    const without = emitters.ruby.emitFunction(fn, undefined, { includeHelpers: false });
+    for (const name of ["sqrt", "asin", "acos", "log", "log2", "log10", "pow", "min", "max",
+        "floor", "ceil", "trunc", "round", "sign", "wrap", "clamp"]) {
+        assert.ok(withHelpers.includes(`def _ef_${name}(`), name);
+        assert.ok(!without.includes(`def _ef_${name}(`), name);
+    }
+    assert.ok(!withHelpers.includes("endless") && !/^def _ef_\w+\([^)]*\) =/m.test(withHelpers), "no endless def");
+    assert.ok(without.includes("_ef_sqrt(x)"), without);
+});
+
+test("ruby: asin/acos helpers use comparisons, not between?", () => {
+    const src = emitters.ruby.emitFunction({ name: "f", params: ["x"], body: call("asin", v("x")) });
+    assert.ok(!src.includes("between?"), src);
+});
+
+test("ruby: pow(-8, NaN) is NaN, not Complex", { skip }, () => {
+    const fn = { name: "p", params: ["b", "e"], body: call("pow", v("b"), v("e")) };
+    assert.strictEqual(runRuby(fn, "p(-8, Float::NAN)"), "NaN");
+    assert.strictEqual(runRuby(fn, "p(-8, 1.5)"), "NaN");
+    assert.strictEqual(runRuby(fn, "p(-8, 3)"), "-512");
+    assert.strictEqual(runRuby(fn, "p(2, 10)"), "1024");
+});
+
+test("ruby: the _ef_ prefix is reserved, so a user name cannot shadow a helper", { skip }, () => {
+    const fn = { name: "g", params: ["_ef_sqrt", "_ef_pow"], body: call("sqrt", add(v("_ef_sqrt"), v("_ef_pow"))) };
+    const src = emitters.ruby.emitFunction(fn);
+    assert.ok(src.includes("def g(__ef_sqrt, __ef_pow)"), src);
+    assert.strictEqual(runRuby(fn, "g(7, 9)"), "4");
+});
+
+test("ruby: floor/ceil/trunc/round pass NaN and Infinity through instead of raising", { skip }, () => {
+    for (const op of ["floor", "ceil", "trunc", "round"]) {
+        const fn = { name: "h", params: ["x"], body: call(op, v("x")) };
+        assert.strictEqual(runRuby(fn, "h(Float::NAN)"), "NaN", op);
+        assert.strictEqual(runRuby(fn, "h(Float::INFINITY)"), "Inf", op);
+        assert.strictEqual(runRuby(fn, "h(-Float::INFINITY)"), "-Inf", op);
+    }
+});
