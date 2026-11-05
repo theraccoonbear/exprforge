@@ -75,9 +75,9 @@ const emitter = new Emitter({
         // math.floor/ceil/trunc and builtin round() all return int in
         // Python 3, not float -- wrap to stay float64 throughout, matching
         // every other target here, rather than silently switching types.
-        floor: ([x]) => `float(math.floor(${x}))`,
-        ceil: ([x]) => `float(math.ceil(${x}))`,
-        trunc: ([x]) => `float(math.trunc(${x}))`,
+        floor: ([x]) => `(float(math.floor(${x})) if math.isfinite(${x}) else ${x})`,
+        ceil: ([x]) => `(float(math.ceil(${x})) if math.isfinite(${x}) else ${x})`,
+        trunc: ([x]) => `(float(math.trunc(${x})) if math.isfinite(${x}) else ${x})`,
         // Python's builtin round() ties to EVEN ("banker's rounding"),
         // NOT this project's standardized round-half-AWAY-from-zero
         // convention -- see js.js's own comment and the root README's
@@ -86,7 +86,7 @@ const emitter = new Emitter({
         // a cleaner fit here than a separate sign*floor(abs+0.5) ternary,
         // and correctly handles x == 0 too (floor(0 + 0.5) == 0, and
         // copysign(0, 0) == 0.0).
-        round: ([x]) => `math.copysign(math.floor(abs(${x}) + 0.5), ${x})`,
+        round: ([x]) => `(math.copysign(math.floor(abs(${x}) + 0.5), ${x}) if math.isfinite(${x}) else ${x})`,
         // No math.sign in Python's stdlib -- build it directly. Zero-aware
         // by construction (see Go's/Rust's sign() history in this project
         // for what happens when it isn't).

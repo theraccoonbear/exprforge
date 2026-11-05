@@ -38,7 +38,7 @@ const emitter = new Emitter({
         // Math.signum already returns double for a double argument, so no
         // cast is needed here the way the plain Math.round path above did.
         round: ([x]) => `(Math.signum(${x}) * Math.floor(Math.abs(${x}) + 0.5))`,
-        trunc: ([x]) => `(double) (long) (${x})`,
+        trunc: ([x]) => `((${x}) < 0.0 ? Math.ceil(${x}) : Math.floor(${x}))`,
         sign: fn1("signum"),
         wrapIndex: ([i, m]) => `(((${i} % ${m}) + ${m}) % ${m})`,
         clampIndex: ([i, lo, hi]) => `Math.max(${lo}, Math.min(${hi}, ${i}))`,
