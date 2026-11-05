@@ -1741,6 +1741,53 @@ with `ImplicitUsings` disabled. `clampIndex` is emitted as
 `Max(lo, Min(hi, i))` rather than `Math.Clamp`, matching `evaluate()` and
 the other targets (`Math.Clamp` throws when `lo > hi`).
 
+## Merging PRs
+
+`main` requires a pull request, an up-to-date branch, and the checks
+`test (22)`, `test (24)`, `test (26)` and `coverage`. To avoid updating and
+re-testing each queued PR by hand, enable auto-merge on a ready PR:
+
+```
+gh pr merge <n> --auto --squash
+```
+
+The `Auto-update queue` workflow (`.github/workflows/auto-update-queue.yml`,
+logic in `scripts/auto-update-queue.js`) runs on every push to `main`, when
+auto-merge is enabled on a PR, and on demand:
+
+- It considers open, non-draft, same-repository PRs with auto-merge enabled,
+  ordered by when auto-merge was enabled (ties by PR number).
+- If a queued PR is already up to date and awaiting checks or merge, it does
+  nothing. Otherwise it updates only the oldest PR that is behind `main`, so
+  CI does not rerun on every queued PR after each merge. When that PR merges,
+  the resulting push to `main` updates the next one.
+- A queued PR whose checks have failed does not hold up the queue.
+- On a merge conflict it comments once on the PR, adds the
+  `needs-manual-update` label, skips that PR and tries the next one. Resolve
+  the conflict by merging `main` into the branch; the label is removed after
+  a later automatic update succeeds, or can be removed by hand.
+- `workflow_dispatch` with `dry_run` enabled logs the PR it would update
+  without changing anything.
+
+### One-time maintainer setup
+
+Branch updates pushed with the default `GITHUB_TOKEN` do not create new
+workflow runs (only `workflow_dispatch` and `repository_dispatch` do; see
+[GITHUB_TOKEN](https://docs.github.com/en/actions/concepts/security/github_token)),
+so required checks would never start on the updated branch. The update call
+therefore uses a separate token. Without it, the workflow logs a message and
+does nothing.
+
+1. Repository Settings, General, Pull Requests: enable "Allow auto-merge".
+2. Create a fine-grained personal access token (or a GitHub App with the
+   same permissions) limited to this repository, with repository permissions
+   Contents: read and write, Pull requests: read and write, Workflows: read
+   and write (needed when the merged-in `main` changes workflow files).
+3. Repository Settings, Secrets and variables, Actions: add it as the
+   repository secret `AUTO_UPDATE_TOKEN`.
+4. Optionally run the workflow once from the Actions tab with `dry_run`
+   enabled to check the output.
+
 ## Testing
 
 ```
