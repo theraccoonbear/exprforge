@@ -13,6 +13,7 @@ const emitters = {
     python: require("./python.js"),
     lua: require("./lua.js"),
     perl: require("./perl.js"),
+    ruby: require("./ruby.js"),
     php: require("./php.js"),
     julia: require("./julia.js"),
     r: require("./r.js"),

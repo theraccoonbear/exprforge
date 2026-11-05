@@ -7,8 +7,8 @@
 `round(x)` at an exact `.5` boundary has three genuinely incompatible
 native conventions across ExprForge's targets: ties-toward-+∞ (JS,
 TypeScript, Java, Lua), ties-to-even/"banker's rounding" (Python,
-Scheme, QB64, C#), and ties-away-from-zero (C, Rust, Go, Perl, Zig,
-Fortran, COBOL, Julia, PHP). ExprForge's emitters were each just
+Scheme, QB64, C#, R), and ties-away-from-zero (C, Rust, Go, Perl, Ruby,
+Zig, Fortran, COBOL, Julia, PHP, MATLAB/Octave). ExprForge's emitters were each just
 forwarding to the target's own native rounding function or a
 locally-"obvious" formula, so `round(-0.5)` silently returned a
 different value depending only on which target compiled it — a real
@@ -19,7 +19,7 @@ auditing every target directly rather than assumed.
 
 Standardize `round()` on **ties away from zero** on every executable target,
 unconditionally, no opt-out. Chosen because it was already the majority
-(10 of the 18 programming-language targets), and because this
+(11 of the 20 programming-language targets), and because this
 project's own Julia emitter had already, independently, chosen to match
 it (`RoundNearestTiesAway`) before this decision existed — real
 precedent, not an arbitrary pick. Built from `sign(x) * floor(abs(x) +

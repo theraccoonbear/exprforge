@@ -34,6 +34,7 @@ const VARIABLE_DENOMINATOR = {
     lua: "(x / y)",
     julia: "(x / y)",
     r: "(x / y)",
+    ruby: "(x / y)",
     fortran: "(x / y)",
     zig: "(x / y)",
     qb64: "(x / y)",

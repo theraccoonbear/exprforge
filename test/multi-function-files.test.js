@@ -66,6 +66,7 @@ const TOOLS = {
     python: hasTool("python3", ["--version"]),
     lua: LUA_BIN !== null,
     perl: hasTool("perl", ["-v"]),
+    ruby: hasTool("ruby", ["-v"]),
     php: hasTool("php", ["--version"]),
     julia: hasTool("julia", ["--version"]),
     rscript: hasTool("Rscript", ["--version"]),
@@ -324,6 +325,23 @@ test("multi-function file: Perl -- concatenating 2 functions runs correctly", { 
     const fnsPath = path.join(dir, "fns.pl");
     fs.writeFileSync(fnsPath, out1 + "\n" + out2);
     const output = execFileSync("perl", ["-e", `require "${fnsPath}"; print f1(${F1_ARG}), "\\n", f2(${F2_ARG}), "\\n";`])
+        .toString().trim().split("\n");
+    assertClose(parseFloat(output[0]), F1_EXPECT, "f1");
+    assertClose(parseFloat(output[1]), F2_EXPECT, "f2");
+    fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test("multi-function file: Ruby -- concatenating 2 functions runs correctly", { skip: !TOOLS.ruby && "ruby not available" }, () => {
+    const emittedHelpers = new Set();
+    const out1 = emitters.ruby.emitFunction(fn1, undefined, { emittedHelpers });
+    const out2 = emitters.ruby.emitFunction(fn2, undefined, { emittedHelpers });
+    assert.strictEqual((out1.match(/^def _ef_sqrt\(/gm) || []).length, 1);
+    assert.ok(!out1.includes("def _ef_log("), "only used helpers are emitted");
+    assert.strictEqual((out2.match(/^def _ef_log\(/gm) || []).length, 1);
+    const dir = tmpDir("ef-multi-rb-");
+    const fnsPath = path.join(dir, "fns.rb");
+    fs.writeFileSync(fnsPath, out1 + "\n" + out2);
+    const output = execFileSync("ruby", ["-e", `require "${fnsPath}"; puts f1(${F1_ARG}); puts f2(${F2_ARG})`])
         .toString().trim().split("\n");
     assertClose(parseFloat(output[0]), F1_EXPECT, "f1");
     assertClose(parseFloat(output[1]), F2_EXPECT, "f2");

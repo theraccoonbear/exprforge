@@ -22,7 +22,7 @@ real `Array.isArray()` check, thrown clearly, tested).
 
 But plain **emitted** source for the dynamically-typed targets — JS,
 TypeScript (only at the type-check layer, erased at runtime), Python, PHP,
-Lua, Perl, Scheme, Julia, R — shipped with no guard at all. A caller passing
+Lua, Perl, Ruby, Scheme, Julia, R — shipped with no guard at all. A caller passing
 a plain number where `arr: number[]` was declared would either hit an
 unrelated, confusing error several layers down (indexing a number), or in
 some cases silently produce a wrong result via coercion.
@@ -65,6 +65,7 @@ target's real idiom for "is this actually an array-shaped value":
 | PHP | `is_array($arr)` |
 | Lua | `type(arr) == "table"` |
 | Julia | `arr isa AbstractVector` |
+| Ruby | `arr.is_a?(Array)` |
 | R | `is.numeric(arr)` -- R has no scalar type distinct from a length-1 vector, so this rejects non-numeric values (strings, lists, `NULL`) but not a bare number |
 | Perl | `ref($arr) eq 'ARRAY'` — Perl's own array-param convention is an ARRAYREF (`$arr->[i]`), not a plain `@array` (see `emitters/perl.js`'s own comment), so the check is on the reference, not the value |
 | MATLAB / Octave | `~isnumeric(arr) \|\| ~isvector(arr)` |
@@ -140,11 +141,11 @@ BOTH `arrayLengths` declares the pairing for that parameter AND the
 named length parameter is a real parameter of the function; a
 typo'd/stale entry is silently a no-op, same "never a surprise" spirit
 as `addTypeGuards` itself, rather than throwing over what's still just
-documentation. Same 9-target availability as `typeGuard`, using each
+documentation. Same 10-target availability as `typeGuard`, using each
 target's own length-of-array idiom, checked AFTER the type guard (so
 it's always safe to call): `.length` (JS/TS), `len()` (Python),
 `count()` (PHP), `#` (Lua), `scalar(@$arr)` (Perl — dereferencing the
-arrayref), `length()` (Julia, R), `numel()` (MATLAB/Octave), `(vector-length ...)` (Scheme).
+arrayref), `.length` (Ruby), `length()` (Julia, R), `numel()` (MATLAB/Octave), `(vector-length ...)` (Scheme).
 
 **This is deliberately not a complete fix** — a caller can still pass a
 mismatched array and a WRONG `m` that happens to agree with its actual
