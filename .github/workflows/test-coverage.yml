@@ -44,13 +44,14 @@ on:
 
 jobs:
   coverage:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
           cache: npm
+      - run: node --version
       - run: npm ci
       # --test-coverage-exclude='test/**' is load-bearing, not cosmetic:
       # confirmed the hard way that whether test/*.test.js files get

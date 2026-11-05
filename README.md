@@ -142,6 +142,8 @@ to whichever depth you actually plan to trust.
 npm install exprforge
 ```
 
+Requires Node 22 or later. See [Supported toolchain versions](#supported-toolchain-versions) for every target's tested versions.
+
 ## Examples, flashiest first
 
 The showcase feature: several function definitions in one buffer, a
@@ -451,6 +453,34 @@ above — not fixed.
 See `samples/domain-safety-demo.js`'s own header comment for the full,
 directly-verified breakdown and exactly how each fix works, and
 `test/conformance.test.js`'s `domainSafety` entry for the permanent
+regression test.
+
+### Division by zero: also unified
+
+Dividing by a runtime zero follows IEEE 754 on every target, matching
+the native evaluator: `x/0` is `+Infinity` or `-Infinity` (the sign
+comes from both operands, including a `-0` denominator), and `0/0` and
+`NaN/0` are `NaN`. This was not true before:
+
+- **Python** raised `ZeroDivisionError`, **Perl** died with "Illegal
+  division by zero", and **PHP 8** threw `DivisionByZeroError`. Now
+  fixed: PHP emits `fdiv()`; Python and Perl emit a small
+  `_exprforge_div` helper (once per file, so each operand is still
+  evaluated exactly once). A nonzero literal denominator keeps the
+  plain `/`. For concatenated files, pass `{ includeHelpers: false }`
+  on every call after the first (see below).
+- Every other target except COBOL (JS, TypeScript, C, Go, Rust, Java,
+  Lua, C#, Zig, Julia, Fortran, Scheme, QB64) already returned IEEE
+  results and is unchanged.
+- **GnuCOBOL** is a documented, unfixed exception: `COMPUTE` is decimal
+  arithmetic with no Infinity or NaN, so a zero denominator leaves the
+  target field unchanged.
+- Go and Fortran reject a division by a *literal* constant zero at
+  compile time (a loud, avoidable error); a runtime zero is fine.
+
+See `docs/adr/0004-division-by-zero.md` for the decision record,
+`samples/division-by-zero-demo.js` for the fixture, and
+`test/conformance.test.js`'s `divisionByZero` entry for the permanent
 regression test.
 
 ### `min()`/`max()` with a NaN argument: also unified
@@ -994,7 +1024,7 @@ target and concatenating them into ONE file (one `.bi`/`.cob`/`.go`
 file per *program*, not per function). Several targets have some kind
 of always-on preamble per function (QB64's math-safety helpers,
 COBOL's comparison helpers, Go's `package`/`import`, Zig's `@import`,
-PHP's `<?php` tag, Java's one-public-class-per-file rule) that's fine
+PHP's `<?php` tag, Python's and Perl's division helper, Java's one-public-class-per-file rule) that's fine
 in isolation but becomes a duplicate/conflicting declaration once two
 functions' outputs are concatenated as-is — confirmed directly (a real
 consumer report, then the same bug class found in 5 more targets by
@@ -1484,11 +1514,64 @@ every target you provide a mapping for (see "Macros and externs" above).
 That risk is inherent to what an extern *is*, not something a validation
 layer could close without also closing off the feature itself.
 
+## Supported toolchain versions
+
+Emitted code never needs anything newer than the "Minimum" column.
+"Minimum" is the floor the emitter's constructs require; where the
+"Tested in CI" column does not cover it, the minimum is derived from the
+language/library documentation and is not exercised by CI. Toolchains are
+never project dependencies: they are looked up on `PATH`, and conformance
+tests skip a target whose toolchain is absent.
+
+All CI workflows run on `ubuntu-24.04` (not `ubuntu-latest`), so
+distro-provided toolchains (gcc, gfortran, PHP, Perl, GnuCOBOL, Guile)
+have the version that image ships. Every workflow prints its resolved
+toolchain version. Bump pinned versions deliberately, in a reviewed
+change that also updates this table.
+
+| Target | Minimum | Tested in CI | Notes |
+|---|---|---|---|
+| Node (library + JS target) | Node 22 (`engines`) | 22, 24, 26 (`test-node.yml`); 22 for all other workflows | Every supported Node line is tested. Node 18 and 20 are end-of-life and no longer supported. |
+| C | C99 | gcc from Ubuntu 24.04 (13.x), default `-std` | Needs `fmin`/`fmax`/`isnan`/`log2`/`hypot`/`trunc`/`round` from C99 `math.h` and compound literals; link with `-lm`. |
+| C# | C# 7.0; .NET Core 3.0 / .NET 5+ when `log2` is used (`Math.Log2`) | .NET 10.0.x (SDK-matched target framework) | Output is standalone: no `using` needed, `Math` is emitted as `global::System.Math`. Value tuples (C# 7) are used only for multi-output suites; on .NET Framework they need `System.ValueTuple`. Everything else used (`Math.Sign/Floor/Ceiling/Truncate/Abs/Sqrt/Pow/Atan2/Min/Max/Log/Log10/Exp`, trig) exists on every .NET version. Lower versions than the tested ones are not exercised by CI. |
+| Go | any Go 1.x (`math` only) | 1.26 | |
+| Rust | 1.50 (`f64::clamp`; `rem_euclid` needs 1.38) | 1.99.1 | Not rewritten to `max`/`min`: Rust's `f64::max`/`min` ignore NaN, which would change results. |
+| Java | Java 8 (only `Math.*`) | 21 (Temurin) | |
+| Python | 3.3 (`math.log2`) | 3.13 | Python 3 only. |
+| TypeScript | tsc accepting `--strict --target es2020 --module commonjs` | 5.9.3 | Source text is only generated; type-checked in tests. |
+| Lua | 5.3 (two-argument `math.atan`, no `math.pow`/`math.atan2`) | 5.3 and 5.4 | Not valid on 5.1/LuaJIT without compatibility. |
+| Perl | Perl 5 with core `POSIX` | 5.38 (Ubuntu 24.04) | |
+| PHP | PHP 7 (believed; no version-specific features found) | 8.3 (Ubuntu 24.04 `php-cli`) | |
+| Julia | 1.0 (`clamp`, `RoundNearestTiesAway`) | 1.11.5 (exact) | |
+| Fortran | Fortran 2008 (`HYPOT`, `MODULO`) | gfortran 13.x (Ubuntu 24.04), `-O2`, default `-std` | |
+| Zig | 0.14.1 exactly | 0.14.1 (exact) | Builtins and `std` change between releases. To bump: edit `test-zig.yml`, run the Zig suite, fix `emitters/zig.js`, update this table. |
+| QB64 | QB64-PE (tested release) | v4.7.0-GLFW (exact tag) | Built from the release source bundle in CI. |
+| Scheme | Guile 3.0 | guile-3.0 (Ubuntu 24.04) | |
+| COBOL | GnuCOBOL 3.x | `gnucobol3` (3.1.2) | Not 4.x early-dev: confirmed `cob_decimal` codegen issue. To bump: run the full COBOL suite on the new series, re-check the skipped samples, update this table. |
+| LaTeX | LaTeX2e with `amsmath` (`wrap: "document"` loads it; other wraps need it in the host document). KaTeX 0.16+ or MathJax for web rendering. | KaTeX 0.16 strict parse; `pdflatex` from Ubuntu 24.04 `texlive-latex-base` | Output is typeset math, never executed. `document` output compiles standalone; long one-line formulas can run past the margin (overfull boxes are reported, not failures). |
+
+Adding a target, or raising a minimum, requires updating this table and
+the matching workflow.
+
+### C# notes
+
+C# output carries no `using` directives and refers to `global::System.Math`
+throughout, so it compiles with `ImplicitUsings` off and cannot be
+shadowed by a consumer's own `Math` type or `System` namespace. The test
+harness targets the highest installed .NET SDK major (`net<major>.0`),
+with `EXPRFORGE_DOTNET_TFM` (e.g. `net10.0`) as an override, and builds
+with `ImplicitUsings` disabled. `clampIndex` is emitted as
+`Max(lo, Min(hi, i))` rather than `Math.Clamp`, matching `evaluate()` and
+the other targets (`Math.Clamp` throws when `lo > hi`).
+
 ## Testing
 
 ```
 npm test
 ```
+
+Toolchain versions that CI tests, and the minimums emitted code needs,
+are listed in [Supported toolchain versions](#supported-toolchain-versions).
 
 Runs `node --test`. For each sample, that's three kinds of check:
 
@@ -1582,7 +1665,8 @@ compiling/running against a real toolchain rather than assumed to work:
   headless via the `$CONSOLE:ONLY` metacommand, so no display (real or
   virtual) is needed — no `xvfb-run` required for these console-only test
   programs, unlike a typical QB64 build.
-- **C#**: forbids a member sharing its enclosing type's *exact* name
+- **C#**: output is standalone (fully qualified `global::System.Math`, no
+  `using` needed). Forbids a member sharing its enclosing type's *exact* name
   (`CS0542`) — every SpEf-prefixed sample name here is already
   capitalized, so the obvious `capitalize(fn.name)` wrapper-class name
   collided with the method name outright; see `wrapperClassName` in

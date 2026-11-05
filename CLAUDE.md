@@ -175,3 +175,10 @@ Checklist when adding a new target:
 - [ ] counts and language lists (README, CLAUDE.md, docs, comments)
 - [ ] playground `languageMeta` and syntax highlighting
 - [ ] `package.json` description
+
+### Toolchain versions
+
+Adding a target, or raising the minimum toolchain version an emitter
+needs, requires updating the README table "Supported toolchain versions"
+and the matching `.github/workflows/test-<lang>.yml`. Keep Zig and
+GnuCOBOL pinned exactly; re-verification steps are in their workflows.

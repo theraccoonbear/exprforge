@@ -9,13 +9,14 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
           cache: npm
+      - run: node --version
       - run: npm ci
 
       # No apt package -- Ubuntu doesn't ship one. Same "download a release
@@ -27,6 +28,10 @@ jobs:
       # "zig-x86_64-linux", not "zig-linux-x86_64" -- confirmed the hard
       # way (a first version of this workflow had them swapped and 404'd);
       # 0.14.x changed the tarball naming order from earlier releases.
+      # Exact pin, deliberately. To bump: change the version in both URL
+      # and PATH lines below, run the full Zig conformance suite
+      # (EXPRFORGE_TEST_TARGETS=Zig npm test), fix emitters/zig.js for any
+      # builtin/std changes, and update README "Supported toolchain versions".
       - name: Install Zig
         run: |
           curl -fsSL -o zig.tar.xz "https://ziglang.org/download/0.14.1/zig-x86_64-linux-0.14.1.tar.xz"
