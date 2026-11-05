@@ -7,6 +7,10 @@ on:
     branches: [main]
   workflow_dispatch: {}
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
 # Exercises the interpreter, emitters and static tests (no target toolchains
 # installed; conformance tests skip) across Node versions. Node release
 # schedule: https://github.com/nodejs/Release/blob/main/schedule.json

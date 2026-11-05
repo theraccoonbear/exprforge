@@ -18,19 +18,29 @@ name: Deploy PR preview
 on:
   pull_request:
     branches: [main]
+    paths:
+      - "playground/**"
+      - "*.js"
+      - "emitters/**"
+      - "math/**"
+      - "samples/**"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/scripts/publish-gh-pages.sh"
+      - ".github/workflows/deploy-pr-preview.yml"
     types: [opened, synchronize, reopened, closed]
 
 permissions:
   contents: write
   pull-requests: write
 
-# Same shared group as deploy-pages.yml -- see that file's comment.
-# Deliberately not scoped per-PR: a per-PR group would let two DIFFERENT
-# PRs' deploys race each other on the shared gh-pages branch even though
-# neither would cancel the other.
+# One group per PR, so previews of different PRs build in parallel and a
+# newer push (or the close event) cancels that PR's superseded run. The
+# gh-pages push itself is made race-safe by the retried push in
+# .github/scripts/publish-gh-pages.sh, not by a shared lock.
 concurrency:
-  group: gh-pages-deploy
-  cancel-in-progress: false
+  group: pr-preview-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
 
 jobs:
   deploy:
@@ -54,12 +64,12 @@ jobs:
       - name: Rebuild at PR-specific base path
         run: npx vite build --base=/exprforge/pr-${{ github.event.pull_request.number }}/
         working-directory: playground
-      - uses: peaceiris/actions-gh-pages@v4
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: playground/dist
-          destination_dir: pr-${{ github.event.pull_request.number }}
-          keep_files: true
+      - name: Publish preview
+        run: |
+          .github/scripts/publish-gh-pages.sh publish playground/dist "pr-${PR_NUMBER}" "chore: deploy preview for PR #${PR_NUMBER}"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
       - uses: marocchino/sticky-pull-request-comment@v2
         with:
           header: pr-preview
@@ -72,28 +82,18 @@ jobs:
     if: github.event.action == 'closed'
     runs-on: ubuntu-latest
     steps:
-      # Tolerant of gh-pages not existing yet, or this PR never having
-      # deployed a preview (e.g. closed immediately) -- continue-on-error
-      # here plus the outcome check below skip the rest of the job
-      # cleanly instead of a red X for a directory that was never
-      # created.
+      # The checkout supplies the publish script from the default branch;
+      # the script itself does nothing when gh-pages does not exist yet or
+      # this PR never deployed a preview.
       - uses: actions/checkout@v4
-        continue-on-error: true
-        id: checkout
         with:
-          ref: gh-pages
-      - if: steps.checkout.outcome == 'success'
+          ref: ${{ github.event.repository.default_branch }}
+      - name: Remove preview
         run: |
-          if [ ! -d "pr-${{ github.event.pull_request.number }}" ]; then
-            echo "Nothing to clean up."
-            exit 0
-          fi
-          rm -rf "pr-${{ github.event.pull_request.number }}"
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add -A
-          git commit -m "chore: remove preview for closed PR #${{ github.event.pull_request.number }}"
-          git push
+          .github/scripts/publish-gh-pages.sh remove "pr-${PR_NUMBER}" "chore: remove preview for closed PR #${PR_NUMBER}"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
       - uses: marocchino/sticky-pull-request-comment@v2
         with:
           header: pr-preview

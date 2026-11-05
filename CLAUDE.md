@@ -89,6 +89,7 @@ targets in total).
 - `primitives.js` -- fixed arity table for 22 built-in Math primitives
 - `evaluate.js` -- native interpreter over the AST
 - `differentiate.js` -- symbolic differentiation (d/dx)
+- `analyze.js` -- opt-in interval/range analysis (`analyzeRanges`): output bounds and divide-by-zero warnings
 - `emitters/base.js` -- emitter base class with shared emitExpr pipeline
 - `emitters/registry.js` -- maps language names to emitter instances
 - `macros.js` -- macro/extern expansion system

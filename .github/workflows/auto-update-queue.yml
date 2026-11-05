@@ -1,0 +1,51 @@
+name: Auto-update queue
+
+# Poor man's merge queue on top of auto-merge. After main moves, brings the
+# oldest auto-merge PR that is behind main up to date, one at a time, so CI
+# is not re-run on every queued PR after each merge. See README "Merging PRs".
+#
+# The update call must use AUTO_UPDATE_TOKEN (fine-grained PAT or GitHub App
+# token): events caused by GITHUB_TOKEN, other than workflow_dispatch and
+# repository_dispatch, do not create workflow runs, so required checks would
+# never start on the updated branch.
+# https://docs.github.com/en/actions/concepts/security/github_token
+#
+# pull_request_target runs the base branch's copy of this workflow and never
+# checks out PR code.
+
+on:
+  push:
+    branches: [main]
+  pull_request_target:
+    types: [auto_merge_enabled, ready_for_review]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Log what would be updated without updating
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: auto-update-queue
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: Update oldest queued PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+          UPDATE_TOKEN: ${{ secrets.AUTO_UPDATE_TOKEN }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: node scripts/auto-update-queue.js
