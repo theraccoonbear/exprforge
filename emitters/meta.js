@@ -26,6 +26,9 @@
 //     probes             null, or a list of { candidates, args }: every probe
 //                        must find one of its candidate commands on PATH
 //                        (run with args) for the target to count as available.
+//                        `args: null` only locates the command on PATH
+//                        without running it (QB64-PE: an invocation is itself
+//                        a compiler run against the shared install).
 //     label              Optional table label when it differs from displayName.
 //     docs               { minimum, tested, notes } -- one row of the README
 //                        "Supported toolchain versions" table.
@@ -54,7 +57,8 @@
 //   selectShortCircuits  true when the emitted select() only evaluates the
 //                        taken branch; false when both are always evaluated.
 //   minMaxNaN            Native min/max behavior with a NaN operand:
-//                        "propagate", "ignore", "positional" or "erratic".
+//                        "propagate", "ignore", "positional", "erratic" or
+//                        "raises" (the native call throws; Ruby).
 //
 // kind "typeset"/"syntax" targets leave roundTies, selectShortCircuits and
 // minMaxNaN null: they print the formula rather than compute it.
@@ -64,7 +68,7 @@ const { PRIMITIVE_ARITY } = require("../primitives.js");
 
 const KINDS = ["executable", "typeset", "syntax"];
 const ROUND_TIES = ["away", "even", "posInf"];
-const MIN_MAX_NAN = ["propagate", "ignore", "positional", "erratic"];
+const MIN_MAX_NAN = ["propagate", "ignore", "positional", "erratic", "raises"];
 
 function targets() {
     return Object.entries(registry).map(([lang, emitter]) => ({ lang, emitter, meta: emitter.meta }));
@@ -90,8 +94,8 @@ function validateMeta(lang, meta) {
         else {
             if (tc.probes !== null && !Array.isArray(tc.probes)) bad("toolchain.probes must be null or an array");
             for (const p of tc.probes || []) {
-                if (!Array.isArray(p.candidates) || !p.candidates.length || !Array.isArray(p.args)) {
-                    bad("each toolchain probe needs candidates[] and args[]");
+                if (!Array.isArray(p.candidates) || !p.candidates.length || !(Array.isArray(p.args) || p.args === null)) {
+                    bad("each toolchain probe needs candidates[] and args[] (or args: null to only locate the command)");
                 }
             }
             const d = tc.docs;
@@ -143,6 +147,12 @@ function badges() {
         .join("\n");
 }
 
+// Display names of the executable targets whose select() evaluates both
+// branches, as one phrase ("QB64, Fortran, COBOL, and MATLAB/Octave").
+function eagerSelectTargets() {
+    return oxford(names(executable().filter((t) => t.meta.selectShortCircuits === false)));
+}
+
 // The single source of every generated doc region: marker key -> text.
 // Keys ending in "table" or equal to "badges" are block regions (the
 // generator puts them on their own lines); the rest are inline.
@@ -192,4 +202,4 @@ function packageDescription() {
     );
 }
 
-module.exports = { targets, executable, validateMeta, docFacts, packageDescription, oxford };
+module.exports = { targets, executable, validateMeta, docFacts, packageDescription, oxford, eagerSelectTargets };

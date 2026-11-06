@@ -120,6 +120,7 @@ const LENGTH_GUARD_TARGETS = {
     php: "count($arr) !== $m",
     lua: "#arr ~= m",
     perl: "scalar(@$arr) == $m",
+    ruby: "arr.length != m",
     julia: "length(arr) != m",
     r: "length(arr) != m",
     scheme: "(vector-length arr) m",

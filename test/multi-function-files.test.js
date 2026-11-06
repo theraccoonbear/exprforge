@@ -31,17 +31,14 @@ const { execFileSync } = require("node:child_process");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
-const { v, num, call, add, sub } = require("../ast.js");
+const { tmpDir, hasQb64, compileQb64, runQb64, QB64_ERROR_PROLOGUE, QB64_ERROR_HANDLER } = require("./harness-util.js");
+const { v, num, call, add, sub, cmp, select } = require("../ast.js");
 const emitters = require("../emitters/registry.js");
 const { DOTNET_TFM } = require("./dotnet-tfm.js");
 
 const { TOOLS, bin, queried } = require("./toolchains.js");
 const GUILE_BIN = bin("scheme");
 const LUA_BIN = bin("lua");
-
-function tmpDir(prefix) {
-    return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
-}
 
 // Two real functions, deliberately using DIFFERENT primitives (sqrt/log)
 // so a mixup between them is obvious in the results -- f1(16) == 4,
@@ -61,15 +58,16 @@ function assertClose(actual, expected, msg) {
 // --- QB64 --------------------------------------------------------------
 
 test("multi-function file: QB64 -- concatenating 2 functions compiles and runs correctly", { skip: !TOOLS.qb64 && "qb64pe not available" }, () => {
-    const out1 = emitters.qb64.emitFunction(fn1, undefined, { includeHelpers: true });
-    const out2 = emitters.qb64.emitFunction(fn2, undefined, { includeHelpers: false });
+    const emittedHelpers = new Set();
+    const out1 = emitters.qb64.emitFunction(fn1, undefined, { emittedHelpers });
+    const out2 = emitters.qb64.emitFunction(fn2, undefined, { emittedHelpers });
     const dir = tmpDir("ef-multi-qb64-");
-    const harness = `$CONSOLE:ONLY\n${out1}\n${out2}\nPRINT f1#(${F1_ARG}#)\nPRINT f2#(${F2_ARG}#)\nSYSTEM\n`;
+    const harness = `$CONSOLE:ONLY\n${out1}\n${out2}\n${QB64_ERROR_PROLOGUE}PRINT f1#(${F1_ARG}#)\nPRINT f2#(${F2_ARG}#)\nSYSTEM\n${QB64_ERROR_HANDLER}`;
     const srcPath = path.join(dir, "main.bas");
     fs.writeFileSync(srcPath, harness);
     const bin = path.join(dir, "bin");
-    execFileSync("qb64pe", ["-x", srcPath, "-o", bin]);
-    const lines = execFileSync(bin, [], { input: "" }).toString().trim().split("\n");
+    compileQb64(srcPath, bin);
+    const lines = runQb64(bin, []).toString().trim().split("\n");
     assertClose(parseFloat(lines[0]), F1_EXPECT, "f1");
     assertClose(parseFloat(lines[1]), F2_EXPECT, "f2");
     fs.rmSync(dir, { recursive: true, force: true });
@@ -93,17 +91,18 @@ test("multi-function file: QB64 -- concatenating 2 functions compiles and runs c
 // regression in the includeHelpers fix this test exists to verify, a
 // separate, pre-existing GnuCOBOL fragility this test accidentally
 // wandered into by picking sqrt/log as its example functions. Plain
-// arithmetic (+/-) never touches that codegen path at all, and still
-// fully exercises CMP_HELPER_SOURCE's own dedup (unconditionally
-// prepended to every COBOL function regardless of whether it uses
-// cmp()/select(), same as every other target's own helper block here) --
-// which is the actual thing this test needs to prove.
-const cobolFn1 = { name: "f1", params: ["x"], body: add(v("x"), num(1)) };
-const cobolFn2 = { name: "f2", params: ["x"], body: sub(v("x"), num(1)) };
+// arithmetic (+/-) never touches that codegen path at all. Each function
+// uses select(cmp(...)) with a different comparator, so the union of the
+// two programs' ef-cmp-* helpers (gt and lt) has to be defined exactly
+// once across the concatenated file -- which is the actual thing this
+// test needs to prove.
+const cobolFn1 = { name: "f1", params: ["x"], body: select(cmp(v("x"), ">", num(0)), add(v("x"), num(1)), sub(v("x"), num(1))) };
+const cobolFn2 = { name: "f2", params: ["x"], body: select(cmp(v("x"), "<", num(0)), add(v("x"), num(1)), sub(v("x"), num(1))) };
 
 test("multi-function file: COBOL -- concatenating 2 programs compiles and runs correctly", { skip: !TOOLS.cobol && "cobc not available" }, () => {
-    const out1 = emitters.cobol.emitFunction(cobolFn1, undefined, { includeHelpers: true });
-    const out2 = emitters.cobol.emitFunction(cobolFn2, undefined, { includeHelpers: false });
+    const emittedHelpers = new Set();
+    const out1 = emitters.cobol.emitFunction(cobolFn1, undefined, { emittedHelpers });
+    const out2 = emitters.cobol.emitFunction(cobolFn2, undefined, { emittedHelpers });
     const dir = tmpDir("ef-multi-cobol-");
     const fnsPath = path.join(dir, "fns.cob");
     fs.writeFileSync(fnsPath, out1 + "\n" + out2);
@@ -131,6 +130,8 @@ test("multi-function file: COBOL -- concatenating 2 programs compiles and runs c
     const lines = execFileSync(bin, []).toString().trim().split("\n");
     assertClose(parseFloat(lines[0]), F1_ARG + 1, "f1");
     assertClose(parseFloat(lines[1]), F2_ARG - 1, "f2");
+    assert.strictEqual((fs.readFileSync(fnsPath, "utf8").match(/FUNCTION-ID\. ef-cmp-gt\./g) || []).length, 1);
+    assert.strictEqual((fs.readFileSync(fnsPath, "utf8").match(/FUNCTION-ID\. ef-cmp-lt\./g) || []).length, 1);
     fs.rmSync(dir, { recursive: true, force: true });
 });
 
@@ -297,6 +298,23 @@ test("multi-function file: Perl -- concatenating 2 functions runs correctly", { 
     fs.rmSync(dir, { recursive: true, force: true });
 });
 
+test("multi-function file: Ruby -- concatenating 2 functions runs correctly", { skip: !TOOLS.ruby && "ruby not available" }, () => {
+    const emittedHelpers = new Set();
+    const out1 = emitters.ruby.emitFunction(fn1, undefined, { emittedHelpers });
+    const out2 = emitters.ruby.emitFunction(fn2, undefined, { emittedHelpers });
+    assert.strictEqual((out1.match(/^def _ef_sqrt\(/gm) || []).length, 1);
+    assert.ok(!out1.includes("def _ef_log("), "only used helpers are emitted");
+    assert.strictEqual((out2.match(/^def _ef_log\(/gm) || []).length, 1);
+    const dir = tmpDir("ef-multi-rb-");
+    const fnsPath = path.join(dir, "fns.rb");
+    fs.writeFileSync(fnsPath, out1 + "\n" + out2);
+    const output = execFileSync("ruby", ["-e", `require "${fnsPath}"; puts f1(${F1_ARG}); puts f2(${F2_ARG})`])
+        .toString().trim().split("\n");
+    assertClose(parseFloat(output[0]), F1_EXPECT, "f1");
+    assertClose(parseFloat(output[1]), F2_EXPECT, "f2");
+    fs.rmSync(dir, { recursive: true, force: true });
+});
+
 test("multi-function file: Lua -- concatenating 2 functions runs correctly", { skip: !TOOLS.lua && "lua not available" }, () => {
     const out1 = emitters.lua.emitFunction(fn1);
     const out2 = emitters.lua.emitFunction(fn2);
@@ -336,8 +354,9 @@ test("multi-function file: R -- concatenating 2 functions runs correctly", { ski
 });
 
 test("multi-function file: MATLAB/Octave -- one concatenated file (helpers once) runs correctly", { skip: !TOOLS.matlab && "octave-cli not available" }, () => {
-    const out1 = emitters.matlab.emitFunction(fn1, undefined, { includeHelpers: true });
-    const out2 = emitters.matlab.emitFunction(fn2, undefined, { includeHelpers: false });
+    const emittedHelpers = new Set();
+    const out1 = emitters.matlab.emitFunction(fn1, undefined, { emittedHelpers });
+    const out2 = emitters.matlab.emitFunction(fn2, undefined, { emittedHelpers });
     const dir = tmpDir("ef-multi-octave-");
     // Octave only runs a file's later functions after source() when the
     // file is a script file; a leading "1;" statement makes it one. MATLAB
@@ -354,11 +373,12 @@ test("multi-function file: MATLAB/Octave -- one concatenated file (helpers once)
     fs.rmSync(dir, { recursive: true, force: true });
 });
 
-test("multi-function file: MATLAB/Octave -- includeHelpers defaults to true and false omits every helper", () => {
+test("multi-function file: MATLAB/Octave -- each function carries the helpers it uses; includeHelpers false omits them", () => {
     const out1 = emitters.matlab.emitFunction(fn1);
     const out2 = emitters.matlab.emitFunction(fn2);
-    assert.ok(out1.includes("function ef_r = ef_select") && out2.includes("function ef_r = ef_select"));
-    assert.ok(!emitters.matlab.emitFunction(fn2, undefined, { includeHelpers: false }).includes("ef_select"));
+    assert.ok(out1.includes("function ef_r = ef_sqrt") && !out1.includes("ef_log"));
+    assert.ok(out2.includes("function ef_r = ef_log(") && !out2.includes("ef_sqrt"));
+    assert.ok(!emitters.matlab.emitFunction(fn2, undefined, { includeHelpers: false }).includes("function ef_r ="));
 });
 
 test("multi-function file: MATLAB/Octave -- one function per file, each self-contained (the MATLAB layout)", { skip: !TOOLS.matlab && "octave-cli not available" }, () => {
@@ -464,4 +484,94 @@ test("every toolchain-backed executable target has a multi-function test above",
         if (!probes) continue;
         assert.ok(queried.has(lang), `${lang}: no multi-function test consults TOOLS.${lang}`);
     }
+});
+
+// --- Imports: used-only, written once -----------------------------------
+//
+// The first function of each file below uses no library function, so the
+// import has to appear at the first function that does need it, not at the
+// top of the file. One shared opts.emittedHelpers Set covers helpers and
+// imports alike. Run for real against each toolchain.
+
+const fn0 = { name: "f0", params: ["x"], body: add(v("x"), num(1)) };
+const F0_ARG = 2;
+const F0_EXPECT = 3;
+
+function importedOnce(src, needle, label) {
+    assert.strictEqual(src.split(needle).length - 1, 1, `${label}: ${needle} should appear exactly once`);
+}
+
+test("multi-function file: Python -- shared Set imports math once, at the first function that uses it", { skip: !TOOLS.python && "python3 not available" }, () => {
+    const emittedHelpers = new Set();
+    const src = [fn0, fn1, fn2].map((f) => emitters.python.emitFunction(f, undefined, { emittedHelpers })).join("\n");
+    importedOnce(src, "import math", "python");
+    assert.ok(src.indexOf("import math") > src.indexOf("def f0("));
+    assert.ok(src.indexOf("import math") < src.indexOf("def f1("));
+    const dir = tmpDir("ef-multi-py-imp-");
+    fs.writeFileSync(path.join(dir, "fns.py"), src);
+    const output = execFileSync("python3", ["-c", `import fns; print(fns.f0(${F0_ARG})); print(fns.f1(${F1_ARG})); print(fns.f2(${F2_ARG}))`], { cwd: dir })
+        .toString().trim().split("\n");
+    assertClose(parseFloat(output[0]), F0_EXPECT, "f0");
+    assertClose(parseFloat(output[1]), F1_EXPECT, "f1");
+    assertClose(parseFloat(output[2]), F2_EXPECT, "f2");
+    fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test("multi-function file: Perl -- shared Set imports POSIX and List::Util once each, only when used", { skip: !TOOLS.perl && "perl not available" }, () => {
+    const emittedHelpers = new Set();
+    const fnFloor = { name: "fl", params: ["x"], body: call("floor", v("x")) };
+    const fnMin = { name: "mn", params: ["x"], body: call("min", v("x"), num(10)) };
+    const src = [fn0, fnFloor, fnMin, fnFloor, fnMin].map((f, i) =>
+        emitters.perl.emitFunction({ ...f, name: `${f.name}${i}` }, undefined, { emittedHelpers })).join("\n");
+    importedOnce(src, "use POSIX ();", "perl");
+    importedOnce(src, "use List::Util ();", "perl");
+    const dir = tmpDir("ef-multi-perl-imp-");
+    const fnsPath = path.join(dir, "fns.pl");
+    fs.writeFileSync(fnsPath, src);
+    const output = execFileSync("perl", ["-w", "-e", `require "${fnsPath}"; print f00(${F0_ARG}), "\\n", fl1(2.5), "\\n", mn2(3), "\\n";`])
+        .toString().trim().split("\n");
+    assert.deepStrictEqual(output.map(Number), [3, 2, 3]);
+    fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test("multi-function file: C -- shared Set includes math.h once, at the first function that uses it", { skip: !TOOLS.c && "gcc not available" }, () => {
+    const emittedHelpers = new Set();
+    const src = [fn0, fn1, fn2].map((f) => emitters.c.emitFunction(f, undefined, { emittedHelpers })).join("\n");
+    importedOnce(src, "#include <math.h>", "c");
+    assert.ok(src.indexOf("#include <math.h>") > src.indexOf("double f0("));
+    const dir = tmpDir("ef-multi-c-imp-");
+    fs.writeFileSync(path.join(dir, "fns.c"), src);
+    const mainSrc = `#include <stdio.h>\n#include "fns.c"\nint main() { printf("%.17f\\n%.17f\\n%.17f\\n", f0(${F0_ARG}), f1(${F1_ARG}), f2(${F2_ARG})); return 0; }\n`;
+    fs.writeFileSync(path.join(dir, "main.c"), mainSrc);
+    const bin = path.join(dir, "bin");
+    execFileSync("gcc", ["-Werror=implicit-function-declaration", path.join(dir, "main.c"), "-o", bin, "-lm"]);
+    const lines = execFileSync(bin, []).toString().trim().split("\n");
+    assertClose(parseFloat(lines[0]), F0_EXPECT, "f0");
+    assertClose(parseFloat(lines[1]), F1_EXPECT, "f1");
+    assertClose(parseFloat(lines[2]), F2_EXPECT, "f2");
+    fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test("multi-function file: Zig -- shared Set imports std once, at the first function that uses it", { skip: !TOOLS.zig && "zig not available" }, () => {
+    const emittedHelpers = new Set();
+    const src = [fn0, fn2, fn1].map((f) => emitters.zig.emitFunction(f, undefined, { emittedHelpers })).join("\n");
+    importedOnce(src, `const std = @import("std");`, "zig");
+    assert.ok(src.indexOf("const std") > src.indexOf("pub fn f2("));
+    const dir = tmpDir("ef-multi-zig-imp-");
+    fs.writeFileSync(path.join(dir, "fn.zig"), src);
+    const mainSrc =
+        `const std = @import("std");\n` +
+        `const fnmod = @import("fn.zig");\n\n` +
+        `pub fn main() !void {\n` +
+        `    const stdout = std.io.getStdOut().writer();\n` +
+        `    try stdout.print("{d}\\n{d}\\n{d}\\n", .{ fnmod.f0(${F0_ARG}.0), fnmod.f1(${F1_ARG}.0), fnmod.f2(${F2_ARG}) });\n` +
+        `}\n`;
+    fs.writeFileSync(path.join(dir, "main.zig"), mainSrc);
+    const bin = path.join(dir, "bin");
+    execFileSync("zig", ["build-exe", path.join(dir, "main.zig"), "-O", "ReleaseFast", `-femit-bin=${bin}`], { cwd: dir });
+    const lines = execFileSync(bin, []).toString().trim().split("\n");
+    assertClose(parseFloat(lines[0]), F0_EXPECT, "f0");
+    assertClose(parseFloat(lines[1]), F1_EXPECT, "f1");
+    assertClose(parseFloat(lines[2]), F2_EXPECT, "f2");
+    fs.rmSync(dir, { recursive: true, force: true });
 });

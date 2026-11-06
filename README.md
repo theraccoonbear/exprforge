@@ -14,6 +14,7 @@
 [![Python](https://github.com/theraccoonbear/exprforge/actions/workflows/test-python.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test-python.yml)
 [![Lua](https://github.com/theraccoonbear/exprforge/actions/workflows/test-lua.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test-lua.yml)
 [![Perl](https://github.com/theraccoonbear/exprforge/actions/workflows/test-perl.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test-perl.yml)
+[![Ruby](https://github.com/theraccoonbear/exprforge/actions/workflows/test-ruby.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test-ruby.yml)
 [![PHP](https://github.com/theraccoonbear/exprforge/actions/workflows/test-php.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test-php.yml)
 [![Julia](https://github.com/theraccoonbear/exprforge/actions/workflows/test-julia.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test-julia.yml)
 [![R](https://github.com/theraccoonbear/exprforge/actions/workflows/test-r.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test-r.yml)
@@ -30,14 +31,18 @@
 ## Brief
 
 ExprForge authors a math formula once, as a small AST, and emits
-verified, identical-behavior implementations in <!-- exprforge:list:executable-dialects -->JavaScript, TypeScript, QB64, C, Java, Go, Rust, C#, Python, Lua, Perl, PHP, Julia, R, Fortran, Zig, Scheme (Guile), COBOL (GnuCOBOL), and MATLAB/Octave<!-- /exprforge --> — plus a native in-process
+verified, identical-behavior implementations in <!-- exprforge:list:executable-dialects -->JavaScript, TypeScript, QB64, C, Java, Go, Rust, C#, Python, Lua, Perl, Ruby, PHP, Julia, R, Fortran, Zig, Scheme (Guile), COBOL (GnuCOBOL), and MATLAB/Octave<!-- /exprforge --> — plus a native in-process
 evaluator, a printer for its own readable syntax, and typeset LaTeX
 output for documenting the formula itself. No required dependencies.
 
 **[▶ Try it live](https://theraccoonbear.github.io/exprforge/)** — write
 a formula in the browser and watch it emitted across every target
 language at once, no install required, or switch to the Differentiation
-tab to get a formula's derivative and a numeric spot-check side by side.
+tab to get a formula's derivative and a numeric spot-check side by side,
+or the Duplicates tab to paste several definitions and see which
+computations they share under different variable names (with a live
+minimum-size control, each proposed macro, and each occurrence's argument
+mapping).
 Runs the real, current library (see `playground/`), not a frozen demo
 build.
 
@@ -80,9 +85,9 @@ Two shapes of real use this tends to fall into:
 ## Intents
 
 **What it does**: turns one small, pure-arithmetic AST into
-identical-behavior source text for <!-- exprforge:count:executable -->19<!-- /exprforge --> programming languages (executable
+identical-behavior source text for <!-- exprforge:count:executable -->20<!-- /exprforge --> programming languages (executable
 targets), a native evaluator, typeset LaTeX output, and a printer for
-ExprForge's own syntax (<!-- exprforge:count:outputs -->21<!-- /exprforge --> output targets in total) — all from the same
+ExprForge's own syntax (<!-- exprforge:count:outputs -->22<!-- /exprforge --> output targets in total) — all from the same
 tree, walked once per target. Symbolic differentiation (`differentiate`) works over
 that same AST too, so a derivative is just another tree, emittable and
 evaluable exactly the same way.
@@ -360,7 +365,7 @@ call regardless of target, checked unconditionally at the same tier as
 
 **If you're reading emitted code and expected `round()` to behave like
 your target language's own native rounding function, it doesn't, on <!-- exprforge:count:round-other -->9<!-- /exprforge -->
-of the <!-- exprforge:count:executable -->19<!-- /exprforge --> programming-language targets, by deliberate design.** `round(x)` ties **away from
+of the <!-- exprforge:count:executable -->20<!-- /exprforge --> programming-language targets, by deliberate design.** `round(x)` ties **away from
 zero** everywhere, unconditionally — `round(-0.5)` is `-1`,
 `round(1.5)` is `2`, `round(2.5)` is `3` — identical on every target,
 confirmed directly against a real compiler/interpreter for every one of
@@ -379,9 +384,9 @@ rounding function directly:
 | **Scheme/Guile** (`round`) | ties to even | same pattern as Python |
 | **QB64** (`_ROUND`) | ties to even | same pattern as Python (confirmed against a real compile) |
 | **C#** (`Math.Round(double)`) | ties to even (default) | same pattern as Python |
-| **R** (`round()`) | ties to even (IEC 60559) | same pattern as Python; emitted as `sign(x) * floor(abs(x) + 0.5)` |
+| **R** (`round()`) | ties to even (IEC 60559) | same pattern as Python; emitted with the exact floor-plus-fraction form |
 
-The other <!-- exprforge:count:round-away -->10<!-- /exprforge --> programming-language targets (<!-- exprforge:list:round-away -->C, Go, Rust, Perl, PHP, Julia, Fortran, Zig, COBOL, MATLAB/Octave<!-- /exprforge -->)
+The other <!-- exprforge:count:round-away -->11<!-- /exprforge --> programming-language targets (<!-- exprforge:list:round-away -->C, Go, Rust, Perl, Ruby, PHP, Julia, Fortran, Zig, COBOL, MATLAB/Octave<!-- /exprforge -->)
 already tie away from zero natively, so ExprForge's `round()` matches
 what you'd expect from those languages directly — no surprise there.
 
@@ -390,14 +395,16 @@ this library's entire value proposition is "author once, get identical
 behavior everywhere" — `round()` was the one primitive quietly not
 living up to that (three incompatible native conventions, silently
 inherited with zero normalization). Away-from-zero was chosen because
-it was already the majority (<!-- exprforge:count:round-away -->10<!-- /exprforge --> of the <!-- exprforge:count:executable -->19<!-- /exprforge --> programming-language
+it was already the majority (<!-- exprforge:count:round-away -->11<!-- /exprforge --> of the <!-- exprforge:count:executable -->20<!-- /exprforge --> programming-language
 targets), and because this project's own Julia emitter had already,
 independently, made a deliberate choice to match it
 (`RoundNearestTiesAway`, not Julia's own ties-to-even default) before
 this change existed at all — real precedent, not an arbitrary pick.
-Built from `floor`/`sign`/`abs` (which already agreed everywhere) via
-`sign(x) * floor(abs(x) + 0.5)`, the same formula `emitters/cobol.js`'s
-own hand-written `round` template already used. See
+Built from `floor`/`sign`/`abs` (which already agreed everywhere):
+`floor(|x|)` plus one when `|x| - floor(|x|) >= 0.5`, with the sign of `x`
+reapplied. That form is exact for every finite double, unlike
+`floor(|x| + 0.5)`, which is off by one at `0.49999999999999994` and
+above 2^52 (see ADR 0001's addendum). See
 `samples/round-tie-demo.js`'s own header comment for the full,
 directly-verified breakdown of what each changed target used
 to do, and `test/conformance.test.js`'s `roundTieBoundary` entry for the
@@ -425,7 +432,15 @@ number":
   harness), hang forever on an interactive "Continue?" prompt. A crash,
   not a wrong answer.
 - **Python**: `math.sqrt`/`log`/`log2`/`log10`/`asin`/`acos`/`pow` all
-  **raise `ValueError`**.
+  **raise `ValueError`**. Fixed with one-line `_ef_sqrt`/`_ef_log`/...
+  helper functions, emitted only when the generated code uses them (so
+  each operand is evaluated once, not repeated in an inline conditional).
+  `floor`/`ceil`/`trunc`/`round` (which raise on `Infinity`/`NaN`),
+  `min`/`max`, `sign` and `wrapIndex` use helpers too. The `_ef_` and
+  `_exprforge_` identifier prefixes are reserved.
+- **Ruby**: `Math.sqrt`/`log`/`log2`/`log10`/`asin`/`acos` **raise
+  `Math::DomainError`**, and `Float ** Float` with a negative base and a
+  non-integer exponent (or a NaN exponent) returns a **`Complex`**.
 - **Perl**: the builtin `sqrt`/`log` (and `log2`, built from `log`)
   **raise a fatal error** ("Can't take sqrt of -1") — `asin`/`acos`
   (via `POSIX`) and `pow` (via `**`) were already fine.
@@ -504,7 +519,7 @@ argument order, not any documented rule):
 - **C** (`fmin`/`fmax`), **Rust** (`.min()`/`.max()`), **Zig**
   (`@min`/`@max`): NaN-ignoring by spec — the real operand comes back
   regardless of position.
-- **Python**, **Lua**, **QB64** (`_MIN`/`_MAX`): position-dependent —
+- **Python**, **Ruby** (`[a, b].min` raises on NaN), **Lua**, **QB64** (`_MIN`/`_MAX`): position-dependent —
   whichever argument comes **first** silently wins whenever either is
   NaN (comparison-based implementations, and a comparison against NaN
   is always false).
@@ -537,6 +552,60 @@ are tracked as a running decision log in
 [`docs/adr/`](docs/adr/README.md) — worth checking there directly if
 you're debugging something that looks like a cross-target behavior
 mismatch.
+
+## Numeric guarantees
+
+The reference is the native evaluator (`evaluate`, JS semantics). Every
+emitted target is compared against it with real compilers/interpreters,
+using a ULP-based comparison (no absolute floor) and 17-significant-digit
+output. The decision log is in [`docs/adr/`](docs/adr/README.md); the
+boundary audit is
+[`0005`](docs/adr/0005-boundary-conditions.md).
+
+**Unified on every target (with the one set of exceptions below):**
+
+- `round()` ties away from zero; out-of-domain `sqrt`/`log*`/`asin`/
+  `acos`/`pow` give NaN or Infinity; `min`/`max` propagate NaN (0001-0003).
+- `floor`/`ceil`/`trunc`/`round` of NaN, ±Infinity and huge values
+  (including above 2^63 and 2^53) return the argument or the exact
+  integer, never raise or saturate.
+- `sign(NaN)` is NaN and `sign(-0)` is `-0`, as `Math.sign` (GnuCOBOL has
+  neither).
+- `floor`/`ceil`/`trunc`/`round` keep the sign of a zero result
+  (`ceil(-0.4)` and `round(-0.4)` are `-0`; GnuCOBOL excepted).
+- `pow(1, y)` is 1 for every `y` including NaN, and `pow(-1, ±Infinity)`
+  is 1 (IEEE 754, C99 Annex F).
+- `hypot` does not overflow or underflow early, and handles ±Infinity
+  and NaN (`hypot(Infinity, NaN)` is Infinity).
+- `exp` overflows to Infinity; `pow` handles ±0, infinite operands and
+  overflow without raising.
+- `atan2(±0, ±0)` and infinite operands agree.
+- `wrapIndex(i, m)` is `((i % m) + m) % m` with a truncating `%`:
+  `m = 0` is NaN, negative `m` and fractional operands follow the same
+  formula.
+- Overflow to ±Infinity and subnormal results follow IEEE 754.
+
+**Documented exceptions** (each is tested and listed with its reason in
+ADR 0005):
+
+| Target | Exception |
+|---|---|
+| **GnuCOBOL** | No NaN/Infinity representation: domain errors and `min`/`max` NaN return 0 (0002, 0003), `pow(0, negative)` and `wrapIndex(i, 0)` return 0, results of `-0` (`sign(-0)`, `ceil(-0.4)`, ...) are `+0`, `pow` with an enormous integer exponent aborts at runtime, numeric literals over 38 digits are rejected at generation time, and arguments given as NaN, Infinity, `-0` or exponent notation cannot be passed through `NUMVAL`. `cos` near zero can differ by about 1e-16 absolute. |
+| **Fortran** | An out-of-domain expression made only of literal constants fails to compile (0002). |
+| **QB64** | About 15-16 significant digits through `PRINT`/`VAL`; values near the double limits do not round-trip. |
+| **Perl** | `pow(-0, odd/negative integer)` returns `+0`/`+Infinity`. |
+| **Zig** | `pow(-2, 1e300)` is NaN, not Infinity. |
+| **Go** | `exp(709.5)` is `+Infinity` on the tested amd64 toolchain. |
+
+**Not guaranteed:** the sign of a zero result from `wrapIndex` landing on
+zero; `wrapIndex` with non-finite
+operands is unspecified; in Lua, arguments must be floats (an integer
+argument makes `%` by zero an error and lets `*` wrap).
+
+**What ExprForge does not do:** it never clamps, validates or
+sanitizes inputs. A NaN, Infinity, `-0` or enormous argument reaches the
+formula as given. Clamping happens only where the formula itself says so:
+`clampIndex`, and `clamp`/`safeDiv` in `exprforge/math`.
 
 ## Symbolic differentiation (`differentiate`)
 
@@ -603,8 +672,10 @@ const f = fn`
 `;
 const r = analyzeRanges(f, { x: [1, 2], d: [-1, 1] });
 // r.range    -> { lo: -Infinity, hi: Infinity, nan: false }
-// r.warnings -> [{ kind: "div-by-zero", at: "body", certain: false,
-//                  denominator: { lo: -1, hi: 1, nan: false } }]
+// r.warnings -> [{ kind: "div-by-zero", severity: "warning", at: "body",
+//                  expr: "x / d", certain: false,
+//                  denominator: { lo: -1, hi: 1, nan: false },
+//                  message: "`x / d` can divide by zero: `d` can be 0 (range −1…1)." }]
 ```
 
 `analyzeRanges(fnDef, ranges)` is an opt-in static analysis: it propagates
@@ -619,27 +690,45 @@ every element. A function with `outputs()` gets one range per field.
   `nan` is true when NaN is possible (out-of-domain `sqrt`/`log*`/
   `asin`/`acos`/`pow`, `0/0`, an opaque extern). Every built-in primitive
   has a rule; macros are expanded first.
-- **`div-by-zero` warning**: the denominator's interval includes zero
-  even after taking enclosing `select()` guards into account.
+- **Findings**: `r.findings` lists everything worth reporting. Each has
+  `kind`, `severity` (`"warning"` or `"info"`), a plain-language `message`
+  that quotes the source expression, `expr` (that source text) and `at`
+  (the internal AST path, for debugging). `r.warnings` is the subset with
+  severity `"warning"`.
+- **`div-by-zero`** (warning): the denominator's interval includes zero
+  even after narrowing by enclosing `select()` conditions.
   `certain: true` means it is exactly `[0, 0]`.
-- **`div-guarded` warning**: the denominator includes zero on its own, and
-  an enclosing `select()` condition is what excludes it. That is safe
+- **`div-guarded`** (warning): the denominator includes zero on its own,
+  and an enclosing `select()` condition is what excludes it. That is safe
   where `select` short-circuits, but `select` is modeled as evaluating both
   branches and QB64, Fortran and COBOL do exactly that, so the division
   still runs there with a zero denominator (the case
   `test/conformance.test.js`'s `normalizeX` is excluded from QB64 for).
-  `guards` lists the `select()` paths the exclusion depends on. The
-  clamped-denominator pattern `safeDiv` and `normalize3` use produces
-  neither warning.
+  `guards` / `guardConditions` name the `select()` conditions the exclusion
+  depends on. The clamped-denominator pattern `safeDiv` and `normalize3`
+  use produces neither warning.
+- **`div-unreachable`** (info): a division that would see a zero
+  denominator but sits in a branch the ranges never take. It is not a
+  hazard, so it is not in `r.warnings` (earlier versions listed it there
+  with `inDeadBranch: true`; that flag is still set on the note).
+- **`condition-decided`** (info): a `select()` condition is always or never
+  true for the declared ranges, so the other branch is dead.
 - **`selects`**: one entry per `select()` with `outcome`
-  (`"always-then"`, `"always-else"` or `"either"`, i.e. whether the ranges
-  alone decide the condition, which makes the other branch provably dead
-  and the `select()` removable) and `loadBearing` (removing the guard
-  would expose a zero denominator).
-- **Guard refinement** understands all six comparison operators, with
-  the constant on either side, on any expression (including let-bound
-  names), and treats `abs(E) > c` / `abs(E) >= c` as excluding `(-c, c)`
-  from `E`.
+  (`"always-then"`, `"always-else"` or `"either"`), `loadBearing` (removing
+  the guard would expose a zero denominator), `condition` (source text),
+  `severity` and `message`.
+- **Branch narrowing**: the then-branch is analysed with each side of the
+  condition's range narrowed by the comparison, the else-branch by its
+  negation (`>`/`<=`, `<`/`>=`, `==`/`!=`), for all six operators, with the
+  constant on either side, on any expression (including let-bound names).
+  So `x > 10 ? 1 / x : 0` with `x` in `[-20, 20]` divides by `x` in
+  `[10, 20]` and has no `div-by-zero`. If the narrowed ranges make the
+  condition impossible, the branch is unreachable. Intervals are closed, so
+  a strict bound is approximated by its closed hull (`x > c` as `x >= c`),
+  which can only widen a range, never drop a reachable value; whether zero
+  is excluded is tracked separately (`x > 0` and `x >= 1` exclude it,
+  `x >= 0` does not). `!=` narrows nothing except `x != 0`, which marks
+  `x` nonzero. `abs(E) > c` / `abs(E) >= c` excludes `(-c, c)` from `E`.
 
 Bounds are conservative: a range may be wider than the true range, never
 narrower (interval arithmetic cannot see correlation between two different
@@ -683,7 +772,7 @@ and `x*y` do not.
   reads a file, or runs implicitly during loading or emitting. Acting on a
   candidate is a manual step.
 - **Each candidate** has `name` (a hash-derived placeholder such as
-  `shared_0f330956`; a tool cannot know what the shape means, so rename
+  `shared_c3eb44ec`; a tool cannot know what the shape means, so rename
   it), `size` (node count), `macro` (a proposed `{ name, params, body }`
   with params `p0`, `p1`, ..., usable with `loadMacro()` or printable with
   `emit(macro, "expr")`), and `occurrences` (`{ definition, node, args }`,
@@ -824,6 +913,10 @@ const rodrigues = fn`
   can't be expressed by composing existing macros/primitives; prefer a
   macro whenever it can.
 
+  For C, any emitted function (or suite) that uses an extern always gets
+  `#include <math.h>`, because a free-form `c:` template can call any libm
+  function (`j0`, `gamma`, `exp10`, ...) that no name list could cover.
+
 Names are a single shared namespace with the 22 built-in primitives and
 with each other — `loadMacro`/`loadExtern` throw on a collision rather
 than silently shadowing anything.
@@ -935,7 +1028,7 @@ How each cross-target behavior is handled:
 | Domain errors | `sqrt`/`log`/`log2`/`log10`/`asin`/`acos`/`pow` call `ef_*` helper functions with a real `if` guard, returning `NaN` (or `-Inf` for `log*(0)`) instead of a complex number |
 | `min`/`max` | `ef_min`/`ef_max` return `NaN` if either operand is NaN; the native functions ignore NaN |
 | Division | native IEEE (`1/0` is `Inf`, `0/0` is `NaN`) |
-| `wrapIndex` | native `mod` (floor-mod). Exception: `mod(i, 0)` is `i`, where the interpreter yields NaN |
+| `wrapIndex` | `rem(rem(i, m) + m, m)` (truncated remainder, identical to the interpreter; `m = 0` is NaN) |
 | `clampIndex` | `ef_max(lo, ef_min(hi, i))`, so NaN propagates like `evaluate()` |
 | Comparisons | all six; `!=` is `~=` (MATLAB has no `!=`) |
 | `select` | `ef_select(cond, then, else)`, a helper with a real `if` |
@@ -1059,10 +1152,10 @@ expression model without introducing control flow:
   doesn't short-circuit its arguments — confirmed against a real
   compiler), and COBOL (its picker helper spills both branches into
   temps before the call), and MATLAB/Octave (its `ef_select` helper receives
-  both already-evaluated values as arguments). The other <!-- exprforge:count:select-lazy -->15<!-- /exprforge --> programming-language targets — including
+  both already-evaluated values as arguments). The other <!-- exprforge:count:select-lazy -->16<!-- /exprforge --> programming-language targets — including
   `evaluate()` itself — happen to short-circuit via their native
-  ternary/`if`-`else`/`and`-`or`, but that's an implementation detail
-  those <!-- exprforge:count:select-lazy -->15<!-- /exprforge --> share and the other <!-- exprforge:count:select-eager -->4<!-- /exprforge --> don't, not part of this AST's own
+  ternary/`if`-`else`/`and`-`or` (Ruby's ternary, R's lazy `if`), but that's an implementation detail
+  those <!-- exprforge:count:select-lazy -->16<!-- /exprforge --> share and the other <!-- exprforge:count:select-eager -->4<!-- /exprforge --> don't, not part of this AST's own
   contract — don't rely on it. Don't use `select` to guard division by
   zero or anything else undefined; clamp the operand itself with its
   own `select` first (see `safeDiv` in `samples/spline-frame.js`), or
@@ -1133,7 +1226,7 @@ Nothing stops a *caller* of emitted code from passing a plain number
 where an array-typed parameter (`paramTypes`) declared an array —
 `evaluate()` already guards this itself, and every statically-typed
 target's own compiler already rejects the mismatch, but plain emitted
-JS/TypeScript/Python/PHP/Lua/Perl/Scheme/Julia source (and, since it was added, R) shipped with no
+JS/TypeScript/Python/PHP/Lua/Perl/Ruby/Scheme/Julia source (and, since it was added, R) shipped with no
 check at all. Opt in with a 4th argument to `emit()`/`emitMany()`:
 
 ```js
@@ -1204,8 +1297,9 @@ consumer report, then the same bug class found in 5 more targets by
 auditing for it): the target's compiler rejects the file outright.
 
 ```js
-const out1 = emit(fn1, "qb64").source;                                       // helpers included (default)
-const out2 = emit(fn2, "qb64", undefined, { includeHelpers: false }).source; // helpers omitted
+const emittedHelpers = new Set();                                            // shared: each helper defined once
+const out1 = emit(fn1, "qb64", undefined, { emittedHelpers }).source;
+const out2 = emit(fn2, "qb64", undefined, { emittedHelpers }).source;
 fs.writeFileSync("spline.bi", [out1, out2].join("\n"));
 ```
 
@@ -1629,6 +1723,7 @@ multi-value idiom it has, since none of them agree:
 | MATLAB/Octave | native multiple return values, `function [rx, ry] = f(...)`, called as `[rx, ry] = f(...)` |
 | QB64, Fortran | a `SUB`/`subroutine` with the outputs as trailing by-reference (`intent(out)`) parameters |
 | Perl | a hash ref (`{ rx => ..., ry => ... }`) |
+| Ruby | a Hash with Symbol keys (`{ rx: ..., ry: ... }`) |
 | PHP | an associative array (`['rx' => ..., 'ry' => ...]`) |
 | COBOL | a callable `PROGRAM-ID`, every output as a trailing `BY REFERENCE` parameter, invoked via `CALL "name" USING ...` — COBOL's *scalar* case uses this same shape too, not a `FUNCTION`-style return (see Testing below) |
 
@@ -1718,6 +1813,7 @@ change that also updates this table.
 | Python | 3.3 (`math.log2`) | 3.13 | Python 3 only. |
 | Lua | 5.3 (two-argument `math.atan`, no `math.pow`/`math.atan2`) | 5.3 and 5.4 | Not valid on 5.1/LuaJIT without compatibility. |
 | Perl | Perl 5 with core `POSIX` | 5.38 (Ubuntu 24.04) |  |
+| Ruby | 2.4 (`round(half: :up)`) | 3.3 (`ruby/setup-ruby`) |  |
 | PHP | PHP 7 (believed; no version-specific features found) | 8.3 (Ubuntu 24.04 `php-cli`) |  |
 | Julia | 1.0 (`clamp`, `RoundNearestTiesAway`) | 1.11.5 (exact) |  |
 | R | base R (no packages) | 4.5.2 (exact, `r-lib/actions/setup-r`) |  |
@@ -1742,6 +1838,53 @@ with `EXPRFORGE_DOTNET_TFM` (e.g. `net10.0`) as an override, and builds
 with `ImplicitUsings` disabled. `clampIndex` is emitted as
 `Max(lo, Min(hi, i))` rather than `Math.Clamp`, matching `evaluate()` and
 the other targets (`Math.Clamp` throws when `lo > hi`).
+
+## Merging PRs
+
+`main` requires a pull request, an up-to-date branch, and the checks
+`test (22)`, `test (24)`, `test (26)` and `coverage`. To avoid updating and
+re-testing each queued PR by hand, enable auto-merge on a ready PR:
+
+```
+gh pr merge <n> --auto --squash
+```
+
+The `Auto-update queue` workflow (`.github/workflows/auto-update-queue.yml`,
+logic in `scripts/auto-update-queue.js`) runs on every push to `main`, when
+auto-merge is enabled on a PR, and on demand:
+
+- It considers open, non-draft, same-repository PRs with auto-merge enabled,
+  ordered by when auto-merge was enabled (ties by PR number).
+- If a queued PR is already up to date and awaiting checks or merge, it does
+  nothing. Otherwise it updates only the oldest PR that is behind `main`, so
+  CI does not rerun on every queued PR after each merge. When that PR merges,
+  the resulting push to `main` updates the next one.
+- A queued PR whose checks have failed does not hold up the queue.
+- On a merge conflict it comments once on the PR, adds the
+  `needs-manual-update` label, skips that PR and tries the next one. Resolve
+  the conflict by merging `main` into the branch; the label is removed after
+  a later automatic update succeeds, or can be removed by hand.
+- `workflow_dispatch` with `dry_run` enabled logs the PR it would update
+  without changing anything.
+
+### One-time maintainer setup
+
+Branch updates pushed with the default `GITHUB_TOKEN` do not create new
+workflow runs (only `workflow_dispatch` and `repository_dispatch` do; see
+[GITHUB_TOKEN](https://docs.github.com/en/actions/concepts/security/github_token)),
+so required checks would never start on the updated branch. The update call
+therefore uses a separate token. Without it, the workflow logs a message and
+does nothing.
+
+1. Repository Settings, General, Pull Requests: enable "Allow auto-merge".
+2. Create a fine-grained personal access token (or a GitHub App with the
+   same permissions) limited to this repository, with repository permissions
+   Contents: read and write, Pull requests: read and write, Workflows: read
+   and write (needed when the merged-in `main` changes workflow files).
+3. Repository Settings, Secrets and variables, Actions: add it as the
+   repository secret `AUTO_UPDATE_TOKEN`.
+4. Optionally run the workflow once from the Actions tab with `dry_run`
+   enabled to check the output.
 
 ## Testing
 
@@ -1787,7 +1930,7 @@ Runs `node --test`. For each sample, that's three kinds of check:
 
 The compiled/interpreted-language checks need their toolchain on `PATH`
 and skip (not fail) when it's missing, so `npm test` degrades gracefully
-on any one machine. Every toolchain command (<!-- exprforge:list:toolchain-commands -->`tsc`/`qb64pe`/`gcc`/`javac`/`java`/`go`/`rustc`/`dotnet`/`python3`/`lua`/`perl`/`php`/`julia`/`Rscript`/`gfortran`/`zig`/`guile3.0`/`cobc`/`octave-cli`<!-- /exprforge -->) is
+on any one machine. Every toolchain command (<!-- exprforge:list:toolchain-commands -->`tsc`/`qb64pe`/`gcc`/`javac`/`java`/`go`/`rustc`/`dotnet`/`python3`/`lua`/`perl`/`ruby`/`php`/`julia`/`Rscript`/`gfortran`/`zig`/`guile3.0`/`cobc`/`octave-cli`<!-- /exprforge -->) is
 looked up on `PATH`, never a project
 dependency — exprforge only ever generates source text for these, it
 doesn't execute or type-check any of it itself. `package.json` has zero
@@ -1807,6 +1950,35 @@ independent JS/reference checks, which every workflow repeats — cheap,
 and a redundant sanity check each time. Unset locally, so a plain
 `npm test` still runs everything your own machine's installed toolchains
 allow.
+
+**CI triggers and concurrency**:
+
+- Every test workflow cancels its own superseded runs: the concurrency
+  group is the workflow plus the PR number (or ref), with
+  `cancel-in-progress` off for `main`, so a push to a PR cancels that
+  PR's older run and runs on `main` always finish. Publish workflows
+  (`publish.yml`, `publish-vscode-extension.yml`) are not cancelled.
+- The per-language `test-<lang>.yml` workflows skip PRs that only change
+  `*.md`, `docs/`, `playground/`, `vscode-extension/` or `.github/`, except
+  that a workflow's own file always triggers it. `test-vscode-syntax.yml`
+  runs only for `vscode-extension/` (and its own file). Pushes to `main`
+  always run everything.
+- `test-node.yml` (`test (22)`, `test (24)`, `test (26)`) and
+  `test-coverage.yml` (`coverage`) hold the checks the `main` ruleset
+  requires, so they are never path-filtered: a required check from a
+  workflow skipped by `paths:` stays "Expected" and blocks merging. If one
+  of them ever needs to be filterable, the safe pattern is a job that
+  always runs and exits early, never a workflow-level `paths:`.
+- The playground build + e2e (`deploy-pages.yml`) and the PR preview
+  (`deploy-pr-preview.yml`) run on PRs only for `playground/`, the library
+  sources the playground bundles (root `*.js`, `emitters/`, `math/`,
+  `samples/`, `package.json`, `package-lock.json`), the publish script and
+  their own file. Each PR has its own preview concurrency group
+  (`pr-preview-<N>`), so previews of different PRs build in parallel.
+- Everything that writes to `gh-pages` (production deploy, previews,
+  preview cleanup) goes through `.github/scripts/publish-gh-pages.sh`,
+  which re-clones the branch and retries the push when another workflow
+  pushed first, instead of serializing behind a shared lock.
 
 **Coverage**: `npm run test:coverage` runs the same suite through Node's
 own built-in instrumentation (`--experimental-test-coverage` — no
@@ -1853,8 +2025,9 @@ compiling/running against a real toolchain rather than assumed to work:
   suffixed `d` unconditionally to rule that out, not just the cases that
   would otherwise break.
 - **Python**: `math.floor`/`math.ceil`/`math.trunc`/`round` all return
-  `int`, not `float` — wrapped with `float(...)` to stay float64
-  throughout, matching every other target.
+  `int`, not `float` — the `_ef_floor`/`_ef_ceil`/`_ef_trunc` helpers
+  wrap with `float(...)` to stay float64 throughout, matching every
+  other target.
 - **Lua**: 5.3+ removed `math.pow` (use the `^` operator) and
   `math.atan2` (use two-argument `math.atan(y, x)`); there's no
   `math.round` or `math.trunc` or `math.sign` at any version (manual
@@ -1867,6 +2040,29 @@ compiling/running against a real toolchain rather than assumed to work:
   (POSIX supplies `trunc`/`hypot`, `log2` is derived); PHP has no
   `trunc()` at all (`floor`/`ceil` picked by sign instead, not an `(int)`
   cast, which would misbehave outside PHP's platform integer range).
+- **Ruby**: every numeric literal is emitted as a Float and every scalar
+  parameter is coerced with `Float()` on entry, because `Integer / 0`
+  raises `ZeroDivisionError` and `Integer / Integer` truncates, while
+  `Float / 0.0` is IEEE 754. Array elements read through indexing are
+  wrapped in `Float()` too (which also raises on an out-of-range index
+  instead of reading `nil` as `0.0`). `Float % 0.0` raises in Ruby, so
+  `wrapIndex` with a zero modulus returns NaN explicitly. `floor`/`ceil`/
+  `trunc`/`round` return Integer and raise on NaN/Infinity natively, so
+  non-finite values are passed through. All of these guards (plus `sqrt`,
+  `asin`, `acos`, `log*`, `pow`, `min`, `max`, `sign` and `clampIndex`) live
+  in 16 `_ef_*` helper methods, a preamble emitted once per file in plain
+  `def ... end` form; pass `{ includeHelpers: false }` on every call after
+  the first when concatenating files. `pow` returns NaN for any non-Float
+  result (a Complex), including a NaN exponent with a negative base.
+  `pow` is IEEE otherwise (`1 ** NaN` and `(-1) ** +-Infinity` are 1).
+  `floor`/`ceil`/`trunc`/`round` keep the sign of a zero result (`-0.0`,
+  as in JS), and `sign` returns its own argument for `-0.0` and NaN.
+  `asin`/`acos` use explicit range comparisons because `NaN.between?`
+  raises. The `_ef_` name prefix is reserved: a user name starting with
+  it gets a leading underscore. `samples/non-finite-rounding-demo.js`
+  covers floor/ceil/trunc/round of NaN and infinities across targets. Names starting with an uppercase
+  letter (a Ruby constant) or equal to a reserved word get a leading
+  underscore. Needs Ruby 2.4+ (`round(half: :up)`); CI uses 3.3.
 - **Julia**: `round()` defaults to ties-to-even (banker's rounding), not
   ties-away-from-zero like every other target here —
   `round(x, RoundNearestTiesAway)` used explicitly to actually match,

@@ -15,6 +15,8 @@
 //
 // Toolchains are never project dependencies: they are looked up on PATH
 // and the tests that need one skip when it is absent.
+const fs = require("node:fs");
+const path = require("node:path");
 const { execFileSync } = require("node:child_process");
 const { targets } = require("../emitters/meta.js");
 
@@ -27,9 +29,25 @@ function hasTool(cmd, args) {
     }
 }
 
+// Locates a command on PATH without running it.
+function onPath(cmd) {
+    for (const dir of (process.env.PATH || "").split(path.delimiter)) {
+        if (!dir) continue;
+        try {
+            const candidate = path.join(dir, cmd);
+            fs.accessSync(candidate, fs.constants.X_OK);
+            if (fs.statSync(candidate).isFile()) return true;
+        } catch {
+            // not here
+        }
+    }
+    return false;
+}
+
+// args === null: only locate the command (see meta.toolchain.probes).
 function resolveTool(candidates, args) {
     for (const cmd of candidates) {
-        if (hasTool(cmd, args)) return cmd;
+        if (args === null ? onPath(cmd) : hasTool(cmd, args)) return cmd;
     }
     return null;
 }

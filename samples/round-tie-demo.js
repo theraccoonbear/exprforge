@@ -11,8 +11,9 @@
 // for each, not assumed):
 //
 //   - half-up (ties toward +Infinity): JS, TypeScript, Java, Lua
-//   - half away from zero: C, Rust, Go, Perl, Zig, Fortran, COBOL, Julia
-//   - half to even ("banker's rounding"): Python, Scheme, QB64, C#
+//   - half away from zero: C, Rust, Go, Perl, Ruby, Zig, Fortran, COBOL,
+//     Julia, PHP, MATLAB/Octave
+//   - half to even ("banker's rounding"): Python, Scheme, QB64, C#, R
 //
 // Initially documented and demonstrated as a deliberate, permanent
 // divergence (matching this project's precedent for QB64's select()

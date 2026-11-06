@@ -101,7 +101,12 @@ const emitter = new SchemeEmitter({
         // way, `truncate` (a standard R7RS procedure) checks "is this
         // already a whole number".
         pow: ([base, exp]) =>
-            `(if (and (< ${base} 0.0) (not (= ${exp} (truncate ${exp})))) (/ 0.0 0.0) (expt ${base} ${exp}))`,
+            `(let ((ef-b ${base}) (ef-e ${exp})) ` +
+            `(cond ((and (= ef-b 0.0) (< ef-e 0.0)) ` +
+            `(if (and (eqv? ef-b -0.0) (= (abs (truncate-remainder ef-e 2.0)) 1.0)) -inf.0 +inf.0)) ` +
+            `((and (= ef-b -1.0) (= (abs ef-e) +inf.0)) 1.0) ` +
+            `((and (< ef-b 0.0) (not (= ef-e (truncate ef-e)))) +nan.0) ` +
+            `(else (expt ef-b ef-e))))`,
         // R7RS's 2-argument atan IS atan2 -- no separate name for it.
         atan2: fn2("atan"),
         // No log2/log10 procedure in R7RS or Guile's core -- derive both
@@ -120,19 +125,29 @@ const emitter = new SchemeEmitter({
         // see js.js's own comment and the root README's "round() at
         // exact .5 boundaries" section. Sign built inline, same ternary
         // shape as this file's own sign: entry below.
-        round: ([x]) => `(* (if (> ${x} 0.0) 1.0 (if (< ${x} 0.0) -1.0 0.0)) (floor (+ (abs ${x}) 0.5)))`,
+        round: ([x]) =>
+            `(let* ((ef-a ${x}) (ef-m (abs ef-a)) (ef-f (floor ef-m))) ` +
+            `(* (if (> ef-a 0.0) 1.0 (if (< ef-a 0.0) -1.0 ef-a)) ` +
+            `(+ ef-f (if (>= (- ef-m ef-f) 0.5) 1.0 0.0))))`,
         trunc: fn1("truncate"),
         min: fn2("min"), max: fn2("max"),
         // No hypot procedure -- derive it directly.
-        hypot: ([a, b]) => `(sqrt (+ (* ${a} ${a}) (* ${b} ${b})))`,
+        hypot: ([a, b]) =>
+            `(let ((a (abs ${a})) (b (abs ${b}))) (let ((s (+ (* a a) (* b b)))) ` +
+            `(if (and (< s 1e300) (> s 1e-290)) (sqrt s) ` +
+            `(cond ((or (= a +inf.0) (= b +inf.0)) +inf.0) ` +
+            `((or (not (= a a)) (not (= b b))) +nan.0) ` +
+            `((= (max a b) 0.0) 0.0) ` +
+            `(else (let ((r (/ (min a b) (max a b)))) (* (max a b) (sqrt (+ 1.0 (* r r))))))))))`,
         // No sign procedure either -- build it directly. Zero-aware by
         // construction (see Go's/Rust's sign() history in this project for
         // what happens when it isn't).
-        sign: ([x]) => `(if (> ${x} 0.0) 1.0 (if (< ${x} 0.0) -1.0 0.0))`,
+        sign: ([x]) => `(if (> ${x} 0.0) 1.0 (if (< ${x} 0.0) -1.0 ${x}))`,
         // modulo is traditional Scheme's floor-mod procedure (result
         // takes the sign of the divisor), distinct from remainder
         // (dividend's sign) -- the right one here, no correction needed.
-        wrapIndex: fn2("modulo"),
+        wrapIndex: ([i, m]) =>
+            `(let ((ef-m ${m})) (if (= ef-m 0.0) +nan.0 (truncate-remainder (+ (truncate-remainder ${i} ef-m) ef-m) ef-m)))`,
         clampIndex: ([i, lo, hi]) => `(max ${lo} (min ${hi} ${i}))`,
     },
     // vector-ref requires an exact non-negative integer index -- every

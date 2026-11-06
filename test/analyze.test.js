@@ -254,11 +254,14 @@ for (const [op, range, bound, outcome] of DECIDED) {
     });
 }
 
-test("dead-branch divisions are tagged", () => {
+test("dead-branch divisions are informational, not warnings", () => {
     const f = def(["x", "d"], select(cmp(v("x"), ">", num(10)), div(num(1), v("d")), num(0)));
     const r = analyzeRanges(f, { x: [0, 1], d: [-1, 1] });
     assert.equal(r.selects[0].outcome, "always-else");
-    assert.equal(r.warnings[0].inDeadBranch, true);
+    assert.deepEqual(r.warnings, []);
+    const note = r.findings.find((x) => x.kind === "div-unreachable");
+    assert.equal(note.severity, "info");
+    assert.equal(note.inDeadBranch, true);
     assert.deepEqual(r.range, { lo: 0, hi: 0, nan: false });
 });
 
@@ -424,4 +427,125 @@ test("spline-frame's hand-written EPS guards all clamp their own denominators: n
         selectCount += r.selects.length;
     }
     assert.ok(selectCount > 0);
+});
+
+// ---- branch narrowing, severity and plain-language messages ---------------
+
+const X_GT_10_RECIP = (x = v("x")) => select(cmp(x, ">", num(10)), div(num(1), v("x")), num(0));
+const hazards = (r) => r.findings.filter((x) => x.kind === "div-by-zero");
+
+test("narrowing: x in [-20, 20], x > 10 ? 1/x : 0 has no div-by-zero", () => {
+    const r = analyzeRanges(def(["x"], X_GT_10_RECIP()), { x: [-20, 20] });
+    assert.deepEqual(hazards(r), []);
+    assert.ok(r.range.lo >= 0 && r.range.hi <= 0.1 + 1e-12);
+});
+
+test("narrowing: x in [-1, 1] gives only informational notes and the range [0, 0]", () => {
+    const r = analyzeRanges(def(["x"], X_GT_10_RECIP()), { x: [-1, 1] });
+    assert.deepEqual(r.range, { lo: 0, hi: 0, nan: false });
+    assert.deepEqual(r.warnings, []);
+    assert.ok(r.findings.length > 0);
+    assert.ok(r.findings.every((x) => x.severity === "info"));
+});
+
+// Each case: 1/x in the then-branch is safe iff narrowing excluded zero.
+const NARROW = [
+    // [op, constant, safe in then-branch, safe in else-branch]
+    [">", 0, true, false],
+    [">=", 1, true, false],
+    ["<", 0, true, false],
+    ["<=", -1, true, false],
+    ["==", 3, true, false],
+    ["!=", 0, true, false],
+];
+const SWAP = { ">": "<", "<": ">", ">=": "<=", "<=": ">=", "==": "==", "!=": "!=" };
+for (const [op, c, thenSafe, elseSafe] of NARROW) {
+    for (const flipped of [false, true]) {
+        const cond = flipped ? cmp(num(c), SWAP[op], v("x")) : cmp(v("x"), op, num(c));
+        const label = flipped ? `${c} ${SWAP[op]} x` : `x ${op} ${c}`;
+        test(`narrowing: ${label} over [-5, 5]`, () => {
+            const inThen = analyzeRanges(def(["x"], select(cond, div(num(1), v("x")), num(0))), { x: [-5, 5] });
+            const inElse = analyzeRanges(def(["x"], select(cond, num(0), div(num(1), v("x")))), { x: [-5, 5] });
+            assert.equal(hazards(inThen).length === 0, thenSafe, `then ${label}`);
+            assert.equal(hazards(inElse).length === 0, elseSafe, `else ${label}`);
+            assertSound(def(["x"], select(cond, div(num(1), v("x")), num(0))), { x: [-5, 5] });
+        });
+    }
+}
+
+test("narrowing: strict bounds are approximated closed, never losing a value", () => {
+    // x > 2 narrows to [2, 5]; 2 itself is included (superset), so 1/x spans [0.2, 0.5].
+    const r = analyzeRanges(def(["x"], select(cmp(v("x"), ">", num(2)), div(num(1), v("x")), num(0))), { x: [-5, 5] });
+    assert.ok(r.range.lo <= 0 && r.range.hi >= 0.5 - 1e-12);
+    // x > 0 keeps 0 in the closed hull but records nonzero, so 1/x is still safe.
+    const z = analyzeRanges(def(["x"], select(cmp(v("x"), ">", num(0)), div(num(1), v("x")), num(0))), { x: [-5, 5] });
+    assert.deepEqual(hazards(z), []);
+    // x >= 0 does not exclude zero: the division stays a hazard.
+    const g = analyzeRanges(def(["x"], select(cmp(v("x"), ">=", num(0)), div(num(1), v("x")), num(0))), { x: [-5, 5] });
+    assert.equal(hazards(g).length, 1);
+});
+
+test("narrowing: the else side of x != 0 is x == 0, a certain hazard", () => {
+    const f = def(["x"], select(cmp(v("x"), "!=", num(0)), num(0), div(num(1), v("x"))));
+    const r = analyzeRanges(f, { x: [-5, 5] });
+    assert.equal(hazards(r)[0].certain, true);
+});
+
+test("unreachable: contradictory conditions mark the branch unreachable", () => {
+    const f = def(["x"], select(cmp(v("x"), ">", num(0)), num(1), select(cmp(v("x"), ">", num(1)), div(num(1), num(0)), num(2))));
+    const r = analyzeRanges(f, { x: [0, 5] });
+    assert.deepEqual(r.warnings, []);
+    assert.ok(r.findings.some((x) => x.kind === "div-unreachable"));
+});
+
+test("nested selects: the inner condition is decided using the outer narrowing", () => {
+    const inner = select(cmp(v("x"), "<", num(5)), div(num(1), v("x")), num(7));
+    const f = def(["x"], select(cmp(v("x"), ">", num(10)), inner, num(0)));
+    const r = analyzeRanges(f, { x: [-20, 20] });
+    assert.equal(r.selects.length, 2);
+    assert.equal(r.selects[1].outcome, "always-else");
+    assert.deepEqual(hazards(r), []);
+    assert.deepEqual(r.range, { lo: 0, hi: 7, nan: false });
+    assert.equal(r.findings.filter((x) => x.kind === "condition-decided").length, 1);
+});
+
+test("findings: every finding carries a severity and a message; warnings are the non-info ones", () => {
+    const f = def(["x", "d"], add(div(v("x"), v("d")), X_GT_10_RECIP()));
+    const r = analyzeRanges(f, { x: [-1, 1], d: [-1, 1] });
+    for (const x of r.findings) {
+        assert.ok(["warning", "info"].includes(x.severity));
+        assert.equal(typeof x.message, "string");
+        assert.equal(typeof x.at, "string");
+    }
+    assert.deepEqual(r.warnings, r.findings.filter((x) => x.severity === "warning"));
+    assert.ok(r.selects.every((s) => s.severity === "info" && typeof s.message === "string"));
+});
+
+test("messages: div-by-zero", () => {
+    const r = analyzeRanges(def(["x"], div(num(1), v("x"))), { x: [-20, 20] });
+    assert.equal(r.findings[0].message, "`1 / x` can divide by zero: `x` can be 0 (range \u221220\u202620).");
+    const c = analyzeRanges(def(["x"], div(num(1), sub(v("x"), v("x")))), { x: [3, 3] });
+    assert.equal(c.findings[0].message, "`1 / (x - x)` always divides by zero: `x - x` is always 0.");
+});
+
+test("messages: decided condition and unreachable division", () => {
+    const r = analyzeRanges(def(["x"], X_GT_10_RECIP()), { x: [-1, 1] });
+    assert.equal(r.findings[0].message, "Condition `x > 10` is never true for these inputs, so this always returns `0`.");
+    assert.equal(r.selects[0].message, r.findings[0].message);
+    assert.equal(
+        r.findings[1].message,
+        "`1 / x` never runs for these inputs (`x > 10` is never true here), so its zero denominator is not a hazard.",
+    );
+    const t = analyzeRanges(def(["x"], select(cmp(v("x"), ">", num(0)), num(1), num(2))), { x: [1, 2] });
+    assert.equal(t.findings[0].message, "Condition `x > 0` is always true for these inputs, so this always returns `1`.");
+});
+
+test("messages: guarded division names the guard and the eager targets", () => {
+    const r = analyzeRanges(def(["x"], X_GT_10_RECIP()), { x: [-20, 20] });
+    assert.equal(r.findings[0].kind, "div-guarded");
+    assert.deepEqual(r.findings[0].guardConditions, ["x > 10"]);
+    assert.match(r.findings[0].message, /^`1 \/ x` is protected from a zero denominator only by the condition `x > 10`/);
+    const eager = require("../emitters/meta.js").eagerSelectTargets();
+    assert.match(eager, /QB64/);
+    assert.ok(r.findings[0].message.includes(`(${eager})`), r.findings[0].message);
 });

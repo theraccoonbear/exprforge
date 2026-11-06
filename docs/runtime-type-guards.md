@@ -19,7 +19,7 @@ dimension(0:*)` etc. is declared simply fails to compile. `evaluate()`,
 ExprForge's own native interpreter, also already guards this itself (a
 real `Array.isArray()` check, thrown clearly, tested).
 
-But plain **emitted** source for the dynamically-typed targets — <!-- exprforge:list:type-guards -->JavaScript, TypeScript, Python, Lua, Perl, PHP, Julia, R, Scheme, and MATLAB/Octave<!-- /exprforge -->
+But plain **emitted** source for the dynamically-typed targets — <!-- exprforge:list:type-guards -->JavaScript, TypeScript, Python, Lua, Perl, Ruby, PHP, Julia, R, Scheme, and MATLAB/Octave<!-- /exprforge -->
 (TypeScript only at the type-check layer, erased at runtime) — shipped with no guard at all. A caller passing
 a plain number where `arr: number[]` was declared would either hit an
 unrelated, confusing error several layers down (indexing a number), or in
@@ -63,6 +63,7 @@ target's real idiom for "is this actually an array-shaped value":
 | PHP | `is_array($arr)` |
 | Lua | `type(arr) == "table"` |
 | Julia | `arr isa AbstractVector` |
+| Ruby | `arr.is_a?(Array)` |
 | R | `is.numeric(arr)` -- R has no scalar type distinct from a length-1 vector, so this rejects non-numeric values (strings, lists, `NULL`) but not a bare number |
 | Perl | `ref($arr) eq 'ARRAY'` — Perl's own array-param convention is an ARRAYREF (`$arr->[i]`), not a plain `@array` (see `emitters/perl.js`'s own comment), so the check is on the reference, not the value |
 | MATLAB / Octave | `~isnumeric(arr) \|\| ~isvector(arr)` |
@@ -77,7 +78,7 @@ array-typed parameter at all.
 ## Implementation
 
 `emitters/base.js`'s `Emitter` constructor reads an optional
-`config.typeGuard: (paramName, fnName) => string` — present only on the <!-- exprforge:count:type-guards -->10<!-- /exprforge -->
+`config.typeGuard: (paramName, fnName) => string` — present only on the <!-- exprforge:count:type-guards -->11<!-- /exprforge -->
 dynamic-language emitters. `emitFunction(fn, registry, opts)` computes
 `guardLines` (one string per array-typed parameter, empty array
 otherwise) and passes it as a 4th argument to `formatFunctionImpl`/
@@ -142,7 +143,7 @@ documentation. Same target availability as `typeGuard`, using each
 target's own length-of-array idiom, checked AFTER the type guard (so
 it's always safe to call): `.length` (JS/TS), `len()` (Python),
 `count()` (PHP), `#` (Lua), `scalar(@$arr)` (Perl — dereferencing the
-arrayref), `length()` (Julia, R), `numel()` (MATLAB/Octave), `(vector-length ...)` (Scheme).
+arrayref), `.length` (Ruby), `length()` (Julia, R), `numel()` (MATLAB/Octave), `(vector-length ...)` (Scheme).
 
 **This is deliberately not a complete fix** — a caller can still pass a
 mismatched array and a WRONG `m` that happens to agree with its actual
