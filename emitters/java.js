@@ -29,7 +29,9 @@ const emitter = new Emitter({
         asin: fn1("asin"), acos: fn1("acos"), atan: fn1("atan"), log: fn1("log"),
         log10: fn1("log10"), exp: fn1("exp"), floor: fn1("floor"), ceil: fn1("ceil"),
         signum: fn1("signum"),
-        pow: fn2("pow"), atan2: fn2("atan2"), min: fn2("min"), max: fn2("max"), hypot: fn2("hypot"),
+        pow: ([x, y]) =>
+            `((java.util.function.DoubleBinaryOperator) (ef_a, ef_b) -> (ef_a == 1.0 || (ef_a == -1.0 && Math.abs(ef_b) == Double.POSITIVE_INFINITY)) ? 1.0 : Math.pow(ef_a, ef_b)).applyAsDouble(${x}, ${y})`,
+        atan2: fn2("atan2"), min: fn2("min"), max: fn2("max"), hypot: fn2("hypot"),
         // Math has no log2; Java also lacks round-to-double and trunc directly.
         log2: ([x]) => `(Math.log(${x}) / Math.log(2.0))`,
         // Math.round ties toward +Infinity, NOT this project's standardized
@@ -37,8 +39,10 @@ const emitter = new Emitter({
         // and the root README's "round() at exact .5 boundaries" section.
         // Math.signum already returns double for a double argument, so no
         // cast is needed here the way the plain Math.round path above did.
-        round: ([x]) => `(Math.signum(${x}) * Math.floor(Math.abs(${x}) + 0.5))`,
-        trunc: ([x]) => `(double) (long) (${x})`,
+        round: ([x]) =>
+            `((java.util.function.DoubleUnaryOperator) (ef_a) -> Math.signum(ef_a) * ` +
+            `(Math.floor(Math.abs(ef_a)) + (Math.abs(ef_a) - Math.floor(Math.abs(ef_a)) >= 0.5 ? 1.0 : 0.0))).applyAsDouble(${x})`,
+        trunc: ([x]) => `((${x}) < 0.0 ? Math.ceil(${x}) : Math.floor(${x}))`,
         sign: fn1("signum"),
         wrapIndex: ([i, m]) => `(((${i} % ${m}) + ${m}) % ${m})`,
         clampIndex: ([i, lo, hi]) => `Math.max(${lo}, Math.min(${hi}, ${i}))`,

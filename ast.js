@@ -67,7 +67,18 @@
 // the real parser isn't allowed in here either.
 const IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
+// Prefixes owned by emitted helper functions (Python's _ef_* and
+// _exprforge_div, Ruby's _ef_*, Perl's _exprforge_div). A user identifier
+// with one of these would shadow or collide with a helper in the same file.
+const RESERVED_PREFIXES = ["_ef_", "_exprforge_"];
+
 function assertSafeIdentifier(name, context) {
+    if (typeof name === "string" && RESERVED_PREFIXES.some((p) => name.startsWith(p))) {
+        throw new Error(
+            `${context}: ${JSON.stringify(name)} uses a reserved prefix (${RESERVED_PREFIXES.join(", ")}) ` +
+            `that emitted helper functions own`,
+        );
+    }
     if (typeof name !== "string" || !IDENTIFIER.test(name)) {
         throw new Error(
             `${context}: ${JSON.stringify(name)} isn't a safe identifier -- must start with a letter or "_", ` +

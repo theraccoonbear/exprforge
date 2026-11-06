@@ -459,7 +459,14 @@ const emitter = new CobolEmitter({
     helpers: CMP_HELPER_DEFS,
     formatNumber: (v) => {
         const s = String(v);
-        return /e/i.test(s) ? expandExponential(s) : s;
+        const text = /e/i.test(s) ? expandExponential(s) : s;
+        if (text.replace(/[-.]/g, "").length > 38) {
+            throw new Error(
+                `emitter for .cob: numeric literal ${s} needs more than 38 digits, GnuCOBOL's maximum ` +
+                `literal length -- not supported for this target (see docs/adr/0005-boundary-conditions.md)`,
+            );
+        }
+        return text;
     },
     calls: {
         sqrt: fn1("SQRT"), abs: fn1("ABS"), sin: fn1("SIN"), cos: fn1("COS"), tan: fn1("TAN"),

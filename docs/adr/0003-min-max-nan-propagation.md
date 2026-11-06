@@ -101,6 +101,9 @@ only observable to a caller doing an `Object.is`-style or
 sign-bit-sensitive check. Not pursued further: no confirmed real-world
 impact found, unlike the min/max divergence above.
 
+Update: `sign(NaN)` has since been unified to NaN on every target
+(0005). `sign(-0)` remains an open decision listed there.
+
 ## Evidence
 
 - `samples/math-edge-cases-demo.js` — full per-target breakdown,

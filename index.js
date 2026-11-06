@@ -26,7 +26,7 @@ const { arraySuiteAst } = require("./samples/array-suite-demo.js");
 const { arrayMacroDemoAst } = require("./samples/array-macro-demo.js");
 const { mathEdgeCasesAst } = require("./samples/math-edge-cases-demo.js");
 const { divisionByZeroAst } = require("./samples/division-by-zero-demo.js");
-const { nonFiniteRoundingAst } = require("./samples/non-finite-rounding-demo.js");
+const { nonFiniteRoundingAst, roundingZeroSignAst } = require("./samples/non-finite-rounding-demo.js");
 const { differentiateDemoAst } = require("./samples/differentiate-demo.js");
 const { zeroParamDemoAst } = require("./samples/zero-param-demo.js");
 
@@ -239,6 +239,7 @@ module.exports = {
     // Coverage fixture for floor/ceil/trunc/round of NaN and +-Infinity --
     // see samples/non-finite-rounding-demo.js.
     nonFiniteRoundingAst,
+    roundingZeroSignAst,
     // Coverage fixture for differentiate()'s own output compiled through
     // a real target -- see samples/differentiate-demo.js's own header
     // comment for the gap this closes.
@@ -265,6 +266,7 @@ module.exports = {
         mathEdgeCases: mathEdgeCasesAst,
         divisionByZero: divisionByZeroAst,
         nonFiniteRounding: nonFiniteRoundingAst,
+        roundingZeroSign: roundingZeroSignAst,
         differentiateDemo: differentiateDemoAst,
         zeroParamDemo: zeroParamDemoAst,
     },

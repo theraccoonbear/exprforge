@@ -94,6 +94,91 @@ const SAFE_MATH_HELPERS = {
     `        ef_safe_pow# = ef_base ^ ef_expo\n` +
     `    END IF\n` +
     `END FUNCTION\n`,
+    ef_safe_floor:
+    `FUNCTION ef_safe_floor# (x AS DOUBLE)\n` +
+    `    IF x <> x THEN\n` +
+    `        ef_safe_floor# = x\n` +
+    `    ELSEIF ABS(x) >= 4503599627370496# THEN\n` +
+    `        ef_safe_floor# = x\n` +
+    `    ELSE\n` +
+    `        ef_safe_floor# = INT(x)\n` +
+    `    END IF\n` +
+    `END FUNCTION\n`,
+    ef_safe_trunc:
+    `FUNCTION ef_safe_trunc# (x AS DOUBLE)\n` +
+    `    IF x < 0# THEN\n` +
+    `        ef_safe_trunc# = -ef_safe_floor#(-x)\n` +
+    `    ELSE\n` +
+    `        ef_safe_trunc# = ef_safe_floor#(x)\n` +
+    `    END IF\n` +
+    `END FUNCTION\n`,
+    ef_safe_round:
+    `FUNCTION ef_safe_round# (x AS DOUBLE)\n` +
+    `    DIM ef_m AS DOUBLE, ef_f AS DOUBLE\n` +
+    `    IF x <> x THEN\n` +
+    `        ef_safe_round# = x\n` +
+    `    ELSEIF ABS(x) >= 4503599627370496# THEN\n` +
+    `        ef_safe_round# = x\n` +
+    `    ELSEIF x = 0# THEN\n` +
+    `        ef_safe_round# = x\n` +
+    `    ELSE\n` +
+    `        ef_m = ABS(x)\n` +
+    `        ef_f = INT(ef_m)\n` +
+    `        IF ef_m - ef_f >= 0.5# THEN ef_f = ef_f + 1#\n` +
+    `        IF ef_f = 0# THEN\n` +
+    `            ef_safe_round# = x * 0#\n` +
+    `        ELSEIF x < 0# THEN\n` +
+    `            ef_safe_round# = -ef_f\n` +
+    `        ELSE\n` +
+    `            ef_safe_round# = ef_f\n` +
+    `        END IF\n` +
+    `    END IF\n` +
+    `END FUNCTION\n`,
+    ef_safe_sgn:
+    `FUNCTION ef_safe_sgn# (x AS DOUBLE)\n` +
+    `    IF x <> x THEN\n` +
+    `        ef_safe_sgn# = x\n` +
+    `    ELSEIF x = 0# THEN\n` +
+    `        ef_safe_sgn# = x\n` +
+    `    ELSE\n` +
+    `        ef_safe_sgn# = SGN(x)\n` +
+    `    END IF\n` +
+    `END FUNCTION\n`,
+    ef_safe_exp:
+    `FUNCTION ef_safe_exp# (x AS DOUBLE)\n` +
+    `    DIM ef_zero AS DOUBLE\n` +
+    `    IF x <> x THEN\n` +
+    `        ef_safe_exp# = x\n` +
+    `    ELSEIF x > 709.782712893384# THEN\n` +
+    `        ef_zero = 0#\n` +
+    `        ef_safe_exp# = 1# / ef_zero\n` +
+    `    ELSE\n` +
+    `        ef_safe_exp# = EXP(x)\n` +
+    `    END IF\n` +
+    `END FUNCTION\n`,
+    ef_safe_hypot:
+    `FUNCTION ef_safe_hypot# (ef_a AS DOUBLE, ef_b AS DOUBLE)\n` +
+    `    DIM ef_zero AS DOUBLE, ef_hi AS DOUBLE, ef_lo AS DOUBLE, ef_s AS DOUBLE, ef_r AS DOUBLE\n` +
+    `    ef_zero = 0#\n` +
+    `    ef_hi = ABS(ef_a)\n` +
+    `    ef_lo = ABS(ef_b)\n` +
+    `    ef_s = ef_hi * ef_hi + ef_lo * ef_lo\n` +
+    `    IF ef_s < 1D300 AND ef_s > 1D-290 THEN\n` +
+    `        ef_safe_hypot# = SQR(ef_s)\n` +
+    `    ELSEIF ef_hi > 1.7976931348623157D308 OR ef_lo > 1.7976931348623157D308 THEN\n` +
+    `        ef_safe_hypot# = 1# / ef_zero\n` +
+    `    ELSEIF ef_hi <> ef_hi OR ef_lo <> ef_lo THEN\n` +
+    `        ef_safe_hypot# = ef_zero / ef_zero\n` +
+    `    ELSE\n` +
+    `        IF ef_hi < ef_lo THEN SWAP ef_hi, ef_lo\n` +
+    `        IF ef_hi = 0# THEN\n` +
+    `            ef_safe_hypot# = 0#\n` +
+    `        ELSE\n` +
+    `            ef_r = ef_lo / ef_hi\n` +
+    `            ef_safe_hypot# = ef_hi * SQR(1# + ef_r * ef_r)\n` +
+    `        END IF\n` +
+    `    END IF\n` +
+    `END FUNCTION\n`,
     // _MIN/_MAX don't crash, but confirmed directly to be NaN-IGNORING
     // in a POSITION-DEPENDENT way, not a clean "always ignore" rule:
     // _MIN(nan,5#) returns NaN (first operand wins) while _MIN(5#,nan)
@@ -136,7 +221,10 @@ function helperBlock(used) {
 const emitter = new Emitter({
     ext: "bas",
     helpers: Object.fromEntries(
-        Object.entries(SAFE_MATH_HELPERS).map(([name, source]) => [name, { source, deps: [] }]),
+        Object.entries(SAFE_MATH_HELPERS).map(([name, source]) => [
+            name,
+            { source, deps: name === "ef_safe_trunc" ? ["ef_safe_floor"] : [] },
+        ]),
     ),
     // JS renders very small/large magnitudes in exponential notation
     // (String(1e-9) === "1e-9"), and QB64 doesn't accept that combined
@@ -159,9 +247,9 @@ const emitter = new Emitter({
         cos: ([x]) => `COS(${x})`,
         tan: ([x]) => `TAN(${x})`,
         atan: ([x]) => `ATN(${x})`,
-        exp: ([x]) => `EXP(${x})`,
+        exp: ([x]) => `ef_safe_exp#(${x})`,
         log: ([x]) => `ef_safe_log#(${x})`,
-        sign: ([x]) => `SGN(${x})`,
+        sign: ([x]) => `ef_safe_sgn#(${x})`,
         min: ([a, b]) => `ef_safe_min#(${a}, ${b})`,
         max: ([a, b]) => `ef_safe_max#(${a}, ${b})`,
         // _ROUND ties to EVEN ("banker's rounding" -- confirmed against a
@@ -171,7 +259,7 @@ const emitter = new Emitter({
         // "round() at exact .5 boundaries" section. SGN/ABS/INT are the
         // same primitives this file's own sign:/abs:/floor: entries
         // already use.
-        round: ([x]) => `(SGN(${x}) * INT(ABS(${x}) + 0.5))`,
+        round: ([x]) => `ef_safe_round#(${x})`,
         pow: ([base, exp]) => `ef_safe_pow#(${base}, ${exp})`,
         asin: ([x]) => `ATN(${x} / ef_safe_sqr#(-(${x}) * (${x}) + 1#))`,
         acos: ([x]) => `(${HALF_PI} - ATN(${x} / ef_safe_sqr#(-(${x}) * (${x}) + 1#)))`,
@@ -181,10 +269,10 @@ const emitter = new Emitter({
         // the domain guard.
         log2: ([x]) => `(ef_safe_log#(${x}) / LOG(2#))`,
         log10: ([x]) => `(ef_safe_log#(${x}) / LOG(10#))`,
-        floor: ([x]) => `INT(${x})`,
-        ceil: ([x]) => `(-INT(-(${x})))`,
-        trunc: ([x]) => `(SGN(${x}) * INT(ABS(${x})))`,
-        hypot: ([a, b]) => `SQR((${a}) * (${a}) + (${b}) * (${b}))`,
+        floor: ([x]) => `ef_safe_floor#(${x})`,
+        ceil: ([x]) => `(-ef_safe_floor#(-(${x})))`,
+        trunc: ([x]) => `ef_safe_trunc#(${x})`,
+        hypot: ([a, b]) => `ef_safe_hypot#(${a}, ${b})`,
         // QB64's MOD operator truncates both operands to LONG first --
         // wrong for a general modulo, so this is built from INT (already
         // confirmed to mean floor(), see the floor: template above) as a
