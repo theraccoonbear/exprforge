@@ -9,6 +9,13 @@ function fn2(name) {
     return ([a, b]) => `Math.${name}(${a}, ${b})`;
 }
 
+// Math.pow returns NaN for pow(1, y) with a NaN or infinite y and for
+// pow(-1, +-Infinity); IEEE 754 / C99 Annex F (and every other target)
+// give 1 (docs/adr/0005-boundary-conditions.md).
+function powCall([x, y]) {
+    return `((a, b) => (a === 1 || (a === -1 && Math.abs(b) === Infinity)) ? 1 : Math.pow(a, b))(${x}, ${y})`;
+}
+
 const emitter = new Emitter({
     ext: "js",
     formatNumber: (v) => String(v),
@@ -24,9 +31,13 @@ const emitter = new Emitter({
         // at exact .5 boundaries" section for the full, directly-verified
         // breakdown of why this convention specifically). Built from
         // Math.sign/Math.floor/Math.abs, which already agree with every
-        // other target unconditionally.
-        round: ([x]) => `(Math.sign(${x}) * Math.floor(Math.abs(${x}) + 0.5))`,
-        pow: fn2("pow"), atan2: fn2("atan2"), min: fn2("min"), max: fn2("max"), hypot: fn2("hypot"),
+        // other target unconditionally. The fraction test is exact
+        // (|a| - floor(|a|) loses no bits), unlike floor(|a| + 0.5), which
+        // is off by one at 0.49999999999999994 and above 2^52; the
+        // arrow function evaluates the operand once.
+        round: ([x]) =>
+            `((a) => { const f = Math.floor(Math.abs(a)); return Math.sign(a) * (f + (Math.abs(a) - f >= 0.5 ? 1 : 0)); })(${x})`,
+        pow: powCall, atan2: fn2("atan2"), min: fn2("min"), max: fn2("max"), hypot: fn2("hypot"),
         // See primitives.js's own comment -- the double-application
         // ((i % m) + m) % m is self-correcting regardless of which sign
         // convention `%` follows, so it's used uniformly across every

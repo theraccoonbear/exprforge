@@ -24,6 +24,7 @@ const { execFileSync } = require("node:child_process");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
+const { tmpDir } = require("./harness-util.js");
 
 const PROJECT_ROOT = path.join(__dirname, "..");
 
@@ -40,8 +41,8 @@ function parseNpmPackJson(output) {
 }
 
 test("the packed tarball installs and require()s cleanly, with the real exports actually callable", () => {
-    const packDir = fs.mkdtempSync(path.join(os.tmpdir(), "ef-pack-"));
-    const consumerDir = fs.mkdtempSync(path.join(os.tmpdir(), "ef-consumer-"));
+    const packDir = tmpDir("ef-pack-");
+    const consumerDir = tmpDir("ef-consumer-");
     try {
         // --json, not just --dry-run text, so the exact tarball filename
         // (versioned, e.g. exprforge-0.3.0.tgz) doesn't need duplicating

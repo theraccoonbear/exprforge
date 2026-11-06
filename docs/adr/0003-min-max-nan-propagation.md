@@ -10,7 +10,7 @@ confirmed directly against a real compiler/interpreter for every
 target, both argument orders:
 
 - **Propagates NaN already** (no fix needed): JS, TypeScript, Go, Java,
-  C#, Julia, Scheme.
+  C#, Julia, Scheme, R (base `min`/`max` return `NaN` in either order).
 - **NaN-ignoring** (returns the real operand regardless of position):
   C (`fmin`/`fmax`), Rust (`.min()`/`.max()`), Zig (`@min`/`@max`) — all
   three by spec (C99-style `fmin`/`fmax` semantics).
@@ -18,6 +18,9 @@ target, both argument orders:
   — a comparison against NaN is always `False`, so the first argument
   is never replaced), Lua (same shape), QB64 (`_MIN`/`_MAX`, same
   shape).
+- **Raises on NaN**: Ruby (`[a, b].min`/`.max` raise `ArgumentError`
+  when a comparison involving NaN fails). Fixed with the same
+  self-inequality NaN guard as Python.
 - **Position-dependent, second-argument-wins**: PHP (`min`/`max`) — the
   same landmine, opposite position.
 - **Internally inconsistent with itself**: Perl (`List::Util::min`
@@ -48,8 +51,8 @@ target, both argument orders:
 
 Standardize on **NaN propagation** (any NaN operand → NaN result),
 matching the interpreter (`evaluate.js`, JS-based, the reference every
-conformance test compares against) and the largest existing group (7 of
-18 executable targets, for free). Fixed with an explicit guard ahead of
+conformance test compares against) and the largest existing group (8 of
+20 executable targets, for free). Fixed with an explicit guard ahead of
 the real call on every non-conforming target except one:
 
 - **C/Rust/Zig**: `isnan()`/`.is_nan()`/`std.math.isNan()` guard.
@@ -80,7 +83,7 @@ the real call on every non-conforming target except one:
 
 ## Consequences
 
-C/Rust/Zig/Python/Lua/PHP/Perl/QB64 all changed real, observable
+C/Rust/Zig/Python/Ruby/Lua/PHP/Perl/QB64 all changed real, observable
 behavior for a NaN operand to `min`/`max` (previously silent, arbitrary,
 sometimes position-dependent — now always NaN, matching every other
 target). GnuCOBOL carries a confirmed, tracked, unfixed divergence for
@@ -97,6 +100,9 @@ either way (`-0.0 == 0.0` is true in every target, and
 only observable to a caller doing an `Object.is`-style or
 sign-bit-sensitive check. Not pursued further: no confirmed real-world
 impact found, unlike the min/max divergence above.
+
+Update: `sign(NaN)` has since been unified to NaN on every target
+(0005). `sign(-0)` remains an open decision listed there.
 
 ## Evidence
 

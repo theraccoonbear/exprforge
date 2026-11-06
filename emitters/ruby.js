@@ -1,0 +1,159 @@
+// exprforge/emitters/ruby.js
+const Emitter = require("./base.js");
+
+function fn1(name) {
+    return ([x]) => `Math.${name}(${x})`;
+}
+
+function fn2(name) {
+    return ([a, b]) => `Math.${name}(${a}, ${b})`;
+}
+
+// A Ruby local variable must start with a lowercase letter or underscore
+// (an uppercase first letter makes it a constant, which cannot be a formal
+// argument or be assigned inside a method), and a reserved word cannot be
+// a variable name. Such names get a leading underscore, as does anything
+// starting with the reserved helper prefix _ef_.
+const RESERVED = new Set([
+    "BEGIN", "END", "alias", "and", "begin", "break", "case", "class", "def", "defined?",
+    "do", "else", "elsif", "end", "ensure", "false", "for", "if", "in", "module", "next",
+    "nil", "not", "or", "redo", "rescue", "retry", "return", "self", "super", "then",
+    "true", "undef", "unless", "until", "when", "while", "yield", "__FILE__", "__LINE__",
+    "__ENCODING__",
+]);
+
+// Guard helpers, emitted only when used (see Emitter#usedHelpers in base.js). Classic
+// `def ... end`, not endless `def`, so the documented Ruby 2.4 minimum holds.
+// Ruby's Math.sqrt/log/asin/acos raise Math::DomainError out of domain,
+// Float ** Float can return a Complex, Float#floor/ceil/truncate/round raise
+// FloatDomainError for NaN/Infinity, [a, b].min raises on NaN, and
+// Float % 0.0 raises ZeroDivisionError; each is guarded here so the unified
+// behavior holds. See docs/adr/0001, 0002 and 0003. asin/acos use explicit
+// comparisons, not between?, because NaN.between? raises. round(half: :up)
+// ties away from zero. A zero result keeps the input's sign (-0.0), as in JS;
+// sign() returns its own argument for 0, -0 and NaN. pow is IEEE, so
+// pow(1, NaN) and pow(-1, +-Infinity) are 1.0 (Ruby's ** agrees).
+const HELPER_DEFS = [
+    ["_ef_sqrt(x)", "x >= 0 ? Math.sqrt(x) : Float::NAN"],
+    ["_ef_asin(x)", "(x >= -1 && x <= 1) ? Math.asin(x) : Float::NAN"],
+    ["_ef_acos(x)", "(x >= -1 && x <= 1) ? Math.acos(x) : Float::NAN"],
+    ["_ef_log(x)", "x > 0 ? Math.log(x) : (x == 0 ? -Float::INFINITY : Float::NAN)"],
+    ["_ef_log2(x)", "x > 0 ? Math.log2(x) : (x == 0 ? -Float::INFINITY : Float::NAN)"],
+    ["_ef_log10(x)", "x > 0 ? Math.log10(x) : (x == 0 ? -Float::INFINITY : Float::NAN)"],
+    ["_ef_pow(b, e)", "r = b ** e\n    r.is_a?(Float) ? r : Float::NAN"],
+    ["_ef_min(a, b)", "(a != a || b != b) ? Float::NAN : (a < b ? a : b)"],
+    ["_ef_max(a, b)", "(a != a || b != b) ? Float::NAN : (a > b ? a : b)"],
+    ["_ef_floor(x)", "r = x.finite? ? x.floor.to_f : x\n    (r == 0 && (x < 0 || (x == 0 && 1.0 / x < 0))) ? -0.0 : r"],
+    ["_ef_ceil(x)", "r = x.finite? ? x.ceil.to_f : x\n    (r == 0 && (x < 0 || (x == 0 && 1.0 / x < 0))) ? -0.0 : r"],
+    ["_ef_trunc(x)", "r = x.finite? ? x.truncate.to_f : x\n    (r == 0 && (x < 0 || (x == 0 && 1.0 / x < 0))) ? -0.0 : r"],
+    ["_ef_round(x)", "r = x.finite? ? x.round(half: :up).to_f : x\n    (r == 0 && (x < 0 || (x == 0 && 1.0 / x < 0))) ? -0.0 : r"],
+    ["_ef_sign(x)", "x > 0 ? 1.0 : (x < 0 ? -1.0 : x)"],
+    ["_ef_wrap(i, m)", "m == 0 ? Float::NAN : i % m"],
+    ["_ef_clamp(i, lo, hi)", "i < lo ? lo : (i > hi ? hi : i)"],
+];
+const HELPERS = Object.fromEntries(HELPER_DEFS.map(([sig, body]) => [
+    sig.slice(0, sig.indexOf("(")),
+    { source: `def ${sig}\n    ${body}\nend\n`, deps: [] },
+]));
+
+const helperBlock = (helpers) => helpers.map((h) => h.source).join("");
+
+function rb(name) {
+    return /^[A-Z]/.test(name) || /^_ef_/.test(name) || RESERVED.has(name) ? `_${name}` : name;
+}
+
+class RubyEmitter extends Emitter {
+    emitExpr(node) {
+        if (node.type === "var") return rb(node.name);
+        return super.emitExpr(node);
+    }
+}
+
+function scalarCoercions(fn) {
+    return fn.params
+        .filter((p) => fn.paramTypes?.[p] !== "number[]")
+        .map((p) => `    ${rb(p)} = Float(${rb(p)})`)
+        .join("\n");
+}
+
+function bodyPrelude(fn, letBindings, guardLines) {
+    const guards = guardLines.map((l) => `    ${l}`).join("\n");
+    const coercions = scalarCoercions(fn);
+    const lets = letBindings.map(({ name, valueStr }) => `    ${rb(name)} = ${valueStr}`).join("\n");
+    return [guards, coercions, lets].filter(Boolean).map((s) => s + "\n").join("");
+}
+
+const emitter = new RubyEmitter({
+    ext: "rb",
+    // Ruby's Integer / 0 raises ZeroDivisionError while Float / 0.0 is
+    // IEEE 754 (Infinity or NaN), and Integer / Integer truncates. Every
+    // numeric literal is therefore emitted as a Float, and scalar
+    // parameters are coerced with Float() on entry (see bodyPrelude), so
+    // every "/" and "%" the AST can produce is a Float operation. See
+    // docs/adr/0004-division-by-zero.md.
+    formatNumber: (v) => {
+        if (Number.isNaN(v)) return "Float::NAN";
+        if (v === Infinity) return "Float::INFINITY";
+        if (v === -Infinity) return "(-Float::INFINITY)";
+        const s = String(v);
+        return /^-?\d+$/.test(s) ? `${s}.0` : s;
+    },
+    helpers: HELPERS,
+    calls: {
+        // Math.sqrt/log/log2/log10/asin/acos raise Math::DomainError for an
+        // out-of-domain argument (unlike JS/C, which return NaN). Guarded
+        // inline so the unified domain-error behavior holds: NaN, or
+        // -Infinity for log of zero. See docs/adr/0002-domain-error-handling.md.
+        sqrt: ([x]) => `_ef_sqrt(${x})`,
+        abs: ([x]) => `(${x}).abs`, sin: fn1("sin"), cos: fn1("cos"), tan: fn1("tan"),
+        asin: ([x]) => `_ef_asin(${x})`, acos: ([x]) => `_ef_acos(${x})`,
+        atan: fn1("atan"), atan2: fn2("atan2"),
+        log: ([x]) => `_ef_log(${x})`, log2: ([x]) => `_ef_log2(${x})`, log10: ([x]) => `_ef_log10(${x})`,
+        exp: fn1("exp"),
+        pow: ([b, e]) => `_ef_pow(${b}, ${e})`,
+        min: ([a, b]) => `_ef_min(${a}, ${b})`, max: ([a, b]) => `_ef_max(${a}, ${b})`,
+        hypot: fn2("hypot"),
+        floor: ([x]) => `_ef_floor(${x})`, ceil: ([x]) => `_ef_ceil(${x})`,
+        trunc: ([x]) => `_ef_trunc(${x})`, round: ([x]) => `_ef_round(${x})`,
+        sign: ([x]) => `_ef_sign(${x})`,
+        wrapIndex: ([i, m]) => `_ef_wrap(${i}, ${m})`,
+        clampIndex: ([i, lo, hi]) => `_ef_clamp(${i}, ${lo}, ${hi})`,
+    },
+    // Array#[] with an out-of-range index returns nil, which .to_f would
+    // silently turn into 0.0; Float() raises TypeError for nil instead,
+    // and also normalizes Integer elements to Float so a later "/" by an
+    // element equal to zero stays IEEE.
+    emitIndex: function (targetNode, atNode) {
+        return `Float(${this.emitExpr(targetNode)}[${this.emitExpr(atNode)}.to_i])`;
+    },
+    // Ruby's ?: is exactly base.js's default ternary, and every cmp()
+    // operator (> < >= <= == !=) is spelled the same as in JS.
+    typeGuard: (p, fnName) =>
+        `raise TypeError, ${JSON.stringify(`${fnName}: "${p}" must be an array`)} unless ${rb(p)}.is_a?(Array)`,
+    lengthGuard: (p, lenP, fnName) =>
+        `raise ArgumentError, ${JSON.stringify(`${fnName}: ${p}.length must equal "${lenP}"`)} if ${rb(p)}.length != ${rb(lenP)}`,
+    formatFunction: (fn, body, letBindings = [], guardLines = [], opts = {}) => {
+        return `# AUTO-GENERATED by ExprForge -- do not hand-edit.\n` +
+               helperBlock(emitter.usedHelpers([body, ...letBindings.map((l) => l.valueStr)].join("\n"), opts)) +
+               `def ${fn.name}(${fn.params.map(rb).join(", ")})\n` +
+               bodyPrelude(fn, letBindings, guardLines) +
+               `    ${body}\n` +
+               `end\n`;
+    },
+    // Multiple named outputs from one call: a Hash with Symbol keys
+    // (result[:rx]).
+    formatSuite: (fn, outputStrs, letBindings = [], guardLines = [], opts = {}) => {
+        const outputNames = Object.keys(outputStrs);
+        const fields = outputNames.map((n) => `        ${n}: ${outputStrs[n]},`).join("\n");
+        return `# AUTO-GENERATED by ExprForge -- do not hand-edit.\n` +
+               helperBlock(emitter.usedHelpers([...Object.values(outputStrs), ...letBindings.map((l) => l.valueStr)].join("\n"), opts)) +
+               `def ${fn.name}(${fn.params.map(rb).join(", ")})\n` +
+               bodyPrelude(fn, letBindings, guardLines) +
+               `    {\n` +
+               fields + "\n" +
+               `    }\n` +
+               `end\n`;
+    },
+});
+
+module.exports = emitter;

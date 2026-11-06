@@ -21,6 +21,7 @@ export const LANGUAGE_META: Record<string, LanguageMeta> = {
     rust: { label: "Rust", defaultOn: false, defaultOnMobile: false },
     lua: { label: "Lua", defaultOn: false, defaultOnMobile: false },
     perl: { label: "Perl", defaultOn: false, defaultOnMobile: false },
+    ruby: { label: "Ruby", defaultOn: false, defaultOnMobile: false },
     php: { label: "PHP", defaultOn: false, defaultOnMobile: false },
     julia: { label: "Julia", defaultOn: false, defaultOnMobile: false },
     r: { label: "R", defaultOn: false, defaultOnMobile: false },

@@ -150,7 +150,7 @@ const emitter = new Emitter({
         // zero-aware construction as every other emitter here that can't
         // trust its language's native sign function at exactly zero (see
         // Go's/Rust's sign() history in this project).
-        sign: ([x]) => `MERGE(1.0D0, MERGE(-1.0D0, 0.0D0, (${x}) < 0.0D0), (${x}) > 0.0D0)`,
+        sign: ([x]) => `MERGE(1.0D0, MERGE(-1.0D0, (${x}), (${x}) < 0.0D0), (${x}) > 0.0D0)`,
         // MODULO (not MOD -- that one follows the dividend's sign, like
         // C) is the Fortran standard's floor-mod intrinsic, result takes
         // the sign of the second argument -- the right one for this.

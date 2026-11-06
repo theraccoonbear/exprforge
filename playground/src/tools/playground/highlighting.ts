@@ -26,6 +26,7 @@ import { StreamLanguage } from "@codemirror/language";
 import { csharp as legacyCSharp } from "@codemirror/legacy-modes/mode/clike";
 import { lua as legacyLua } from "@codemirror/legacy-modes/mode/lua";
 import { perl as legacyPerl } from "@codemirror/legacy-modes/mode/perl";
+import { ruby as legacyRuby } from "@codemirror/legacy-modes/mode/ruby";
 import { julia as legacyJulia } from "@codemirror/legacy-modes/mode/julia";
 import { r as legacyR } from "@codemirror/legacy-modes/mode/r";
 import { octave as legacyOctave } from "@codemirror/legacy-modes/mode/octave";
@@ -40,6 +41,7 @@ import { exprForgeLanguage } from "./exprForgeMode";
 const CSHARP = StreamLanguage.define(legacyCSharp);
 const LUA = StreamLanguage.define(legacyLua);
 const PERL = StreamLanguage.define(legacyPerl);
+const RUBY = StreamLanguage.define(legacyRuby);
 const JULIA = StreamLanguage.define(legacyJulia);
 const R = StreamLanguage.define(legacyR);
 const OCTAVE = StreamLanguage.define(legacyOctave);
@@ -73,6 +75,7 @@ const HIGHLIGHT: Record<string, Extension> = {
     rust: rust(),
     lua: LUA,
     perl: PERL,
+    ruby: RUBY,
     php: php(),
     julia: JULIA,
     r: R,

@@ -9,7 +9,9 @@
 import type { ComponentType } from "react";
 import { PlaygroundTool } from "./playground/PlaygroundTool";
 import { DifferentiatorTool } from "./differentiator/DifferentiatorTool";
-import { PLAYGROUND_TOOL_ID, DIFFERENTIATOR_TOOL_ID } from "./ids";
+import { RangesTool } from "./ranges/RangesTool";
+import { DuplicatesTool } from "./duplicates/DuplicatesTool";
+import { PLAYGROUND_TOOL_ID, DIFFERENTIATOR_TOOL_ID, RANGES_TOOL_ID, DUPLICATES_TOOL_ID } from "./ids";
 
 export interface Tool {
     id: string;
@@ -30,5 +32,17 @@ export const TOOLS: Tool[] = [
         label: "Differentiation",
         description: "Symbolic differentiation: enter an expression, get its derivative, verify numerically.",
         component: DifferentiatorTool,
+    },
+    {
+        id: RANGES_TOOL_ID,
+        label: "Range analysis",
+        description: "Interval analysis: declare input ranges, see output bounds and divide-by-zero warnings.",
+        component: RangesTool,
+    },
+    {
+        id: DUPLICATES_TOOL_ID,
+        label: "Duplicates",
+        description: "Find computations repeated across several definitions under different variable names.",
+        component: DuplicatesTool,
     },
 ];
