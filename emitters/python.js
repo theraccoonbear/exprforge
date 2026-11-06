@@ -13,6 +13,32 @@ function capitalize(s) {
     return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
+const POW_HELPER =
+    `def _ef_pow(b, e):\n` +
+    `    try:\n` +
+    `        return math.pow(b, e)\n` +
+    `    except OverflowError:\n` +
+    `        return -math.inf if (b < 0 and e == math.floor(e) and e % 2 == 1) else math.inf\n` +
+    `    except ValueError:\n` +
+    `        if b == 0:\n` +
+    `            return -math.inf if (math.copysign(1.0, b) < 0 and e == math.floor(e) and e % 2 == 1) else math.inf\n` +
+    `        return math.nan\n`;
+
+const ROUND_HELPER =
+    `def _ef_round(a):\n` +
+    `    if not math.isfinite(a):\n` +
+    `        return a\n` +
+    `    m = abs(a)\n` +
+    `    f = float(math.floor(m))\n` +
+    `    return math.copysign(f + (1.0 if m - f >= 0.5 else 0.0), a)\n`;
+
+const EXP_HELPER =
+    `def _ef_exp(x):\n` +
+    `    try:\n` +
+    `        return math.exp(x)\n` +
+    `    except OverflowError:\n` +
+    `        return math.inf\n`;
+
 // Python's "/" raises ZeroDivisionError for a zero denominator, unlike the
 // IEEE 754 +-Infinity/NaN every other target's "/" produces. A helper
 // function (rather than an inline conditional) keeps each operand
@@ -28,40 +54,60 @@ const DIV_HELPER = `def _exprforge_div(a, b):
         return math.copysign(math.inf, a) * math.copysign(1.0, b)
 `;
 
-// Domain-guarded primitives as one-line helpers, emitted once per file in
-// the same block as _exprforge_div (same includeHelpers gate). Python's
-// math.sqrt/log/log2/log10/asin/acos raise ValueError out of domain, and
-// math.floor/ceil/trunc raise OverflowError (inf) or ValueError (nan);
-// builtin min/max are NaN-order-dependent; "%" by zero raises. An inline
-// guard would repeat its operand (evaluating it several times, with
-// nesting multiplying the text); a helper takes each operand once. The
-// _ef_ prefix is reserved in ast.js's identifier check. pow and exp are
-// deliberately not here: they live in the boundary-conformance work
-// (_ef_pow, _ef_exp) so the two changes do not collide.
-const EF_HELPERS = [
-    `def _ef_sqrt(x): return math.sqrt(x) if x >= 0 else math.nan`,
-    `def _ef_asin(x): return math.asin(x) if -1 <= x <= 1 else math.nan`,
-    `def _ef_acos(x): return math.acos(x) if -1 <= x <= 1 else math.nan`,
-    `def _ef_log(x): return math.log(x) if x > 0 else (-math.inf if x == 0 else math.nan)`,
-    `def _ef_log2(x): return math.log2(x) if x > 0 else (-math.inf if x == 0 else math.nan)`,
-    `def _ef_log10(x): return math.log10(x) if x > 0 else (-math.inf if x == 0 else math.nan)`,
-    `def _ef_min(a, b): return math.nan if (a != a or b != b) else min(a, b)`,
-    `def _ef_max(a, b): return math.nan if (a != a or b != b) else max(a, b)`,
-    `def _ef_floor(x): return math.copysign(math.floor(x), x) if math.isfinite(x) else x`,
-    `def _ef_ceil(x): return math.copysign(math.ceil(x), x) if math.isfinite(x) else x`,
-    `def _ef_trunc(x): return math.copysign(math.trunc(x), x) if math.isfinite(x) else x`,
-    `def _ef_round(x):\n` +
-    `    if not math.isfinite(x): return x\n` +
-    `    f = math.floor(abs(x))\n` +
-    `    return math.copysign(f + (1.0 if abs(x) - f >= 0.5 else 0.0), x)`,
-    `def _ef_sign(x): return 1.0 if x > 0 else (-1.0 if x < 0 else x)`,
-    `def _ef_wrap_index(i, m): return i % m if m != 0 else math.nan`,
-].join("\n") + "\n";
+// Domain-guarded primitives as one-line helpers, emitted only when the
+// generated code calls them (shared used-only mechanism, see
+// emitters/base.js). Python's math.sqrt/log/log2/log10/asin/acos raise
+// ValueError out of domain, and math.floor/ceil/trunc raise OverflowError
+// (inf) or ValueError (nan); builtin min/max are NaN-order-dependent; "%"
+// by zero raises. An inline guard would repeat its operand (evaluating it
+// several times, with nesting multiplying the text); a helper takes each
+// operand once. The _ef_ prefix is reserved in ast.js's identifier check.
+const SQRT_HELPER = `def _ef_sqrt(x): return math.sqrt(x) if x >= 0 else math.nan\n`;
+const ASIN_HELPER = `def _ef_asin(x): return math.asin(x) if -1 <= x <= 1 else math.nan\n`;
+const ACOS_HELPER = `def _ef_acos(x): return math.acos(x) if -1 <= x <= 1 else math.nan\n`;
+const LOG_HELPER = `def _ef_log(x): return math.log(x) if x > 0 else (-math.inf if x == 0 else math.nan)\n`;
+const LOG2_HELPER = `def _ef_log2(x): return math.log2(x) if x > 0 else (-math.inf if x == 0 else math.nan)\n`;
+const LOG10_HELPER = `def _ef_log10(x): return math.log10(x) if x > 0 else (-math.inf if x == 0 else math.nan)\n`;
+const MIN_HELPER = `def _ef_min(a, b): return math.nan if (a != a or b != b) else min(a, b)\n`;
+const MAX_HELPER = `def _ef_max(a, b): return math.nan if (a != a or b != b) else max(a, b)\n`;
+const FLOOR_HELPER = `def _ef_floor(x): return math.copysign(float(math.floor(x)), x) if math.isfinite(x) else x\n`;
+const CEIL_HELPER = `def _ef_ceil(x): return math.copysign(float(math.ceil(x)), x) if math.isfinite(x) else x\n`;
+const TRUNC_HELPER = `def _ef_trunc(x): return math.copysign(float(math.trunc(x)), x) if math.isfinite(x) else x\n`;
+const SIGN_HELPER = `def _ef_sign(x): return 1.0 if x > 0 else (-1.0 if x < 0 else x)\n`;
+const WRAP_INDEX_HELPER = `def _ef_wrap_index(i, m): return i % m if m != 0 else math.nan\n`;
 
-const HELPER_BLOCK = DIV_HELPER + "\n\n" + EF_HELPERS;
+function importBlock(used) {
+    return used.length ? used.map((i) => i.source + "\n").join("") + "\n\n" : "\n\n";
+}
+
+function helperBlock(used) {
+    return used.map((h) => h.source + "\n\n").join("");
+}
 
 const emitter = new Emitter({
     ext: "py",
+    imports: {
+        math: { source: "import math", pattern: /(?<![\w.])math\./ },
+    },
+    helpers: {
+        _exprforge_div: { source: DIV_HELPER, deps: [] },
+        _ef_pow: { source: POW_HELPER, deps: [] },
+        _ef_exp: { source: EXP_HELPER, deps: [] },
+        _ef_round: { source: ROUND_HELPER, deps: [] },
+        _ef_sqrt: { source: SQRT_HELPER, deps: [] },
+        _ef_asin: { source: ASIN_HELPER, deps: [] },
+        _ef_acos: { source: ACOS_HELPER, deps: [] },
+        _ef_log: { source: LOG_HELPER, deps: [] },
+        _ef_log2: { source: LOG2_HELPER, deps: [] },
+        _ef_log10: { source: LOG10_HELPER, deps: [] },
+        _ef_min: { source: MIN_HELPER, deps: [] },
+        _ef_max: { source: MAX_HELPER, deps: [] },
+        _ef_floor: { source: FLOOR_HELPER, deps: [] },
+        _ef_ceil: { source: CEIL_HELPER, deps: [] },
+        _ef_trunc: { source: TRUNC_HELPER, deps: [] },
+        _ef_sign: { source: SIGN_HELPER, deps: [] },
+        _ef_wrap_index: { source: WRAP_INDEX_HELPER, deps: [] },
+    },
     emitDiv: (l, r) => `_exprforge_div(${l}, ${r})`,
     // Python accepts JS-style numeric literal syntax directly, including
     // exponential notation ("1e-9"), unlike QB64/C# -- no conversion or
@@ -86,9 +132,8 @@ const emitter = new Emitter({
         log: ([x]) => `_ef_log(${x})`,
         log2: ([x]) => `_ef_log2(${x})`,
         log10: ([x]) => `_ef_log10(${x})`,
-        exp: fn1("exp"),
-        pow: ([base, exp]) =>
-            `(math.pow(${base}, ${exp}) if not (${base} < 0 and ${exp} != int(${exp})) else float('nan'))`,
+        exp: ([x]) => `_ef_exp(${x})`,
+        pow: ([base, exp]) => `_ef_pow(${base}, ${exp})`,
         // NOT bare min()/max(): Python's builtins are comparison-based,
         // and a comparison against NaN is always False -- so whichever
         // argument comes FIRST silently wins whenever either is NaN,
@@ -157,14 +202,15 @@ const emitter = new Emitter({
         const guardsBlock = guards ? guards + "\n" : "";
         const lets = letBindings.map(({ name, valueStr }) => `    ${name} = ${valueStr}`).join("\n");
         const letsBlock = lets ? lets + "\n" : "";
-        const helper = opts.includeHelpers === false ? "" : HELPER_BLOCK + "\n\n";
-        return `# AUTO-GENERATED by ExprForge -- do not hand-edit.\n` +
-               `import math\n\n\n` +
-               helper +
-               `def ${fn.name}(${params}):\n` +
+        const code = `def ${fn.name}(${params}):\n` +
                guardsBlock +
                letsBlock +
                `    return ${body}\n`;
+        const helpers = emitter.usedHelpers(code, opts);
+        return `# AUTO-GENERATED by ExprForge -- do not hand-edit.\n` +
+               importBlock(emitter.usedImports(code, helpers, opts)) +
+               helperBlock(helpers) +
+               code;
     },
     // Multiple named outputs from one call: a small local class (dot
     // access, result.rx) rather than a plain dict -- consistent with
@@ -182,17 +228,18 @@ const emitter = new Emitter({
         const ctorParams = outputNames.join(", ");
         const ctorAssigns = outputNames.map((n) => `        self.${n} = ${n}`).join("\n");
         const ctorArgs = outputNames.map((n) => outputStrs[n]).join(", ");
-        const helper = opts.includeHelpers === false ? "" : HELPER_BLOCK + "\n\n";
-        return `# AUTO-GENERATED by ExprForge -- do not hand-edit.\n` +
-               `import math\n\n\n` +
-               helper +
-               `class ${className}:\n` +
+        const code = `class ${className}:\n` +
                `    def __init__(self, ${ctorParams}):\n` +
                `${ctorAssigns}\n\n\n` +
                `def ${fn.name}(${params}):\n` +
                guardsBlock +
                letsBlock +
                `    return ${className}(${ctorArgs})\n`;
+        const helpers = emitter.usedHelpers(code, opts);
+        return `# AUTO-GENERATED by ExprForge -- do not hand-edit.\n` +
+               importBlock(emitter.usedImports(code, helpers, opts)) +
+               helperBlock(helpers) +
+               code;
     },
 });
 

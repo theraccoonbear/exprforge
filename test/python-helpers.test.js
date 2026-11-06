@@ -1,7 +1,7 @@
 // exprforge/test/python-helpers.test.js
 //
 // Python's domain guards live in one-line _ef_* helper functions (emitted
-// once per file, in the same block as _exprforge_div) instead of inline
+// only when used, via the shared helpers mechanism) instead of inline
 // conditionals that repeat their operand. This file checks:
 //   - the static shape (no operand repeated, helper block gated on
 //     includeHelpers, cheap calls still inline),
@@ -70,19 +70,35 @@ test("python helpers: nested composite formula no longer repeats operands", () =
     assert.ok(!ret.includes(" if "), "no inline conditional guards remain");
 });
 
-test("python helpers: one block with _exprforge_div, gated on includeHelpers", () => {
+test("python helpers: emitted only when used, each defined once", () => {
     const fn = { name: "f", params: ["x"], body: call("sqrt", v("x")) };
-    const withHelpers = emitters.python.emitFunction(fn);
-    assert.ok(withHelpers.includes("def _exprforge_div("));
-    for (const name of HELPER_NAMES) {
-        assert.strictEqual(withHelpers.split(`def ${name}(`).length - 1, 1, `${name} defined once`);
+    const out = emitters.python.emitFunction(fn);
+    assert.strictEqual(out.split("def _ef_sqrt(").length - 1, 1);
+    for (const name of HELPER_NAMES.filter((n) => n !== "_ef_sqrt")) {
+        assert.ok(!out.includes(`def ${name}(`), `${name} not emitted for sqrt-only code`);
     }
+    assert.ok(!out.includes("def _exprforge_div"));
+    const lerp = emitters.python.emitFunction({
+        name: "lerp", params: ["a", "b", "t"], body: add(v("a"), mul(v("t"), add(v("b"), mul(num(-1), v("a"))))),
+    });
+    assert.ok(!lerp.includes("def _ef_") && !lerp.includes("import math"));
+    const both = emitters.python.emitFunction({ name: "g", params: ["x", "y"], body: add(call("sqrt", v("x")), call("log", v("y"))) });
+    assert.strictEqual(both.split("def _ef_").length - 1, 2);
+    assert.ok(both.includes("def _ef_sqrt(") && both.includes("def _ef_log("));
     const without = emitters.python.emitFunction(fn, undefined, { includeHelpers: false });
-    assert.ok(!without.includes("def _ef_") && !without.includes("def _exprforge_div"));
+    assert.ok(!without.includes("def _ef_"));
     const suite = emitters.python.emitFunction({
         name: "g", params: ["x"], body: outputs({ a: call("sqrt", v("x")) }),
     });
     assert.ok(suite.includes("def _ef_sqrt("));
+});
+
+test("python helpers: shared emittedHelpers defines each helper once across functions", () => {
+    const emittedHelpers = new Set();
+    const o1 = emitters.python.emitFunction({ name: "f1", params: ["x"], body: call("sqrt", v("x")) }, undefined, { emittedHelpers });
+    const o2 = emitters.python.emitFunction({ name: "f2", params: ["x", "y"], body: add(call("sqrt", v("x")), call("min", v("x"), v("y"))) }, undefined, { emittedHelpers });
+    assert.ok(o1.includes("def _ef_sqrt("));
+    assert.ok(!o2.includes("def _ef_sqrt(") && o2.includes("def _ef_min("));
 });
 
 test("python helpers: cheap unguarded calls stay inline", () => {
@@ -115,16 +131,15 @@ test("python helpers: real python3 agrees with the evaluator on edge inputs", { 
     for (const i of EDGE.filter((n) => Number.isFinite(n))) for (const m of MODULI) cases.push({ p: "wrapIndex", args: [i, m] });
 
     let src = "";
-    let first = true;
+    const emittedHelpers = new Set();
     for (const p of [...UNARY, ...BINARY]) {
         const params = BINARY.includes(p) ? ["x", "y"] : ["x"];
         const argNodes = params.map((n) => v(n));
         src += emitters.python.emitFunction(
             { name: `f_${p}`, params, body: call(p, ...argNodes) },
             undefined,
-            { includeHelpers: first },
+            { emittedHelpers },
         ) + "\n\n";
-        first = false;
     }
     src += "import sys\n";
     for (const [idx, c] of cases.entries()) {
@@ -155,9 +170,10 @@ test("python helpers: real python3 agrees with the evaluator on edge inputs", { 
 });
 
 test("python helpers: round is exact ties-away, sign preserves -0/NaN, pow IEEE specials", { skip: !PYTHON && "python3 not available" }, () => {
-    const src = emitters.python.emitFunction({ name: "r", params: ["x"], body: call("round", v("x")) }) + "\n\n" +
-        emitters.python.emitFunction({ name: "s", params: ["x"], body: call("sign", v("x")) }, undefined, { includeHelpers: false }) + "\n\n" +
-        ["floor", "ceil", "trunc"].map((p) => emitters.python.emitFunction({ name: p[0], params: ["x"], body: call(p, v("x")) }, undefined, { includeHelpers: false })).join("\n\n") + "\n\n" +
+    const shared = new Set();
+    const src = emitters.python.emitFunction({ name: "r", params: ["x"], body: call("round", v("x")) }, undefined, { emittedHelpers: shared }) + "\n\n" +
+        emitters.python.emitFunction({ name: "s", params: ["x"], body: call("sign", v("x")) }, undefined, { emittedHelpers: shared }) + "\n\n" +
+        ["floor", "ceil", "trunc"].map((p) => emitters.python.emitFunction({ name: p[0], params: ["x"], body: call(p, v("x")) }, undefined, { emittedHelpers: shared })).join("\n\n") + "\n\n" +
         "import math\n" +
         "print(f(-0.0), f(-0.4), f(0.4), f(-1.5), f(1e300), f(math.inf), f(-math.inf), f(math.nan))\n" +
         "print(c(-0.0), c(-0.4), c(0.4), c(-1.5), c(1e300), c(math.inf), c(-math.inf), c(math.nan))\n" +

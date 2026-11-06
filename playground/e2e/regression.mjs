@@ -171,6 +171,60 @@ async function main() {
             "a playground share link must activate the Playground tab",
         );
 
+        // --- Range analysis tab ---------------------------------------------
+        // A share link must activate the tab, restore source and ranges, and
+        // the analysis must flag the unguarded division, then react to an
+        // edited range.
+        await page.evaluate(() => localStorage.clear());
+        const RANGE_SRC = "f(x, d):\n  return x / d;\n";
+        await page.goto(
+            `http://localhost:${PORT}/?tool=ranges&src=${encodeURIComponent(RANGE_SRC)}&ranges=${encodeURIComponent(JSON.stringify({ x: "1, 2", d: "-1, 1" }))}`,
+        );
+        await page.waitForSelector(".ranges-result .ranges-body", { timeout: 15000 });
+        assert.strictEqual(
+            await page.$eval(".shell-nav-item--active", (el) => el.textContent),
+            "Range analysis",
+            "a ranges share link must activate the Range analysis tab",
+        );
+        assert.ok(
+            (await page.$eval(".ranges-result", (el) => el.textContent)).includes("div-by-zero"),
+            "an unguarded division over a zero-spanning range must be flagged",
+        );
+        await page.fill('.ranges-input[data-param="d"]', "2, 4");
+        await page.waitForTimeout(300);
+        const rangesText = await page.$eval(".ranges-result", (el) => el.textContent);
+        assert.ok(!rangesText.includes("div-by-zero"), "a nonzero denominator range must clear the warning");
+        assert.ok(rangesText.includes("[0.25, 1]"), `expected output range [0.25, 1], got: ${rangesText}`);
+
+        // --- Duplicates tab ------------------------------------------------
+        // The bundled sample must report the shared distance computation
+        // across the three renamed definitions, must not report the
+        // x * y vs x * x near-miss, and must show the empty state once
+        // the minimum size exceeds every shared subtree.
+        await page.evaluate(() => localStorage.clear());
+        await page.goto(`http://localhost:${PORT}/?tool=duplicates`);
+        await page.waitForSelector(".dup-card", { timeout: 15000 });
+        assert.strictEqual(
+            await page.$eval(".shell-nav-item--active", (el) => el.textContent),
+            "Duplicates",
+            "?tool=duplicates must activate the Duplicates tab",
+        );
+        assert.strictEqual(await page.$$eval(".dup-card", (e) => e.length), 1, "expected exactly one shared candidate in the sample");
+        const dupDefs = await page.$$eval(".dup-occurrence-def", (els) => els.map((e) => e.textContent));
+        assert.deepStrictEqual(dupDefs, ["bounce", "arrival", "energy"], `occurrences: ${dupDefs}`);
+        const dupText = await page.$eval(".dup-results", (el) => el.textContent);
+        assert.ok(dupText.includes("p0 ← px"), `expected an argument mapping, got: ${dupText}`);
+        assert.ok(!dupText.includes("product") && !dupText.includes("square"), "the x*y vs x*x near-miss must not be reported");
+        assert.ok(await page.$(".dup-katex .katex"), "expected a KaTeX rendering of the proposed macro");
+        await page.hover(".dup-card");
+        await page.waitForSelector(".cm-line.dup-line-highlight", { timeout: 5000 });
+        await page.fill(".dup-minsize-input", "30");
+        await page.waitForSelector(".dup-empty", { timeout: 5000 });
+        assert.ok(
+            (await page.$eval(".dup-empty", (el) => el.textContent)).includes("No shared subexpressions"),
+            "expected the empty state at a large minimum size",
+        );
+
         // --- LaTeX card: KaTeX preview and third-party links ---------------
         // Off by default, so enable it via its toggle chip. The links must
         // be plain anchors (never auto-loaded) with the expected prefixes,

@@ -26,9 +26,13 @@ that's achievable without disproportionate risk:
   to actually short-circuit, unlike `select()`'s arithmetic-emulation
   trick, which can't guard this at all).
 - **Python**: raises `ValueError`. Fixed with one-line `_ef_*` helper
-  functions (an `if`/`else` conditional inside each), emitted once per
-  file with `_exprforge_div` so the operand is evaluated once. An
-  earlier inline ternary repeated its operand at every call site.
+  functions (an `if`/`else` conditional inside each), emitted only when
+  used, so the operand is evaluated once. An earlier inline ternary
+  repeated its operand at every call site.
+- **Ruby**: `Math.sqrt`/`log`/`log2`/`log10`/`asin`/`acos` raise
+  `Math::DomainError`; `Float ** Float` with a negative base and
+  non-integer exponent returns a `Complex` (and `pow(-8, NaN)` does too).
+  Guarded in `_ef_*` helper methods emitted once per file.
 - **Perl**: the builtin `sqrt`/`log`/`log2` raise a fatal error;
   `asin`/`acos`/`pow` were already fine. Fixed with an inline ternary
   and a confirmed-safe NaN/Infinity synthesis idiom.

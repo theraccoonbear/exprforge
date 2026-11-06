@@ -24,6 +24,7 @@ const { execFileSync } = require("node:child_process");
 const { v, num, call, cmp, select, letIn, outputs, idx, add, sub, mul, div, neg } = require("../ast.js");
 const { PRIMITIVE_ARITY } = require("../primitives.js");
 const emitters = require("../emitters/registry.js");
+const { tmpDir } = require("./harness-util.js");
 
 const latex = emitters.latex;
 
@@ -472,7 +473,7 @@ function compileDocument(dir, name, source) {
 test('every sample compiles with pdflatex in wrap "document" mode', { skip: pdflatexSkip }, (t) => {
     const defs = sampleFnDefs();
     assert.ok(defs.length >= 15, `expected to find the samples, found ${defs.length}`);
-    const dir = fs.mkdtempSync(path.join(require("node:os").tmpdir(), "exprforge-latex-"));
+    const dir = tmpDir("exprforge-latex-");
     try {
         defs.forEach(([label, def], i) => {
             const source = latex.emitFunction(def, undefined, { wrap: "document" });

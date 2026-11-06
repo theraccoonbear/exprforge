@@ -139,8 +139,8 @@ const emitter = new Emitter({
         // REAL(..., 8) converts back to double, matching this project's
         // float64-only model everywhere else (same reasoning as Python's
         // float(math.floor(...))).
-        floor: ([x]) => `REAL(FLOOR(${x}), 8)`,
-        ceil: ([x]) => `REAL(CEILING(${x}), 8)`,
+        floor: ([x]) => `MERGE(AINT(${x}) - 1.0D0, AINT(${x}), (${x}) < AINT(${x}))`,
+        ceil: ([x]) => `MERGE(AINT(${x}) + 1.0D0, AINT(${x}), (${x}) > AINT(${x}))`,
         // No LOG2 intrinsic -- derive it.
         log2: ([x]) => `(LOG(${x}) / LOG(2.0D0))`,
         // The native SIGN(A, B) intrinsic ("magnitude of A, sign of B") is
@@ -150,7 +150,7 @@ const emitter = new Emitter({
         // zero-aware construction as every other emitter here that can't
         // trust its language's native sign function at exactly zero (see
         // Go's/Rust's sign() history in this project).
-        sign: ([x]) => `MERGE(1.0D0, MERGE(-1.0D0, 0.0D0, (${x}) < 0.0D0), (${x}) > 0.0D0)`,
+        sign: ([x]) => `MERGE(1.0D0, MERGE(-1.0D0, (${x}), (${x}) < 0.0D0), (${x}) > 0.0D0)`,
         // MODULO (not MOD -- that one follows the dividend's sign, like
         // C) is the Fortran standard's floor-mod intrinsic, result takes
         // the sign of the second argument -- the right one for this.

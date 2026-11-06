@@ -58,11 +58,10 @@ function checkReservedNames(names) {
 // might treat a literal 0/0 differently (this project doesn't rely on
 // that at all, for exactly this reason).
 //
-// Always emitted, unconditionally, regardless of whether this
-// particular function actually uses sqrt/log/pow/asin/acos -- same
-// "every helper always present" convention emitters/cobol.js's own
-// ef-cmp-* helpers already established for this project.
-const SAFE_MATH_HELPERS =
+// Only the helpers a function actually calls are emitted (see
+// Emitter.usedHelpers in base.js), each one a separate entry here.
+const SAFE_MATH_HELPERS = {
+    ef_safe_sqr:
     `FUNCTION ef_safe_sqr# (x AS DOUBLE)\n` +
     `    DIM ef_zero AS DOUBLE\n` +
     `    IF x < 0# THEN\n` +
@@ -71,7 +70,8 @@ const SAFE_MATH_HELPERS =
     `    ELSE\n` +
     `        ef_safe_sqr# = SQR(x)\n` +
     `    END IF\n` +
-    `END FUNCTION\n\n` +
+    `END FUNCTION\n`,
+    ef_safe_log:
     `FUNCTION ef_safe_log# (x AS DOUBLE)\n` +
     `    DIM ef_zero AS DOUBLE\n` +
     `    IF x < 0# THEN\n` +
@@ -83,7 +83,8 @@ const SAFE_MATH_HELPERS =
     `    ELSE\n` +
     `        ef_safe_log# = LOG(x)\n` +
     `    END IF\n` +
-    `END FUNCTION\n\n` +
+    `END FUNCTION\n`,
+    ef_safe_pow:
     `FUNCTION ef_safe_pow# (ef_base AS DOUBLE, ef_expo AS DOUBLE)\n` +
     `    DIM ef_zero AS DOUBLE\n` +
     `    IF ef_base < 0# AND ef_expo <> INT(ef_expo) THEN\n` +
@@ -92,7 +93,92 @@ const SAFE_MATH_HELPERS =
     `    ELSE\n` +
     `        ef_safe_pow# = ef_base ^ ef_expo\n` +
     `    END IF\n` +
-    `END FUNCTION\n\n` +
+    `END FUNCTION\n`,
+    ef_safe_floor:
+    `FUNCTION ef_safe_floor# (x AS DOUBLE)\n` +
+    `    IF x <> x THEN\n` +
+    `        ef_safe_floor# = x\n` +
+    `    ELSEIF ABS(x) >= 4503599627370496# THEN\n` +
+    `        ef_safe_floor# = x\n` +
+    `    ELSE\n` +
+    `        ef_safe_floor# = INT(x)\n` +
+    `    END IF\n` +
+    `END FUNCTION\n`,
+    ef_safe_trunc:
+    `FUNCTION ef_safe_trunc# (x AS DOUBLE)\n` +
+    `    IF x < 0# THEN\n` +
+    `        ef_safe_trunc# = -ef_safe_floor#(-x)\n` +
+    `    ELSE\n` +
+    `        ef_safe_trunc# = ef_safe_floor#(x)\n` +
+    `    END IF\n` +
+    `END FUNCTION\n`,
+    ef_safe_round:
+    `FUNCTION ef_safe_round# (x AS DOUBLE)\n` +
+    `    DIM ef_m AS DOUBLE, ef_f AS DOUBLE\n` +
+    `    IF x <> x THEN\n` +
+    `        ef_safe_round# = x\n` +
+    `    ELSEIF ABS(x) >= 4503599627370496# THEN\n` +
+    `        ef_safe_round# = x\n` +
+    `    ELSEIF x = 0# THEN\n` +
+    `        ef_safe_round# = x\n` +
+    `    ELSE\n` +
+    `        ef_m = ABS(x)\n` +
+    `        ef_f = INT(ef_m)\n` +
+    `        IF ef_m - ef_f >= 0.5# THEN ef_f = ef_f + 1#\n` +
+    `        IF ef_f = 0# THEN\n` +
+    `            ef_safe_round# = x * 0#\n` +
+    `        ELSEIF x < 0# THEN\n` +
+    `            ef_safe_round# = -ef_f\n` +
+    `        ELSE\n` +
+    `            ef_safe_round# = ef_f\n` +
+    `        END IF\n` +
+    `    END IF\n` +
+    `END FUNCTION\n`,
+    ef_safe_sgn:
+    `FUNCTION ef_safe_sgn# (x AS DOUBLE)\n` +
+    `    IF x <> x THEN\n` +
+    `        ef_safe_sgn# = x\n` +
+    `    ELSEIF x = 0# THEN\n` +
+    `        ef_safe_sgn# = x\n` +
+    `    ELSE\n` +
+    `        ef_safe_sgn# = SGN(x)\n` +
+    `    END IF\n` +
+    `END FUNCTION\n`,
+    ef_safe_exp:
+    `FUNCTION ef_safe_exp# (x AS DOUBLE)\n` +
+    `    DIM ef_zero AS DOUBLE\n` +
+    `    IF x <> x THEN\n` +
+    `        ef_safe_exp# = x\n` +
+    `    ELSEIF x > 709.782712893384# THEN\n` +
+    `        ef_zero = 0#\n` +
+    `        ef_safe_exp# = 1# / ef_zero\n` +
+    `    ELSE\n` +
+    `        ef_safe_exp# = EXP(x)\n` +
+    `    END IF\n` +
+    `END FUNCTION\n`,
+    ef_safe_hypot:
+    `FUNCTION ef_safe_hypot# (ef_a AS DOUBLE, ef_b AS DOUBLE)\n` +
+    `    DIM ef_zero AS DOUBLE, ef_hi AS DOUBLE, ef_lo AS DOUBLE, ef_s AS DOUBLE, ef_r AS DOUBLE\n` +
+    `    ef_zero = 0#\n` +
+    `    ef_hi = ABS(ef_a)\n` +
+    `    ef_lo = ABS(ef_b)\n` +
+    `    ef_s = ef_hi * ef_hi + ef_lo * ef_lo\n` +
+    `    IF ef_s < 1D300 AND ef_s > 1D-290 THEN\n` +
+    `        ef_safe_hypot# = SQR(ef_s)\n` +
+    `    ELSEIF ef_hi > 1.7976931348623157D308 OR ef_lo > 1.7976931348623157D308 THEN\n` +
+    `        ef_safe_hypot# = 1# / ef_zero\n` +
+    `    ELSEIF ef_hi <> ef_hi OR ef_lo <> ef_lo THEN\n` +
+    `        ef_safe_hypot# = ef_zero / ef_zero\n` +
+    `    ELSE\n` +
+    `        IF ef_hi < ef_lo THEN SWAP ef_hi, ef_lo\n` +
+    `        IF ef_hi = 0# THEN\n` +
+    `            ef_safe_hypot# = 0#\n` +
+    `        ELSE\n` +
+    `            ef_r = ef_lo / ef_hi\n` +
+    `            ef_safe_hypot# = ef_hi * SQR(1# + ef_r * ef_r)\n` +
+    `        END IF\n` +
+    `    END IF\n` +
+    `END FUNCTION\n`,
     // _MIN/_MAX don't crash, but confirmed directly to be NaN-IGNORING
     // in a POSITION-DEPENDENT way, not a clean "always ignore" rule:
     // _MIN(nan,5#) returns NaN (first operand wins) while _MIN(5#,nan)
@@ -106,6 +192,7 @@ const SAFE_MATH_HELPERS =
     // IF/THEN/ELSE *statement* genuinely short-circuits (see this
     // const's own header comment above) so there's no risk of _MIN/
     // _MAX itself ever running against a NaN it can't handle.
+    ef_safe_min:
     `FUNCTION ef_safe_min# (ef_a AS DOUBLE, ef_b AS DOUBLE)\n` +
     `    DIM ef_zero AS DOUBLE\n` +
     `    IF ef_a <> ef_a OR ef_b <> ef_b THEN\n` +
@@ -114,7 +201,8 @@ const SAFE_MATH_HELPERS =
     `    ELSE\n` +
     `        ef_safe_min# = _MIN(ef_a, ef_b)\n` +
     `    END IF\n` +
-    `END FUNCTION\n\n` +
+    `END FUNCTION\n`,
+    ef_safe_max:
     `FUNCTION ef_safe_max# (ef_a AS DOUBLE, ef_b AS DOUBLE)\n` +
     `    DIM ef_zero AS DOUBLE\n` +
     `    IF ef_a <> ef_a OR ef_b <> ef_b THEN\n` +
@@ -123,10 +211,21 @@ const SAFE_MATH_HELPERS =
     `    ELSE\n` +
     `        ef_safe_max# = _MAX(ef_a, ef_b)\n` +
     `    END IF\n` +
-    `END FUNCTION\n\n`;
+    `END FUNCTION\n`,
+};
+
+function helperBlock(used) {
+    return used.map((h) => h.source + "\n").join("");
+}
 
 const emitter = new Emitter({
     ext: "bas",
+    helpers: Object.fromEntries(
+        Object.entries(SAFE_MATH_HELPERS).map(([name, source]) => [
+            name,
+            { source, deps: name === "ef_safe_trunc" ? ["ef_safe_floor"] : [] },
+        ]),
+    ),
     // JS renders very small/large magnitudes in exponential notation
     // (String(1e-9) === "1e-9"), and QB64 doesn't accept that combined
     // with a # suffix ("Invalid expression", confirmed against a real
@@ -148,9 +247,9 @@ const emitter = new Emitter({
         cos: ([x]) => `COS(${x})`,
         tan: ([x]) => `TAN(${x})`,
         atan: ([x]) => `ATN(${x})`,
-        exp: ([x]) => `EXP(${x})`,
+        exp: ([x]) => `ef_safe_exp#(${x})`,
         log: ([x]) => `ef_safe_log#(${x})`,
-        sign: ([x]) => `SGN(${x})`,
+        sign: ([x]) => `ef_safe_sgn#(${x})`,
         min: ([a, b]) => `ef_safe_min#(${a}, ${b})`,
         max: ([a, b]) => `ef_safe_max#(${a}, ${b})`,
         // _ROUND ties to EVEN ("banker's rounding" -- confirmed against a
@@ -160,7 +259,7 @@ const emitter = new Emitter({
         // "round() at exact .5 boundaries" section. SGN/ABS/INT are the
         // same primitives this file's own sign:/abs:/floor: entries
         // already use.
-        round: ([x]) => `(SGN(${x}) * INT(ABS(${x}) + 0.5))`,
+        round: ([x]) => `ef_safe_round#(${x})`,
         pow: ([base, exp]) => `ef_safe_pow#(${base}, ${exp})`,
         asin: ([x]) => `ATN(${x} / ef_safe_sqr#(-(${x}) * (${x}) + 1#))`,
         acos: ([x]) => `(${HALF_PI} - ATN(${x} / ef_safe_sqr#(-(${x}) * (${x}) + 1#)))`,
@@ -170,10 +269,10 @@ const emitter = new Emitter({
         // the domain guard.
         log2: ([x]) => `(ef_safe_log#(${x}) / LOG(2#))`,
         log10: ([x]) => `(ef_safe_log#(${x}) / LOG(10#))`,
-        floor: ([x]) => `INT(${x})`,
-        ceil: ([x]) => `(-INT(-(${x})))`,
-        trunc: ([x]) => `(SGN(${x}) * INT(ABS(${x})))`,
-        hypot: ([a, b]) => `SQR((${a}) * (${a}) + (${b}) * (${b}))`,
+        floor: ([x]) => `ef_safe_floor#(${x})`,
+        ceil: ([x]) => `(-ef_safe_floor#(-(${x})))`,
+        trunc: ([x]) => `ef_safe_trunc#(${x})`,
+        hypot: ([a, b]) => `ef_safe_hypot#(${a}, ${b})`,
         // QB64's MOD operator truncates both operands to LONG first --
         // wrong for a general modulo, so this is built from INT (already
         // confirmed to mean floor(), see the floor: template above) as a
@@ -226,7 +325,6 @@ const emitter = new Emitter({
         // definitions N times -- QB64 rejects that as a duplicate
         // definition at compile time (confirmed directly). See
         // docs/multi-function-files.md.
-        const helpers = opts.includeHelpers === false ? "" : SAFE_MATH_HELPERS;
         // Array param: bare `()` -- QB64's dynamic-array-parameter syntax,
         // passed by reference, matching what spline_path.bi already does
         // by hand (`seaWps() As E3D_Coord`). Deliberately NOT reading
@@ -250,12 +348,13 @@ const emitter = new Emitter({
             .map(({ name, valueStr }) => `    Dim ${name} AS DOUBLE : ${name} = ${valueStr}`)
             .join("\n");
         const letsBlock = lets ? lets + "\n" : "";
-        return `' AUTO-GENERATED by ExprForge -- do not hand-edit.\n` +
-               helpers +
-               `FUNCTION ${fn.name}# (${params})\n` +
+        const code = `FUNCTION ${fn.name}# (${params})\n` +
                letsBlock +
                `    ${fn.name}# = ${body}\n` +
                `END FUNCTION\n`;
+        return `' AUTO-GENERATED by ExprForge -- do not hand-edit.\n` +
+               helperBlock(emitter.usedHelpers(code, opts)) +
+               code;
     },
     // Multiple named outputs from one call: QB64 has no struct/tuple return,
     // so this emits a SUB instead of a FUNCTION, with the outputs as
@@ -265,8 +364,6 @@ const emitter = new Emitter({
     formatSuite: (fn, outputStrs, letBindings = [], guardLines = [], opts = {}) => {
         const outputNames = Object.keys(outputStrs);
         checkReservedNames([fn.name, ...fn.params, ...outputNames, ...letBindings.map((b) => b.name)]);
-        // See formatFunction's own comment above -- same opts.includeHelpers.
-        const helpers = opts.includeHelpers === false ? "" : SAFE_MATH_HELPERS;
         const inParams = fn.params.map((p) => `${p}${fn.paramTypes?.[p] === "number[]" ? "()" : ""} AS DOUBLE`);
         const outParams = outputNames.map((n) => `${n} AS DOUBLE`);
         // NOT `Dim name# AS DOUBLE`: combining the # sigil with an AS
@@ -280,12 +377,13 @@ const emitter = new Emitter({
             .join("\n");
         const letsBlock = lets ? lets + "\n" : "";
         const assigns = outputNames.map((n) => `    ${n} = ${outputStrs[n]}`).join("\n");
-        return `' AUTO-GENERATED by ExprForge -- do not hand-edit.\n` +
-               helpers +
-               `SUB ${fn.name} (${[...inParams, ...outParams].join(", ")})\n` +
+        const code = `SUB ${fn.name} (${[...inParams, ...outParams].join(", ")})\n` +
                letsBlock +
                `${assigns}\n` +
                `END SUB\n`;
+        return `' AUTO-GENERATED by ExprForge -- do not hand-edit.\n` +
+               helperBlock(emitter.usedHelpers(code, opts)) +
+               code;
     },
 });
 

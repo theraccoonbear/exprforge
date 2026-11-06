@@ -5,6 +5,8 @@ const { expr } = require("./expr.js");
 const { fn } = require("./fn.js");
 const { evaluate } = require("./evaluate.js");
 const { differentiate } = require("./differentiate.js");
+const { analyzeRanges } = require("./analyze.js");
+const { findDuplicateSubexpressions } = require("./duplicates.js");
 const { loadMacro, loadExtern, expandMacros, createRegistry } = require("./macros.js");
 const { loadExpr, loadExprSource } = require("./load-expr.js");
 const emitters = require("./emitters/registry.js");
@@ -24,6 +26,7 @@ const { arraySuiteAst } = require("./samples/array-suite-demo.js");
 const { arrayMacroDemoAst } = require("./samples/array-macro-demo.js");
 const { mathEdgeCasesAst } = require("./samples/math-edge-cases-demo.js");
 const { divisionByZeroAst } = require("./samples/division-by-zero-demo.js");
+const { nonFiniteRoundingAst, roundingZeroSignAst } = require("./samples/non-finite-rounding-demo.js");
 const { differentiateDemoAst } = require("./samples/differentiate-demo.js");
 const { zeroParamDemoAst } = require("./samples/zero-param-demo.js");
 
@@ -135,6 +138,7 @@ function createSession() {
         loadExtern: (name, def) => loadExtern(name, def, registry),
         expandMacros: (fnOrNode, extraRegistry = null) => expandMacros(fnOrNode, extraRegistry, registry),
         evaluate: (fn, args) => evaluate(fn, args, registry),
+        analyzeRanges: (fnDef, ranges) => analyzeRanges(fnDef, ranges, registry),
         emit: (fnDef, lang, opts) => emit(fnDef, lang, registry, opts),
         emitMany: (fnDef, langs = Object.keys(emitters), opts) => emitMany(fnDef, langs, registry, opts),
         loadExpr: (path) => loadExpr(path, registry),
@@ -159,6 +163,14 @@ module.exports = {
     // Symbolic differentiation: differentiate(node, varName) returns an
     // AST node for the derivative. See differentiate.js.
     differentiate,
+    // Opt-in interval/range analysis: propagates declared input ranges
+    // through a function definition and flags divisions whose denominator
+    // can be zero. See analyze.js.
+    analyzeRanges,
+    // Advisory report of computations shared (up to variable renaming)
+    // across several definitions, with a proposed macro for each. Never
+    // rewrites anything. See duplicates.js.
+    findDuplicateSubexpressions,
     // Register a macro: a name usable inside fn`...`/expr`...` text
     // beyond the built-in primitives, inline-expanded at build time,
     // never emitted as a real call. See macros.js's own header comment.
@@ -224,6 +236,10 @@ module.exports = {
     // Coverage fixture for division by a runtime zero -- see
     // samples/division-by-zero-demo.js and docs/adr/0004-division-by-zero.md.
     divisionByZeroAst,
+    // Coverage fixture for floor/ceil/trunc/round of NaN and +-Infinity --
+    // see samples/non-finite-rounding-demo.js.
+    nonFiniteRoundingAst,
+    roundingZeroSignAst,
     // Coverage fixture for differentiate()'s own output compiled through
     // a real target -- see samples/differentiate-demo.js's own header
     // comment for the gap this closes.
@@ -249,6 +265,8 @@ module.exports = {
         arrayMacroDemo: arrayMacroDemoAst,
         mathEdgeCases: mathEdgeCasesAst,
         divisionByZero: divisionByZeroAst,
+        nonFiniteRounding: nonFiniteRoundingAst,
+        roundingZeroSign: roundingZeroSignAst,
         differentiateDemo: differentiateDemoAst,
         zeroParamDemo: zeroParamDemoAst,
     },

@@ -14,6 +14,7 @@ const os = require("node:os");
 const path = require("node:path");
 const { v, num, div, add, call } = require("../ast.js");
 const emitters = require("../emitters/registry.js");
+const { tmpDir } = require("./harness-util.js");
 
 function emitBody(lang, body, params = ["x", "y"]) {
     return emitters[lang].emitFunction({ name: "f", params, body });
@@ -33,6 +34,7 @@ const VARIABLE_DENOMINATOR = {
     lua: "(x / y)",
     julia: "(x / y)",
     r: "(x / y)",
+    ruby: "(x / y)",
     fortran: "(x / y)",
     zig: "(x / y)",
     qb64: "(x / y)",
@@ -144,7 +146,7 @@ test("python: two concatenated functions share one division helper", { skip: !ha
         emitters.python.emitFunction(fnB, undefined, { includeHelpers: false }) +
         "\nprint(fa(1.0, 0.0), fb(-1.0, 0.0), fa(1.0, 4.0))\n";
     assert.strictEqual(src.split("def _exprforge_div(").length - 1, 1);
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ef-div-py-"));
+    const dir = tmpDir("ef-div-py-");
     const file = path.join(dir, "main.py");
     fs.writeFileSync(file, src);
     const out = execFileSync("python3", [file]).toString().trim();
@@ -159,7 +161,7 @@ test("perl: two concatenated functions share one division helper", { skip: !hasT
         emitters.perl.emitFunction(fnB, undefined, { includeHelpers: false }) +
         "\nprint join(' ', fa(1.0, 0.0), fb(-1.0, 0.0), fa(1.0, 4.0)), \"\\n\";\n";
     assert.strictEqual(src.split("sub _exprforge_div {").length - 1, 1);
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ef-div-pl-"));
+    const dir = tmpDir("ef-div-pl-");
     const file = path.join(dir, "main.pl");
     fs.writeFileSync(file, src);
     const out = execFileSync("perl", ["-w", file]).toString().trim();
