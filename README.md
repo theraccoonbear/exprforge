@@ -432,7 +432,12 @@ number":
   harness), hang forever on an interactive "Continue?" prompt. A crash,
   not a wrong answer.
 - **Python**: `math.sqrt`/`log`/`log2`/`log10`/`asin`/`acos`/`pow` all
-  **raise `ValueError`**.
+  **raise `ValueError`**. Fixed with one-line `_ef_sqrt`/`_ef_log`/...
+  helper functions, emitted only when the generated code uses them (so
+  each operand is evaluated once, not repeated in an inline conditional).
+  `floor`/`ceil`/`trunc`/`round` (which raise on `Infinity`/`NaN`),
+  `min`/`max`, `sign` and `wrapIndex` use helpers too. The `_ef_` and
+  `_exprforge_` identifier prefixes are reserved.
 - **Ruby**: `Math.sqrt`/`log`/`log2`/`log10`/`asin`/`acos` **raise
   `Math::DomainError`**, and `Float ** Float` with a negative base and a
   non-integer exponent (or a NaN exponent) returns a **`Complex`**.
@@ -2000,8 +2005,9 @@ compiling/running against a real toolchain rather than assumed to work:
   suffixed `d` unconditionally to rule that out, not just the cases that
   would otherwise break.
 - **Python**: `math.floor`/`math.ceil`/`math.trunc`/`round` all return
-  `int`, not `float` — wrapped with `float(...)` to stay float64
-  throughout, matching every other target.
+  `int`, not `float` — the `_ef_floor`/`_ef_ceil`/`_ef_trunc` helpers
+  wrap with `float(...)` to stay float64 throughout, matching every
+  other target.
 - **Lua**: 5.3+ removed `math.pow` (use the `^` operator) and
   `math.atan2` (use two-argument `math.atan(y, x)`); there's no
   `math.round` or `math.trunc` or `math.sign` at any version (manual

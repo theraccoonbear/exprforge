@@ -99,7 +99,7 @@ for (const [lang, { plain, helperCall }] of Object.entries(GUARDED)) {
         const numerator = call("sin", v("p"));
         const denominator = call("cos", v("q"));
         const out = emitBody(lang, div(numerator, denominator), ["p", "q"]);
-        const body = out.split("\n").filter((l) => l.includes("return") && l.includes("sin")).join("\n");
+        const body = out.split("\n").filter((l) => !l.trimStart().startsWith("def ") && l.includes("return") && l.includes("sin")).join("\n");
         assert.strictEqual(body.split("sin").length - 1, 1, body);
         assert.strictEqual(body.split("cos").length - 1, 1, body);
     });
