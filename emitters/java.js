@@ -124,4 +124,27 @@ function capitalize(s) {
     return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
+// Per-target facts that registry-wide docs and tests read; field reference
+// in emitters/meta.js.
+emitter.meta = {
+    displayName: "Java",
+    kind: "executable",
+    testTarget: "Java",
+    ci: { workflow: "test-java.yml", badge: "Java" },
+    toolchain: {
+        probes: [{ candidates: ["javac"], args: ["-version"] }, { candidates: ["java"], args: ["-version"] }],
+        docs: {
+            minimum: "Java 8 (only `Math.*`)",
+            tested: "21 (Temurin)",
+            notes: "",
+        },
+    },
+    guards: null,
+    division: "(x / y)",
+    multiFile: "opt-out",
+    roundTies: "posInf",
+    selectShortCircuits: true,
+    minMaxNaN: "propagate",
+};
+
 module.exports = emitter;

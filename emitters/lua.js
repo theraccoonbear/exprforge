@@ -177,4 +177,28 @@ const emitter = new Emitter({
     },
 });
 
+// Per-target facts that registry-wide docs and tests read; field reference
+// in emitters/meta.js.
+emitter.meta = {
+    displayName: "Lua",
+    kind: "executable",
+    testTarget: "Lua",
+    ci: { workflow: "test-lua.yml", badge: "Lua" },
+    toolchain: {
+        probes: [{ candidates: ["lua", "lua5.4"], args: ["-v"] }],
+        docs: {
+            minimum: "5.3 (two-argument `math.atan`, no `math.pow`/`math.atan2`)",
+            tested: "5.3 and 5.4",
+            notes: "Not valid on 5.1/LuaJIT without compatibility.",
+        },
+    },
+    guards: "type(arr) ~= \"table\"",
+    division: "(x / y)",
+    cmp: { eq: "==", ne: "~=", forbidNe: "!=" },
+    multiFile: "safe",
+    roundTies: "posInf",
+    selectShortCircuits: true,
+    minMaxNaN: "positional",
+};
+
 module.exports = emitter;

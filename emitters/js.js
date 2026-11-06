@@ -97,4 +97,27 @@ const emitter = new Emitter({
     },
 });
 
+// Per-target facts that registry-wide docs and tests read; field reference
+// in emitters/meta.js.
+emitter.meta = {
+    displayName: "JavaScript",
+    kind: "executable",
+    testTarget: null,
+    ci: { workflow: "test-node.yml" },
+    toolchain: {
+        label: "Node (library + JS target)",
+        probes: null,
+        docs: {
+            minimum: "Node 22 (`engines`)",
+            tested: "22, 24, 26 (`test-node.yml`); 22 for all other workflows",
+            notes: "Every supported Node line is tested. Node 18 and 20 are end-of-life and no longer supported.",
+        },
+    },
+    guards: "Array.isArray(arr)",
+    division: "(x / y)",
+    roundTies: "posInf",
+    selectShortCircuits: true,
+    minMaxNaN: "propagate",
+};
+
 module.exports = emitter;

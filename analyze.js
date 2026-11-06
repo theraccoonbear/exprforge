@@ -39,9 +39,10 @@
 //   "div-guarded"   severity "warning". The denominator includes zero on its
 //                   own but an enclosing select() condition excludes it. Safe
 //                   where select() short-circuits, but select() is modeled as
-//                   evaluating both branches (see ast.js), and QB64, Fortran
-//                   and COBOL do exactly that, so the division still executes
-//                   there with a zero denominator. `guards` lists the `at`
+//                   evaluating both branches (see ast.js), and the targets
+//                   with meta.selectShortCircuits === false (QB64, Fortran,
+//                   COBOL and MATLAB/Octave) do exactly that, so the division
+//                   still executes there with a zero denominator. `guards` lists the `at`
 //                   path of each enclosing select() the exclusion depends on,
 //                   `guardConditions` their condition text.
 //   "div-unreachable"  severity "info". A division whose denominator includes
@@ -85,6 +86,9 @@ const { collectLets, checkUnboundVars } = require("./ast.js");
 const { expandMacros } = require("./macros.js");
 const { PRIMITIVE_ARITY } = require("./primitives.js");
 const exprSyntax = require("./emitters/exprsyntax.js");
+// The targets that evaluate both branches of a select() are read from the
+// emitter registry (meta.selectShortCircuits), not listed here.
+const { eagerSelectTargets } = require("./emitters/meta.js");
 
 const INF = Infinity;
 const TWO_PI = 2 * Math.PI;
@@ -514,7 +518,7 @@ function analyzeRanges(fnDef, ranges = {}, registry = undefined) {
             denominator,
             message: `${code(text)} is protected from a zero denominator only by the condition ${conds} ` +
                 `(${code(denomText)} can be 0 on its own, range ${fmtRange(denominator)}). ` +
-                `Targets that evaluate both branches of a select (QB64, Fortran, COBOL) still run the division.`,
+                `Targets that evaluate both branches of a select (${eagerSelectTargets()}) still run the division.`,
         });
         return result;
     }

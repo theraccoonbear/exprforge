@@ -195,4 +195,28 @@ const emitter = new PerlEmitter({
     },
 });
 
+// Per-target facts that registry-wide docs and tests read; field reference
+// in emitters/meta.js.
+emitter.meta = {
+    displayName: "Perl",
+    kind: "executable",
+    testTarget: "Perl",
+    ci: { workflow: "test-perl.yml", badge: "Perl" },
+    toolchain: {
+        probes: [{ candidates: ["perl"], args: ["-v"] }],
+        docs: {
+            minimum: "Perl 5 with core `POSIX`",
+            tested: "5.38 (Ubuntu 24.04)",
+            notes: "",
+        },
+    },
+    guards: "ref($arr) eq 'ARRAY'",
+    division: "_exprforge_div($x, $y)",
+    divisionGuard: { plain: "($x / 2)", helperCall: "_exprforge_div(" },
+    multiFile: "opt-out",
+    roundTies: "away",
+    selectShortCircuits: true,
+    minMaxNaN: "erratic",
+};
+
 module.exports = emitter;

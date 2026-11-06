@@ -92,7 +92,7 @@ not, which is why it keeps `forceMathImport`.
 
 ## Already correct — verified, not assumed
 
-C, Rust, Lua, Julia, R, Scheme, TypeScript, Fortran, and C#
+<!-- exprforge:list:multi-file-safe -->TypeScript, C, Rust, C#, Lua, Julia, R, Fortran, and Scheme<!-- /exprforge -->
 have no file-level declaration that repeats per function (multiple
 `def`/`function`/`fn`/`sub`/`class` in one file is each language's own
 normal, unremarkable structure). Verified directly against a real

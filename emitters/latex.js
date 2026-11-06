@@ -414,4 +414,27 @@ const emitter = new LatexEmitter({
     },
 });
 
+// Per-target facts that registry-wide docs and tests read; field reference
+// in emitters/meta.js.
+emitter.meta = {
+    displayName: "LaTeX",
+    kind: "typeset",
+    testTarget: null,
+    ci: { workflow: "test-latex.yml", badge: "LaTeX" },
+    toolchain: {
+        probes: null,
+        docs: {
+            minimum: "LaTeX2e with `amsmath` (`wrap: \"document\"` loads it; other wraps need it in the host document). KaTeX 0.16+ or MathJax for web rendering.",
+            tested: "KaTeX 0.16 strict parse; `pdflatex` from Ubuntu 24.04 `texlive-latex-base`",
+            notes: "Output is typeset math, never executed. `document` output compiles standalone; long one-line formulas can run past the margin (overfull boxes are reported, not failures).",
+        },
+    },
+    guards: null,
+    division: "\\frac{x}{y}",
+    cmp: { eq: "x = 5", ne: "x \\neq 5", forbidEq: "==", forbidNe: "!=", shared: { ">": "x > 5", "<": "x < 5", ">=": "x \\geq 5", "<=": "x \\leq 5" } },
+    roundTies: null,
+    selectShortCircuits: null,
+    minMaxNaN: null,
+};
+
 module.exports = emitter;

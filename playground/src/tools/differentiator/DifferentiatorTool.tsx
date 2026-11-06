@@ -8,7 +8,7 @@ import { ExprForge } from "../../lib/exprforge";
 import { DIFF_EXAMPLES } from "./examples";
 import { readStorageString, writeStorageString } from "../../lib/storage";
 import type { FnDef, Node } from "../../lib/exprforgeTypes";
-import { DIFFERENTIATOR_TOOL_ID } from "../ids";
+import { DIFFERENTIATOR_TOOL_ID } from "./id";
 
 const { fn, loadExprSource, differentiate, evaluate, emit } = ExprForge;
 

@@ -156,4 +156,27 @@ const emitter = new RubyEmitter({
     },
 });
 
+// Per-target facts that registry-wide docs and tests read; field reference
+// in emitters/meta.js.
+emitter.meta = {
+    displayName: "Ruby",
+    kind: "executable",
+    testTarget: "Ruby",
+    ci: { workflow: "test-ruby.yml", badge: "Ruby" },
+    toolchain: {
+        probes: [{ candidates: ["ruby"], args: ["-v"] }],
+        docs: {
+            minimum: "2.4 (`round(half: :up)`)",
+            tested: "3.3 (`ruby/setup-ruby`)",
+            notes: "",
+        },
+    },
+    guards: "arr.is_a?(Array)",
+    division: "(x / y)",
+    multiFile: "opt-out",
+    roundTies: "away",
+    selectShortCircuits: true,
+    minMaxNaN: "raises",
+};
+
 module.exports = emitter;

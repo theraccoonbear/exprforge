@@ -7,7 +7,7 @@ const TOOL_PARAM = "tool";
 // A shared link (?tool=<id>) should land on the tool it was copied
 // from, not always default to TOOLS[0] -- see each tool's own
 // copyLink(), which sets this same param (values sourced from
-// tools/ids.ts on both sides so they can't drift apart). Falls back to
+// each tool's id.ts on both sides so they can't drift apart). Falls back to
 // TOOLS[0]'s id for a bare visit (no ?tool= at all, including every
 // link copied before this existed) or an id that doesn't match any
 // registered tool.

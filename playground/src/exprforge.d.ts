@@ -57,6 +57,9 @@ declare module "exprforge" {
     export interface Emitter {
         ext: string;
         emitFunction(def: FnDef): string;
+        // Per-target facts declared next to each emitter (see the root
+        // package's emitters/meta.js); the playground reads displayName.
+        meta?: { displayName: string; kind: string };
     }
 
     // fn(strings, ...values) is a tagged-template function; called

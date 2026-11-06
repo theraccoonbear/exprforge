@@ -13,16 +13,14 @@ misused *inside* a function body (see #33/#34's static-analysis work), but
 it can't do anything about what a **caller** actually passes in at the call
 boundary once code is emitted.
 
-For every statically-typed target (C, Java, C#, Rust, Go, Fortran, Zig,
-QB64, COBOL), that boundary is already enforced for free by the target's
+For every statically-typed target (<!-- exprforge:list:no-type-guards -->QB64, C, Java, Go, Rust, C#, Fortran, Zig, and COBOL<!-- /exprforge -->), that boundary is already enforced for free by the target's
 own compiler — passing a scalar where `double[]`/`&[f64]`/`real(8),
 dimension(0:*)` etc. is declared simply fails to compile. `evaluate()`,
 ExprForge's own native interpreter, also already guards this itself (a
 real `Array.isArray()` check, thrown clearly, tested).
 
-But plain **emitted** source for the dynamically-typed targets — JS,
-TypeScript (only at the type-check layer, erased at runtime), Python, PHP,
-Lua, Perl, Ruby, Scheme, Julia, R — shipped with no guard at all. A caller passing
+But plain **emitted** source for the dynamically-typed targets — <!-- exprforge:list:type-guards -->JavaScript, TypeScript, Python, Lua, Perl, Ruby, PHP, Julia, R, Scheme, and MATLAB/Octave<!-- /exprforge -->
+(TypeScript only at the type-check layer, erased at runtime) — shipped with no guard at all. A caller passing
 a plain number where `arr: number[]` was declared would either hit an
 unrelated, confusing error several layers down (indexing a number), or in
 some cases silently produce a wrong result via coercion.
@@ -80,13 +78,13 @@ array-typed parameter at all.
 ## Implementation
 
 `emitters/base.js`'s `Emitter` constructor reads an optional
-`config.typeGuard: (paramName, fnName) => string` — present only on the 9
+`config.typeGuard: (paramName, fnName) => string` — present only on the <!-- exprforge:count:type-guards -->11<!-- /exprforge -->
 dynamic-language emitters. `emitFunction(fn, registry, opts)` computes
 `guardLines` (one string per array-typed parameter, empty array
 otherwise) and passes it as a 4th argument to `formatFunctionImpl`/
 `formatSuiteImpl`. Every emitter's `formatFunction`/`formatSuite`
-accepts (and, for the 9 that need it, splices in) `guardLines = []` —
-harmless as an unused trailing argument for the ~10 targets that never
+accepts (and, for the ones that need it, splices in) `guardLines = []` —
+harmless as an unused trailing argument for the targets that never
 receive a non-empty array.
 
 Every guard template is written to stay exactly ONE physical line
@@ -100,7 +98,7 @@ only when `guardLines` is non-empty (byte-for-byte unchanged otherwise).
 
 ## Verification
 
-Every one of the 9 targets confirmed directly against a real interpreter
+Every guarded target confirmed directly against a real interpreter
 (not just written and assumed correct): a wrong-type call throws the
 expected message, a correctly-typed call still returns the right result.
 See `test/runtime-type-guards.test.js`.
@@ -141,7 +139,7 @@ BOTH `arrayLengths` declares the pairing for that parameter AND the
 named length parameter is a real parameter of the function; a
 typo'd/stale entry is silently a no-op, same "never a surprise" spirit
 as `addTypeGuards` itself, rather than throwing over what's still just
-documentation. Same 10-target availability as `typeGuard`, using each
+documentation. Same target availability as `typeGuard`, using each
 target's own length-of-array idiom, checked AFTER the type guard (so
 it's always safe to call): `.length` (JS/TS), `len()` (Python),
 `count()` (PHP), `#` (Lua), `scalar(@$arr)` (Perl — dereferencing the
@@ -154,7 +152,7 @@ portable, general way to query an array's real runtime length at all
 (a raw C pointer, a fixed Fortran `dimension`, a QB64 dynamic array
 whose `LBOUND`/`UBOUND` reliability at this call boundary this project
 already couldn't confirm — see `docs/array-index-primitives.md`), so
-this stays limited to the same 9 dynamic targets `addTypeGuards`
+this stays limited to the same dynamic targets `addTypeGuards`
 already covers. It closes the specific, common failure mode (an
 author-declared bound genuinely drifting out of sync with the array
 actually passed) at zero cost when not used, not the general case.

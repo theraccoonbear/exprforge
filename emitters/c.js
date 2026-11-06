@@ -123,4 +123,27 @@ function capitalize(s) {
     return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
+// Per-target facts that registry-wide docs and tests read; field reference
+// in emitters/meta.js.
+emitter.meta = {
+    displayName: "C",
+    kind: "executable",
+    testTarget: "C",
+    ci: { workflow: "test-c.yml", badge: "C" },
+    toolchain: {
+        probes: [{ candidates: ["gcc"], args: ["--version"] }],
+        docs: {
+            minimum: "C99",
+            tested: "gcc from Ubuntu 24.04 (13.x), default `-std`",
+            notes: "Needs `fmin`/`fmax`/`isnan`/`log2`/`hypot`/`trunc`/`round` from C99 `math.h` and compound literals; link with `-lm`.",
+        },
+    },
+    guards: null,
+    division: "(x / y)",
+    multiFile: "safe",
+    roundTies: "away",
+    selectShortCircuits: true,
+    minMaxNaN: "ignore",
+};
+
 module.exports = emitter;

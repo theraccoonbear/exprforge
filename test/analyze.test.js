@@ -545,5 +545,7 @@ test("messages: guarded division names the guard and the eager targets", () => {
     assert.equal(r.findings[0].kind, "div-guarded");
     assert.deepEqual(r.findings[0].guardConditions, ["x > 10"]);
     assert.match(r.findings[0].message, /^`1 \/ x` is protected from a zero denominator only by the condition `x > 10`/);
-    assert.match(r.findings[0].message, /QB64, Fortran, COBOL/);
+    const eager = require("../emitters/meta.js").eagerSelectTargets();
+    assert.match(eager, /QB64/);
+    assert.ok(r.findings[0].message.includes(`(${eager})`), r.findings[0].message);
 });

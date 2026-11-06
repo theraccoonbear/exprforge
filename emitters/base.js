@@ -284,7 +284,7 @@ class Emitter {
     // the output by formatFunctionImpl/formatSuiteImpl (both receive it
     // as a 4th argument, `guardLines: string[]`, defaulting to `[]` for
     // every target that doesn't consume it -- an extra unused argument
-    // is harmless in JS, so the ~10 compiled-language emitters (which
+    // is harmless in JS, so the compiled-language emitters (which
     // never declare `typeGuard` and so never receive a non-empty array
     // here) don't need any change at all to stay correct). No effect
     // whatsoever for a target with no `typeGuard` template (every

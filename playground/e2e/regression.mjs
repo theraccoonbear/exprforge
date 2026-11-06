@@ -34,9 +34,13 @@ import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { createRequire } from "node:module";
+import { readdirSync, existsSync } from "node:fs";
 import { chromium } from "playwright";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const requireCjs = createRequire(import.meta.url);
+const registry = requireCjs("../../emitters/registry.js");
 const DIST = path.join(__dirname, "..", "dist");
 const PORT = 4310;
 
@@ -106,6 +110,26 @@ async function main() {
             null,
             "stale/incompatible localStorage content must fall back to the default example, not surface a raw parse error",
         );
+
+        // --- Discovery: every registered target and tool is surfaced ------
+        // Languages and tools are discovered (import.meta.glob), not listed,
+        // so the only way one goes missing is the discovery itself breaking.
+        await page.evaluate(() => localStorage.clear());
+        await page.reload();
+        await page.waitForSelector(".playground-toggles .toggle-chip", { timeout: 15000 });
+        const chipLabels = await page.$$eval(".playground-toggles .toggle-chip", (els) => els.map((e) => e.textContent));
+        const expectedLabels = Object.values(registry).map((e) => e.meta.displayName);
+        assert.deepStrictEqual(
+            [...chipLabels].sort(),
+            [...expectedLabels].sort(),
+            "the playground must offer exactly one toggle per registered emitter",
+        );
+        const toolsDir = path.join(__dirname, "..", "src", "tools");
+        const toolDirs = readdirSync(toolsDir, { withFileTypes: true }).filter(
+            (d) => d.isDirectory() && existsSync(path.join(toolsDir, d.name, "index.ts")),
+        );
+        const navCount = await page.$$eval(".shell-nav .shell-nav-item", (els) => els.length);
+        assert.strictEqual(navCount, toolDirs.length, "the tab bar must show one tab per tools/<name>/index.ts");
 
         // --- Every bundled example must load with zero errors -----------
         // Not just the one that broke -- any future grammar change could
