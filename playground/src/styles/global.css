@@ -926,3 +926,11 @@ pre,
     color: var(--text-dim);
     cursor: not-allowed;
 }
+
+.playground-whole-file {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.85rem;
+    color: var(--muted, inherit);
+}
