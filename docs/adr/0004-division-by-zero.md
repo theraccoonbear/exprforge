@@ -45,10 +45,9 @@ Per target:
   emitted through the new `emitDiv` hook in `emitters/base.js`. When the
   denominator is a nonzero numeric literal the plain `/` is kept, since
   it can never be zero.
-- The helper follows the `includeHelpers` mechanism
-  (`docs/multi-function-files.md`): emitted by default, omitted with
-  `{ includeHelpers: false }` on every call after the first of a
-  concatenated file (Perl warns on a redefined sub under `use warnings`).
+- The helper is a support helper in the sense of `docs/multi-function-files.md`:
+  a standalone function that divides carries it, and `emitFile` defines it
+  once per file (Perl warns on a redefined sub under `use warnings`).
 - **QB64, Scheme, and all other targets:** verified with real
   toolchains (see Evidence) to already return IEEE results, including
   the sign for a `-0` denominator. No change; ordinary division is
@@ -96,5 +95,5 @@ tracked, unfixed divergence.
   `skipTargets: ["COBOL"]`) — compiled/executed on every available
   toolchain.
 - `test/division.test.js` — static per-emitter checks of each target's
-  division form, single evaluation of operands, `includeHelpers`, and a
+  division form, single evaluation of operands, and a
   real concatenated-file run for Python and Perl.
