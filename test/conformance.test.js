@@ -54,6 +54,7 @@ const {
     mathEdgeCasesAst,
     divisionByZeroAst,
     nonFiniteRoundingAst,
+    roundingZeroSignAst,
     differentiateDemoAst,
     zeroParamDemoAst,
     cyclicElemAst,
@@ -2307,28 +2308,42 @@ registerSuiteConformance("divisionByZero", {
     skipTargets: ["COBOL"],
 });
 
-// Proves floor/ceil/trunc/round return NaN and +-Infinity unchanged on
-// every target (see samples/non-finite-rounding-demo.js). The non-finite
-// values are built inside the expression from a runtime zero.
+// Proves floor/ceil/trunc/round agree with the interpreter on every target
+// for NaN, +-Infinity (built inside the expression from a runtime zero),
+// halves, +-0 and finite values beyond the integer range (see
+// samples/non-finite-rounding-demo.js).
 registerSuiteConformance("nonFiniteRounding", {
     ast: nonFiniteRoundingAst,
     inputs: [
         [2.5, 0],
         [-2.5, 0],
+        [0.5, 0],
+        [-0.5, 0],
+        [1.5, 0],
+        [-1.5, 0],
+        [-0.4, 0],
+        [0.4, 0],
+        [0, 0],
+        [1e300, 0],
+        [-1e300, 0],
+        [3e9, 0],
     ],
     // GnuCOBOL's COMPUTE is decimal arithmetic with no Infinity or NaN;
     // same documented exception as divisionByZero above.
     skipTargets: ["COBOL"],
-    // Real divergences found by this sample on targets other than Ruby,
-    // recorded rather than fixed here. Each is the emitted target's result
-    // for the NaN / +Infinity / -Infinity inputs against the interpreter's
-    // unchanged pass-through.
-    todoTargets: {
-        Java: "truncate of NaN/+-Infinity: trunc gives NaN->0, +Inf->9.223372036854776E18, -Inf->-9.223372036854776E18 (long cast), expected NaN/Infinity/-Infinity",
-        Python: "math.floor/ceil/trunc raise ValueError for NaN and OverflowError for +-Infinity instead of returning them unchanged",
-        "C#": "round is emitted as Math.Sign(x) * Math.Floor(Math.Abs(x) + 0.5) and Math.Sign throws ArithmeticException for NaN instead of passing it through; round's formula is being rewritten on every target in the boundary-conformance work (PR #53), and the integer-cast rounding fixes are tracked in fix/nonfinite-rounding",
-        Fortran: "floor/ceil of NaN/+-Infinity go through an integer conversion (NaN->2147483647, +Inf->-2147483648, -Inf->2147483647 for floor; NaN/+Inf->-2147483647, -Inf->-2147483648 for ceil), expected NaN/Infinity/-Infinity",
-    },
+});
+
+// Sign of zero through the same four operations, observed as 1/op(v).
+registerSuiteConformance("roundingZeroSign", {
+    ast: roundingZeroSignAst,
+    inputs: [
+        [-0.4, 0],
+        [0.4, 0],
+        [0, 0],
+        [-2.5, 0],
+        [2.5, 0],
+    ],
+    skipTargets: ["COBOL"],
 });
 
 // --- samples/math-demo.js -------------------------------------------------
