@@ -58,15 +58,14 @@ test("C: extern use includes <math.h>; no extern and no math name, no include", 
     assert.ok(!without.includes("#include <math.h>"));
 });
 
-test("C multi-function file: extern in a later function brings <math.h> once", { skip }, () => {
+test("C whole file: extern in a later function brings <math.h> once, at the top", { skip }, () => {
     const s = session();
     const plain = { name: "p", params: ["x"], body: add(v("x"), num(1)) };
     const ext = { name: "q", params: ["x"], body: call("bessel0", v("x")) };
     const ext2 = { name: "r", params: ["x"], body: add(call("bessel0", v("x")), num(2)) };
-    const emittedHelpers = new Set();
-    const src = [plain, ext, ext2].map((f) => s.emit(f, "c", { emittedHelpers }).source).join("\n");
+    const src = s.emitFile([plain, ext, ext2], "c").source;
     assert.strictEqual(src.split("#include <math.h>").length - 1, 1);
-    assert.ok(src.indexOf("#include <math.h>") > src.indexOf("double p("));
+    assert.ok(src.indexOf("#include <math.h>") < src.indexOf("double p("));
     const dir = tmpDir("ef-extern-c-multi-");
     const out = build(dir, src, `printf("%.12f %.12f %.12f\\n", p(1.0), q(0.0), r(0.0));`);
     assert.deepStrictEqual(out.split(" ").map(Number), [2, 1, 3]);

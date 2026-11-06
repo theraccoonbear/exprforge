@@ -143,15 +143,10 @@ test("ruby: helpers come out in a fixed order, only those used, in suites too", 
     assert.deepStrictEqual(defsIn(emitters.ruby.emitFunction(suite)), ["_ef_log"]);
 });
 
-test("ruby: includeHelpers: false emits none; a shared emittedHelpers Set defines each once", () => {
+test("ruby: a whole file defines each used helper once", () => {
     const f1 = { name: "f1", params: ["x"], body: call("sqrt", v("x")) };
     const f2 = { name: "f2", params: ["x"], body: add(call("sqrt", v("x")), call("log", v("x"))) };
-    const without = emitters.ruby.emitFunction(f1, undefined, { includeHelpers: false });
-    assert.deepStrictEqual(defsIn(without), []);
-    assert.ok(without.includes("_ef_sqrt(x)"), without);
-    const emittedHelpers = new Set();
-    const out = emitters.ruby.emitFunction(f1, undefined, { emittedHelpers }) +
-        emitters.ruby.emitFunction(f2, undefined, { emittedHelpers });
+    const out = emitters.ruby.emitFile([f1, f2]);
     assert.deepStrictEqual(defsIn(out), ["_ef_sqrt", "_ef_log"]);
 });
 
