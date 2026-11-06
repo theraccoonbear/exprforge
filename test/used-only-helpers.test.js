@@ -338,10 +338,10 @@ test("c: a let binding or a suite output that calls math.h brings it in", () => 
 
 test("zig: std.math calls bring in std; compiler builtins and plain arithmetic do not", () => {
     const STD = 'const std = @import("std");';
-    for (const name of ["sqrt", "sin", "sign"]) assert.deepStrictEqual(importsIn("zig", unary(name)).lines, [STD], name);
+    for (const name of ["sqrt", "sin"]) assert.deepStrictEqual(importsIn("zig", unary(name)).lines, [STD], name);
     assert.deepStrictEqual(importsIn("zig", binary("min")).lines, [STD]);
     assert.deepStrictEqual(importsIn("zig", binary("pow")).lines, [STD]);
-    for (const name of ["floor", "abs", "exp", "round"]) assert.deepStrictEqual(importsIn("zig", unary(name)).lines, [], name);
+    for (const name of ["floor", "abs", "exp", "round", "sign"]) assert.deepStrictEqual(importsIn("zig", unary(name)).lines, [], name);
     assert.deepStrictEqual(importsIn("zig", binary("wrapIndex")).lines, []);
 });
 

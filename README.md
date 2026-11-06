@@ -384,7 +384,7 @@ rounding function directly:
 | **Scheme/Guile** (`round`) | ties to even | same pattern as Python |
 | **QB64** (`_ROUND`) | ties to even | same pattern as Python (confirmed against a real compile) |
 | **C#** (`Math.Round(double)`) | ties to even (default) | same pattern as Python |
-| **R** (`round()`) | ties to even (IEC 60559) | same pattern as Python; emitted as `sign(x) * floor(abs(x) + 0.5)` |
+| **R** (`round()`) | ties to even (IEC 60559) | same pattern as Python; emitted with the exact floor-plus-fraction form |
 
 The other 11 programming-language targets (C, Rust, Go, Perl, Ruby, Zig, Fortran, COBOL, Julia, PHP, MATLAB/Octave)
 already tie away from zero natively, so ExprForge's `round()` matches
@@ -400,9 +400,11 @@ targets), and because this project's own Julia emitter had already,
 independently, made a deliberate choice to match it
 (`RoundNearestTiesAway`, not Julia's own ties-to-even default) before
 this change existed at all — real precedent, not an arbitrary pick.
-Built from `floor`/`sign`/`abs` (which already agreed everywhere) via
-`sign(x) * floor(abs(x) + 0.5)`, the same formula `emitters/cobol.js`'s
-own hand-written `round` template already used. See
+Built from `floor`/`sign`/`abs` (which already agreed everywhere):
+`floor(|x|)` plus one when `|x| - floor(|x|) >= 0.5`, with the sign of `x`
+reapplied. That form is exact for every finite double, unlike
+`floor(|x| + 0.5)`, which is off by one at `0.49999999999999994` and
+above 2^52 (see ADR 0001's addendum). See
 `samples/round-tie-demo.js`'s own header comment for the full,
 directly-verified breakdown of what each of the 8 changed targets used
 to do, and `test/conformance.test.js`'s `roundTieBoundary` entry for the
@@ -546,6 +548,60 @@ are tracked as a running decision log in
 [`docs/adr/`](docs/adr/README.md) — worth checking there directly if
 you're debugging something that looks like a cross-target behavior
 mismatch.
+
+## Numeric guarantees
+
+The reference is the native evaluator (`evaluate`, JS semantics). Every
+emitted target is compared against it with real compilers/interpreters,
+using a ULP-based comparison (no absolute floor) and 17-significant-digit
+output. The decision log is in [`docs/adr/`](docs/adr/README.md); the
+boundary audit is
+[`0005`](docs/adr/0005-boundary-conditions.md).
+
+**Unified on every target (with the one set of exceptions below):**
+
+- `round()` ties away from zero; out-of-domain `sqrt`/`log*`/`asin`/
+  `acos`/`pow` give NaN or Infinity; `min`/`max` propagate NaN (0001-0003).
+- `floor`/`ceil`/`trunc`/`round` of NaN, ±Infinity and huge values
+  (including above 2^63 and 2^53) return the argument or the exact
+  integer, never raise or saturate.
+- `sign(NaN)` is NaN and `sign(-0)` is `-0`, as `Math.sign` (GnuCOBOL has
+  neither).
+- `floor`/`ceil`/`trunc`/`round` keep the sign of a zero result
+  (`ceil(-0.4)` and `round(-0.4)` are `-0`; GnuCOBOL excepted).
+- `pow(1, y)` is 1 for every `y` including NaN, and `pow(-1, ±Infinity)`
+  is 1 (IEEE 754, C99 Annex F).
+- `hypot` does not overflow or underflow early, and handles ±Infinity
+  and NaN (`hypot(Infinity, NaN)` is Infinity).
+- `exp` overflows to Infinity; `pow` handles ±0, infinite operands and
+  overflow without raising.
+- `atan2(±0, ±0)` and infinite operands agree.
+- `wrapIndex(i, m)` is `((i % m) + m) % m` with a truncating `%`:
+  `m = 0` is NaN, negative `m` and fractional operands follow the same
+  formula.
+- Overflow to ±Infinity and subnormal results follow IEEE 754.
+
+**Documented exceptions** (each is tested and listed with its reason in
+ADR 0005):
+
+| Target | Exception |
+|---|---|
+| **GnuCOBOL** | No NaN/Infinity representation: domain errors and `min`/`max` NaN return 0 (0002, 0003), `pow(0, negative)` and `wrapIndex(i, 0)` return 0, results of `-0` (`sign(-0)`, `ceil(-0.4)`, ...) are `+0`, `pow` with an enormous integer exponent aborts at runtime, numeric literals over 38 digits are rejected at generation time, and arguments given as NaN, Infinity, `-0` or exponent notation cannot be passed through `NUMVAL`. `cos` near zero can differ by about 1e-16 absolute. |
+| **Fortran** | An out-of-domain expression made only of literal constants fails to compile (0002). |
+| **QB64** | About 15-16 significant digits through `PRINT`/`VAL`; values near the double limits do not round-trip. |
+| **Perl** | `pow(-0, odd/negative integer)` returns `+0`/`+Infinity`. |
+| **Zig** | `pow(-2, 1e300)` is NaN, not Infinity. |
+| **Go** | `exp(709.5)` is `+Infinity` on the tested amd64 toolchain. |
+
+**Not guaranteed:** the sign of a zero result from `wrapIndex` landing on
+zero; `wrapIndex` with non-finite
+operands is unspecified; in Lua, arguments must be floats (an integer
+argument makes `%` by zero an error and lets `*` wrap).
+
+**What ExprForge does not do:** it never clamps, validates or
+sanitizes inputs. A NaN, Infinity, `-0` or enormous argument reaches the
+formula as given. Clamping happens only where the formula itself says so:
+`clampIndex`, and `clamp`/`safeDiv` in `exprforge/math`.
 
 ## Symbolic differentiation (`differentiate`)
 
@@ -948,7 +1004,7 @@ How each cross-target behavior is handled:
 | Domain errors | `sqrt`/`log`/`log2`/`log10`/`asin`/`acos`/`pow` call `ef_*` helper functions with a real `if` guard, returning `NaN` (or `-Inf` for `log*(0)`) instead of a complex number |
 | `min`/`max` | `ef_min`/`ef_max` return `NaN` if either operand is NaN; the native functions ignore NaN |
 | Division | native IEEE (`1/0` is `Inf`, `0/0` is `NaN`) |
-| `wrapIndex` | native `mod` (floor-mod). Exception: `mod(i, 0)` is `i`, where the interpreter yields NaN |
+| `wrapIndex` | `rem(rem(i, m) + m, m)` (truncated remainder, identical to the interpreter; `m = 0` is NaN) |
 | `clampIndex` | `ef_max(lo, ef_min(hi, i))`, so NaN propagates like `evaluate()` |
 | Comparisons | all six; `!=` is `~=` (MATLAB has no `!=`) |
 | `select` | `ef_select(cond, then, else)`, a helper with a real `if` |

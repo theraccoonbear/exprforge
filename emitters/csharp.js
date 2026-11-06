@@ -44,7 +44,7 @@ const emitter = new Emitter({
         ceil: fn1("Ceiling"), trunc: fn1("Truncate"),
         pow: fn2("Pow"), atan2: fn2("Atan2"), min: fn2("Min"), max: fn2("Max"),
         // Math.Sign returns int, not double -- our AST is float64-only throughout.
-        sign: ([x]) => `((double) ${MATH}.Sign(${x}))`,
+        sign: ([x]) => `(${x} > 0.0 ? 1.0 : (${x} < 0.0 ? -1.0 : ${x}))`,
         // .NET's Math.Round(double) ties to EVEN ("banker's rounding") by
         // default, NOT this project's standardized round-half-AWAY-from-
         // zero convention -- see js.js's own comment and the root
@@ -53,9 +53,9 @@ const emitter = new Emitter({
         // multiplication -- no explicit cast needed the way the sign:
         // entry above needs one on its own (there, the WHOLE expression
         // needs to already read as a double, since nothing else in it is).
-        round: ([x]) => `(${MATH}.Sign(${x}) * ${MATH}.Floor(${MATH}.Abs(${x}) + 0.5))`,
-        // No Math.Hypot in .NET -- same manual formula as QB64's/C's.
-        hypot: ([a, b]) => `${MATH}.Sqrt((${a}) * (${a}) + (${b}) * (${b}))`,
+        round: ([x]) => `${MATH}.Round(${x}, global::System.MidpointRounding.AwayFromZero)`,
+        // double.Hypot (.NET 7+) avoids the overflow/underflow of sqrt(a*a + b*b).
+        hypot: ([a, b]) => `double.Hypot(${a}, ${b})`,
         wrapIndex: ([i, m]) => `(((${i} % ${m}) + ${m}) % ${m})`,
         // max(lo, min(hi, i)), same form as evaluate() and the other
         // targets. Math.Clamp (.NET Core 2.0+) is avoided: it throws when

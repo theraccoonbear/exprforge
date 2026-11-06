@@ -13,6 +13,32 @@ function capitalize(s) {
     return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
+const POW_HELPER =
+    `def _ef_pow(b, e):\n` +
+    `    try:\n` +
+    `        return math.pow(b, e)\n` +
+    `    except OverflowError:\n` +
+    `        return -math.inf if (b < 0 and e == math.floor(e) and e % 2 == 1) else math.inf\n` +
+    `    except ValueError:\n` +
+    `        if b == 0:\n` +
+    `            return -math.inf if (math.copysign(1.0, b) < 0 and e == math.floor(e) and e % 2 == 1) else math.inf\n` +
+    `        return math.nan\n`;
+
+const ROUND_HELPER =
+    `def _ef_round(a):\n` +
+    `    if not math.isfinite(a):\n` +
+    `        return a\n` +
+    `    m = abs(a)\n` +
+    `    f = float(math.floor(m))\n` +
+    `    return math.copysign(f + (1.0 if m - f >= 0.5 else 0.0), a)\n`;
+
+const EXP_HELPER =
+    `def _ef_exp(x):\n` +
+    `    try:\n` +
+    `        return math.exp(x)\n` +
+    `    except OverflowError:\n` +
+    `        return math.inf\n`;
+
 // Python's "/" raises ZeroDivisionError for a zero denominator, unlike the
 // IEEE 754 +-Infinity/NaN every other target's "/" produces. A helper
 // function (rather than an inline conditional) keeps each operand
@@ -43,6 +69,9 @@ const emitter = new Emitter({
     },
     helpers: {
         _exprforge_div: { source: DIV_HELPER, deps: [] },
+        _ef_pow: { source: POW_HELPER, deps: [] },
+        _ef_exp: { source: EXP_HELPER, deps: [] },
+        _ef_round: { source: ROUND_HELPER, deps: [] },
     },
     emitDiv: (l, r) => `_exprforge_div(${l}, ${r})`,
     // Python accepts JS-style numeric literal syntax directly, including
@@ -72,9 +101,8 @@ const emitter = new Emitter({
         log: ([x]) => `(math.log(${x}) if ${x} > 0 else (float('-inf') if ${x} == 0 else float('nan')))`,
         log2: ([x]) => `(math.log2(${x}) if ${x} > 0 else (float('-inf') if ${x} == 0 else float('nan')))`,
         log10: ([x]) => `(math.log10(${x}) if ${x} > 0 else (float('-inf') if ${x} == 0 else float('nan')))`,
-        exp: fn1("exp"),
-        pow: ([base, exp]) =>
-            `(math.pow(${base}, ${exp}) if not (${base} < 0 and ${exp} != int(${exp})) else float('nan'))`,
+        exp: ([x]) => `_ef_exp(${x})`,
+        pow: ([base, exp]) => `_ef_pow(${base}, ${exp})`,
         // NOT bare min()/max(): Python's builtins are comparison-based,
         // and a comparison against NaN is always False -- so whichever
         // argument comes FIRST silently wins whenever either is NaN,
@@ -89,9 +117,9 @@ const emitter = new Emitter({
         // math.floor/ceil/trunc and builtin round() all return int in
         // Python 3, not float -- wrap to stay float64 throughout, matching
         // every other target here, rather than silently switching types.
-        floor: ([x]) => `float(math.floor(${x}))`,
-        ceil: ([x]) => `float(math.ceil(${x}))`,
-        trunc: ([x]) => `float(math.trunc(${x}))`,
+        floor: ([x]) => `(math.copysign(float(math.floor(${x})), ${x}) if math.isfinite(${x}) else ${x})`,
+        ceil: ([x]) => `(math.copysign(float(math.ceil(${x})), ${x}) if math.isfinite(${x}) else ${x})`,
+        trunc: ([x]) => `(math.copysign(float(math.trunc(${x})), ${x}) if math.isfinite(${x}) else ${x})`,
         // Python's builtin round() ties to EVEN ("banker's rounding"),
         // NOT this project's standardized round-half-AWAY-from-zero
         // convention -- see js.js's own comment and the root README's
@@ -100,15 +128,15 @@ const emitter = new Emitter({
         // a cleaner fit here than a separate sign*floor(abs+0.5) ternary,
         // and correctly handles x == 0 too (floor(0 + 0.5) == 0, and
         // copysign(0, 0) == 0.0).
-        round: ([x]) => `math.copysign(math.floor(abs(${x}) + 0.5), ${x})`,
+        round: ([x]) => `_ef_round(${x})`,
         // No math.sign in Python's stdlib -- build it directly. Zero-aware
         // by construction (see Go's/Rust's sign() history in this project
         // for what happens when it isn't).
-        sign: ([x]) => `(1.0 if ${x} > 0 else (-1.0 if ${x} < 0 else 0.0))`,
+        sign: ([x]) => `(1.0 if ${x} > 0 else (-1.0 if ${x} < 0 else ${x}))`,
         // Python's % is documented, unambiguous floor-mod (result takes
         // the sign of the divisor) -- unlike most other targets here, no
         // sign-correction wrapper is needed.
-        wrapIndex: ([i, m]) => `(${i} % ${m})`,
+        wrapIndex: ([i, m]) => `(${i} % ${m} if ${m} != 0 else float('nan'))`,
         clampIndex: ([i, lo, hi]) => `max(${lo}, min(${hi}, ${i}))`,
     },
     // Python list subscripts must be int, not float -- a float index
