@@ -673,8 +673,10 @@ const f = fn`
 `;
 const r = analyzeRanges(f, { x: [1, 2], d: [-1, 1] });
 // r.range    -> { lo: -Infinity, hi: Infinity, nan: false }
-// r.warnings -> [{ kind: "div-by-zero", at: "body", certain: false,
-//                  denominator: { lo: -1, hi: 1, nan: false } }]
+// r.warnings -> [{ kind: "div-by-zero", severity: "warning", at: "body",
+//                  expr: "x / d", certain: false,
+//                  denominator: { lo: -1, hi: 1, nan: false },
+//                  message: "`x / d` can divide by zero: `d` can be 0 (range −1…1)." }]
 ```
 
 `analyzeRanges(fnDef, ranges)` is an opt-in static analysis: it propagates
@@ -689,27 +691,45 @@ every element. A function with `outputs()` gets one range per field.
   `nan` is true when NaN is possible (out-of-domain `sqrt`/`log*`/
   `asin`/`acos`/`pow`, `0/0`, an opaque extern). Every built-in primitive
   has a rule; macros are expanded first.
-- **`div-by-zero` warning**: the denominator's interval includes zero
-  even after taking enclosing `select()` guards into account.
+- **Findings**: `r.findings` lists everything worth reporting. Each has
+  `kind`, `severity` (`"warning"` or `"info"`), a plain-language `message`
+  that quotes the source expression, `expr` (that source text) and `at`
+  (the internal AST path, for debugging). `r.warnings` is the subset with
+  severity `"warning"`.
+- **`div-by-zero`** (warning): the denominator's interval includes zero
+  even after narrowing by enclosing `select()` conditions.
   `certain: true` means it is exactly `[0, 0]`.
-- **`div-guarded` warning**: the denominator includes zero on its own, and
-  an enclosing `select()` condition is what excludes it. That is safe
+- **`div-guarded`** (warning): the denominator includes zero on its own,
+  and an enclosing `select()` condition is what excludes it. That is safe
   where `select` short-circuits, but `select` is modeled as evaluating both
   branches and QB64, Fortran and COBOL do exactly that, so the division
   still runs there with a zero denominator (the case
   `test/conformance.test.js`'s `normalizeX` is excluded from QB64 for).
-  `guards` lists the `select()` paths the exclusion depends on. The
-  clamped-denominator pattern `safeDiv` and `normalize3` use produces
-  neither warning.
+  `guards` / `guardConditions` name the `select()` conditions the exclusion
+  depends on. The clamped-denominator pattern `safeDiv` and `normalize3`
+  use produces neither warning.
+- **`div-unreachable`** (info): a division that would see a zero
+  denominator but sits in a branch the ranges never take. It is not a
+  hazard, so it is not in `r.warnings` (earlier versions listed it there
+  with `inDeadBranch: true`; that flag is still set on the note).
+- **`condition-decided`** (info): a `select()` condition is always or never
+  true for the declared ranges, so the other branch is dead.
 - **`selects`**: one entry per `select()` with `outcome`
-  (`"always-then"`, `"always-else"` or `"either"`, i.e. whether the ranges
-  alone decide the condition, which makes the other branch provably dead
-  and the `select()` removable) and `loadBearing` (removing the guard
-  would expose a zero denominator).
-- **Guard refinement** understands all six comparison operators, with
-  the constant on either side, on any expression (including let-bound
-  names), and treats `abs(E) > c` / `abs(E) >= c` as excluding `(-c, c)`
-  from `E`.
+  (`"always-then"`, `"always-else"` or `"either"`), `loadBearing` (removing
+  the guard would expose a zero denominator), `condition` (source text),
+  `severity` and `message`.
+- **Branch narrowing**: the then-branch is analysed with each side of the
+  condition's range narrowed by the comparison, the else-branch by its
+  negation (`>`/`<=`, `<`/`>=`, `==`/`!=`), for all six operators, with the
+  constant on either side, on any expression (including let-bound names).
+  So `x > 10 ? 1 / x : 0` with `x` in `[-20, 20]` divides by `x` in
+  `[10, 20]` and has no `div-by-zero`. If the narrowed ranges make the
+  condition impossible, the branch is unreachable. Intervals are closed, so
+  a strict bound is approximated by its closed hull (`x > c` as `x >= c`),
+  which can only widen a range, never drop a reachable value; whether zero
+  is excluded is tracked separately (`x > 0` and `x >= 1` exclude it,
+  `x >= 0` does not). `!=` narrows nothing except `x != 0`, which marks
+  `x` nonzero. `abs(E) > c` / `abs(E) >= c` excludes `(-c, c)` from `E`.
 
 Bounds are conservative: a range may be wider than the true range, never
 narrower (interval arithmetic cannot see correlation between two different

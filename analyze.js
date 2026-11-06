@@ -13,7 +13,8 @@
 // Result:
 //   {
 //     range:    { lo, hi, nan }   or, for an outputs() body, { name: {lo,hi,nan} }
-//     warnings: [ ... ]            see below
+//     findings: [ ... ]            everything worth telling a human, see below
+//     warnings: [ ... ]            the findings whose severity is "warning"
 //     selects:  [ ... ]            one entry per select() node, see below
 //   }
 //
@@ -23,21 +24,35 @@
 // wider than the true range, never narrower. When an expression can only
 // ever be NaN, `lo`/`hi` are 0 and `nan` is true.
 //
-// Warnings (each has `kind`, `at`, `denominator`):
-//   "div-by-zero"  the denominator's interval includes zero even after taking
-//                  every enclosing select() guard into account. `certain` is
-//                  true when the denominator is exactly [0, 0].
-//   "div-guarded"  the denominator includes zero on its own but an enclosing
-//                  select() condition excludes it. Safe where select() short-
-//                  circuits, but select() is modeled as evaluating both
-//                  branches (see ast.js), and QB64, Fortran and COBOL do exactly
-//                  that, so the division still executes there with a zero
-//                  denominator. `guards` lists the `at` path of each enclosing
-//                  select() the exclusion depends on.
-//   Each warning also carries `inDeadBranch: true` when it sits in a select()
-//   branch the intervals prove is never taken.
+// Every finding has:
+//   kind      what it is (below)
+//   severity  "warning" (a hazard worth acting on) or "info" (a note)
+//   message   a plain-language sentence quoting the source expression, e.g.
+//             "`1 / x` can divide by zero: `x` can be 0 (range -20…20)."
+//   expr      the source text the finding is about
+//   at        internal AST path, for debugging; not meant for display
 //
-// selects entries: { at, outcome, loadBearing }
+// Finding kinds:
+//   "div-by-zero"   severity "warning". The denominator's interval includes
+//                   zero even after narrowing by every enclosing select()
+//                   condition. `certain` is true when it is exactly [0, 0].
+//   "div-guarded"   severity "warning". The denominator includes zero on its
+//                   own but an enclosing select() condition excludes it. Safe
+//                   where select() short-circuits, but select() is modeled as
+//                   evaluating both branches (see ast.js), and QB64, Fortran
+//                   and COBOL do exactly that, so the division still executes
+//                   there with a zero denominator. `guards` lists the `at`
+//                   path of each enclosing select() the exclusion depends on,
+//                   `guardConditions` their condition text.
+//   "div-unreachable"  severity "info". A division whose denominator includes
+//                   zero sits in a select() branch the ranges prove is never
+//                   taken, so it is not a hazard. Also `inDeadBranch: true`.
+//   "condition-decided"  severity "info". A select() condition is always
+//                   true / never true for the declared ranges (`outcome`).
+// `warnings` is exactly the "warning" findings, so unreachable divisions are
+// no longer in it (they used to appear there with `inDeadBranch: true`).
+//
+// selects entries: { at, outcome, loadBearing, condition, severity, message }
 //   outcome      "always-then" | "always-else" | "either": whether the
 //                condition is decided by the declared ranges alone. A decided
 //                condition means the other branch is provably dead and the
@@ -45,16 +60,31 @@
 //   loadBearing  true when removing the guard would let a division in one of
 //                its branches see a zero denominator.
 //
-// Guards understood by the refinement: any of the six comparison operators
-// where one side is an expression and the other has a known interval. The
-// refined facts apply to every structurally identical occurrence of that
-// expression inside the branch. `abs(E) > c` / `abs(E) >= c` with c > 0 is
-// recognized as excluding the open interval (-c, c) from E, which is the shape
-// safeDiv and the EPS-compared selects in samples/spline-frame.js use.
+// Branch narrowing: the then-branch of select(L op R, ...) is analysed with
+// the range of each side narrowed by `L op R`, the else-branch with the range
+// narrowed by the negated comparison (> <-> <=, < <-> >=, == <-> !=). Either
+// side may be the narrowed one (`x > c` and `c < x`), and it can be any
+// expression, including a let-bound name. The narrowed facts apply to every
+// structurally identical occurrence of that expression inside the branch.
+// If the condition cannot be true (resp. false) once both sides carry their
+// own narrowed ranges, that branch is unreachable: it gets no narrowing and
+// anything hazardous in it is reported as "div-unreachable", not a warning.
+//
+// Open bounds: intervals are closed, so a strict bound is approximated by
+// its closed hull (x > c becomes x >= c). That only ever widens the range,
+// never drops a reachable value. Zero is the one point whose openness
+// matters (it decides whether a division is safe), so a separate "nonzero"
+// fact is recorded when a strict bound is >= 0 (x > 0, x > 3) or a non-strict
+// one is > 0 (x >= 1); x >= 0 keeps zero reachable and stays a hazard.
+// `!=` narrows nothing except x != 0, which records "nonzero"; its negation
+// (==) narrows to the compared range. abs(E) > c / abs(E) >= c with c > 0
+// is recognized as excluding the open interval (-c, c) from E, which is the
+// shape safeDiv and the EPS-compared selects in samples/spline-frame.js use.
 
 const { collectLets, checkUnboundVars } = require("./ast.js");
 const { expandMacros } = require("./macros.js");
 const { PRIMITIVE_ARITY } = require("./primitives.js");
+const exprSyntax = require("./emitters/exprsyntax.js");
 
 const INF = Infinity;
 const TWO_PI = 2 * Math.PI;
@@ -233,6 +263,42 @@ const key = (() => {
     };
 })();
 
+
+// ---- plain-language rendering --------------------------------------------
+
+function stripOuterParens(s) {
+    if (s[0] !== "(" || s[s.length - 1] !== ")") return s;
+    let depth = 0;
+    for (let i = 0; i < s.length; i++) {
+        if (s[i] === "(") depth++;
+        else if (s[i] === ")" && --depth === 0 && i < s.length - 1) return s;
+    }
+    return s.slice(1, -1);
+}
+
+// Source text of a sub-expression, via the project's own expr-syntax emitter.
+function show(node) {
+    try {
+        return stripOuterParens(exprSyntax.emitExpr(node));
+    } catch {
+        return node.type;
+    }
+}
+
+const showCond = (c) => `${show(c.left)} ${c.op} ${show(c.right)}`;
+
+function fmtNum(n) {
+    if (n === INF) return "\u221e";
+    if (n === -INF) return "\u2212\u221e";
+    return String(Number(n.toPrecision(6))).replace("-", "\u2212");
+}
+
+function fmtRange(i) {
+    return i.lo === i.hi ? fmtNum(i.lo) : `${fmtNum(i.lo)}\u2026${fmtNum(i.hi)}`;
+}
+
+const code = (s) => `\`${s}\``;
+
 const NEGATE = { ">": "<=", "<": ">=", ">=": "<", "<=": ">", "==": "!=", "!=": "==" };
 const FLIP = { ">": "<", "<": ">", ">=": "<=", "<=": ">=", "==": "==", "!=": "!=" };
 
@@ -322,7 +388,7 @@ function checkRanges(fnDef, ranges) {
 }
 
 /**
- * analyzeRanges(fnDef, ranges, registry?) -> { range, warnings, selects }
+ * analyzeRanges(fnDef, ranges, registry?) -> { range, warnings, selects, findings }
  * See this file's header comment for the result shape.
  */
 function analyzeRanges(fnDef, ranges = {}, registry = undefined) {
@@ -330,7 +396,7 @@ function analyzeRanges(fnDef, ranges = {}, registry = undefined) {
     const fn = expandMacros(fnDef, null, registry);
     checkUnboundVars(fn);
 
-    const warnings = [];
+    const findings = [];
     const selects = [];
     const selectInfo = new Map();
     let nextSelectId = 0;
@@ -410,14 +476,27 @@ function analyzeRanges(fnDef, ranges = {}, registry = undefined) {
         const result = divI(l, r);
         if (ctx.mute) return result;
         const at = path.join(" > ");
+        const text = show(node);
+        const denomText = show(node.right);
+        if (ctx.dead) {
+            if (containsZero(r)) {
+                findings.push({
+                    kind: "div-unreachable", severity: "info", at, expr: text,
+                    denominator: strip(r), inDeadBranch: true,
+                    message: `${code(text)} never runs for these inputs (${ctx.dead}), so its zero denominator is not a hazard.`,
+                });
+            }
+            return result;
+        }
         if (containsZero(r)) {
-            const w = {
-                kind: "div-by-zero", at,
-                certain: r.lo === 0 && r.hi === 0 && !r.nz,
-                denominator: strip(r),
-            };
-            if (ctx.dead) w.inDeadBranch = true;
-            warnings.push(w);
+            const certain = r.lo === 0 && r.hi === 0 && !r.nz;
+            findings.push({
+                kind: "div-by-zero", severity: "warning", at, expr: text,
+                certain, denominator: strip(r),
+                message: certain
+                    ? `${code(text)} always divides by zero: ${code(denomText)} is always 0.`
+                    : `${code(text)} can divide by zero: ${code(denomText)} can be 0 (range ${fmtRange(r)}).`,
+            });
             return result;
         }
         if (!ctx.facts.length) return result;
@@ -426,13 +505,17 @@ function analyzeRanges(fnDef, ranges = {}, registry = undefined) {
         const owners = [...new Set(ctx.facts.map((e) => e.owner))];
         const needed = owners.filter((o) => zeroPossible(node.right, ctx.facts.filter((e) => e.owner !== o)));
         for (const o of needed) selectInfo.get(o).loadBearing = true;
-        const w = {
-            kind: "div-guarded", at,
+        const denominator = strip(an(node.right, { facts: [], mute: true }));
+        const conds = needed.map((o) => code(selectInfo.get(o).condition)).join(", ");
+        findings.push({
+            kind: "div-guarded", severity: "warning", at, expr: text,
             guards: needed.map((o) => selectInfo.get(o).at),
-            denominator: strip(an(node.right, { facts: [], mute: true })),
-        };
-        if (ctx.dead) w.inDeadBranch = true;
-        warnings.push(w);
+            guardConditions: needed.map((o) => selectInfo.get(o).condition),
+            denominator,
+            message: `${code(text)} is protected from a zero denominator only by the condition ${conds} ` +
+                `(${code(denomText)} can be 0 on its own, range ${fmtRange(denominator)}). ` +
+                `Targets that evaluate both branches of a select (QB64, Fortran, COBOL) still run the division.`,
+        });
         return result;
     }
 
@@ -488,9 +571,9 @@ function analyzeRanges(fnDef, ranges = {}, registry = undefined) {
 
     function selectI(node, ctx) {
         const id = nextSelectId++;
-        const info = { at: path.join(" > ") || "body", outcome: "either", loadBearing: false };
+        const condition = showCond(node.cond);
+        const info = { at: path.join(" > ") || "body", outcome: "either", loadBearing: false, condition };
         selectInfo.set(id, info);
-        if (!ctx.mute) selects.push(info);
 
         const { left, right, op } = node.cond;
         const l = step("select.cond.left", left, ctx);
@@ -498,7 +581,26 @@ function analyzeRanges(fnDef, ranges = {}, registry = undefined) {
         const { canTrue, canFalse } = decide(op, l, r);
         if (!canFalse) info.outcome = "always-then";
         else if (!canTrue) info.outcome = "always-else";
+        info.severity = "info";
+        if (info.outcome === "always-then") {
+            info.message = `Condition ${code(condition)} is always true for these inputs, so this always returns ${code(show(node.then))}.`;
+        } else if (info.outcome === "always-else") {
+            info.message = `Condition ${code(condition)} is never true for these inputs, so this always returns ${code(show(node.else))}.`;
+        } else {
+            info.message = `Condition ${code(condition)} can be true or false for these inputs.`;
+        }
+        if (!ctx.mute) {
+            selects.push(info);
+            if (!ctx.dead && info.outcome !== "either") {
+                findings.push({
+                    kind: "condition-decided", severity: "info", at: info.at, expr: condition,
+                    outcome: info.outcome, message: info.message,
+                });
+            }
+        }
 
+        // Each branch is analysed with the operand ranges narrowed by the
+        // condition (then) or its negation (else); see factsFor().
         const branch = (truth, can, label, sub) => {
             const bop = truth ? op : NEGATE[op];
             const entries = [];
@@ -506,7 +608,8 @@ function analyzeRanges(fnDef, ranges = {}, registry = undefined) {
                 for (const [e, f] of factsFor(left, bop, r)) entries.push({ key: key(e), fact: f, owner: id });
                 for (const [e, f] of factsFor(right, FLIP[bop], l)) entries.push({ key: key(e), fact: f, owner: id });
             }
-            const bctx = { facts: ctx.facts.concat(entries), mute: ctx.mute, dead: ctx.dead || !can };
+            const reason = `${code(condition)} is ${truth ? "never true" : "always true"} here`;
+            const bctx = { facts: ctx.facts.concat(entries), mute: ctx.mute, dead: ctx.dead || (can ? false : reason) };
             return step(label, sub, bctx);
         };
         const t = branch(true, canTrue, "select.then", node.then);
@@ -535,7 +638,8 @@ function analyzeRanges(fnDef, ranges = {}, registry = undefined) {
         range = strip(an(body, top));
         path.pop();
     }
-    return { range, warnings, selects };
+    const warnings = findings.filter((f) => f.severity !== "info");
+    return { range, warnings, selects, findings };
 }
 
 module.exports = { analyzeRanges };
