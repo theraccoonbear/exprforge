@@ -64,6 +64,30 @@ function emit(fnDef, lang, registry = undefined, opts = undefined) {
 }
 
 /**
+ * Emit an ordered list of function definitions (suites included) as ONE
+ * complete source file for `lang`. Returns { ext, source }. The file has
+ * the target's header once, every import the file uses once, every support
+ * helper the file uses once (dependencies first), the target's mandatory
+ * file structure once (Go's package clause, a Java/C# wrapper class, a
+ * Fortran module, Perl's `1;`, PHP's open tag), then the functions in the
+ * order given. Function names must be unique. Throws on an unknown `lang`
+ * or if the emitter throws for any function.
+ *
+ * `opts` is emit()'s opts plus `wrapperName` (the Java/C# class or Fortran
+ * module name, default "ExprForge"). `registry` is as for emit(). See
+ * docs/multi-function-files.md for the layout per target.
+ */
+function emitFile(fnDefs, lang, registry = undefined, opts = undefined) {
+    const emitter = emitters[lang];
+    if (!emitter) {
+        throw new Error(
+            `emitFile(): no emitter registered for language "${lang}" -- known languages: ${Object.keys(emitters).sort().join(", ")}`,
+        );
+    }
+    return { ext: emitter.ext, source: emitter.emitFile(fnDefs, registry, opts) };
+}
+
+/**
  * Run several emitters against one AST function definition, each in
  * isolation from the others: one language's emitter throwing shows up as
  * { source: null, error } for THAT language only, alongside every other
@@ -141,6 +165,7 @@ function createSession() {
         analyzeRanges: (fnDef, ranges) => analyzeRanges(fnDef, ranges, registry),
         emit: (fnDef, lang, opts) => emit(fnDef, lang, registry, opts),
         emitMany: (fnDef, langs = Object.keys(emitters), opts) => emitMany(fnDef, langs, registry, opts),
+        emitFile: (fnDefs, lang, opts) => emitFile(fnDefs, lang, registry, opts),
         loadExpr: (path) => loadExpr(path, registry),
         loadExprSource: (source, label = "loadExprSource()") => loadExprSource(source, label, registry),
     };
@@ -274,6 +299,9 @@ module.exports = {
     emitters,
     // One target, explicit -- see this function's own doc comment above.
     emit,
+    // Several functions as one complete source file for one target --
+    // see this function's own doc comment above.
+    emitFile,
     // Several targets at once, each isolated from the others' failures.
     emitMany,
     // Deprecated: every target at once, no way to ask for fewer. Prefer

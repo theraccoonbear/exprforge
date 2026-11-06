@@ -162,7 +162,8 @@ class LatexEmitter extends Emitter {
     // than one name, the function is rendered again with those names
     // spelled literally (\mathit{x1}, \mathit{x\_1}) so they stay
     // distinguishable.
-    emitFunction(fn, registry = undefined, opts = {}) {
+    _assemble(fns, registry, opts, file) {
+        opts = opts || {};
         const mulSymbol = opts.mulSymbol ?? "implicit";
         if (!Object.hasOwn(MUL_SYMBOLS, mulSymbol)) {
             throw new Error(
@@ -179,19 +180,25 @@ class LatexEmitter extends Emitter {
                 `emitter for .${this.ext}: unknown wrap ${JSON.stringify(wrap)} -- expected one of: ${Object.keys(WRAPS).join(", ")}`,
             );
         }
-        return WRAPS[wrap](this._emitBare(fn, registry, opts, mulSymbol, greekLetters));
+        const bares = fns.map((fn) => this._emitBare(fn, registry, opts, mulSymbol, greekLetters));
+        // A document is one file with one preamble: each function becomes its
+        // own display block inside it, never a nested document.
+        if (wrap === "document" && bares.length > 1) {
+            return WRAPS.document(bares.join("\\]\n\n\\[\n"));
+        }
+        return bares.map((b) => WRAPS[wrap](b)).join("\n");
     }
 
     _emitBare(fn, registry, opts, mulSymbol, greekLetters) {
         const prev = this._state;
         try {
             this._state = { mulSymbol, greek: greekLetters, literal: new Set(), seen: new Map() };
-            const first = super.emitFunction(fn, registry, opts);
+            const first = super._emitBody(fn, registry, opts);
             const colliding = [...this._state.seen.values()].filter((names) => names.size > 1);
             if (colliding.length === 0) return first;
             const literal = new Set(colliding.flatMap((names) => [...names]));
             this._state = { mulSymbol, greek: greekLetters, literal, seen: new Map() };
-            return super.emitFunction(fn, registry, opts);
+            return super._emitBody(fn, registry, opts);
         } finally {
             this._state = prev;
         }
