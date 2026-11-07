@@ -206,4 +206,5 @@ emitter.meta = {
     minMaxNaN: "erratic",
 };
 
+emitter.lang = "perl";
 module.exports = emitter;

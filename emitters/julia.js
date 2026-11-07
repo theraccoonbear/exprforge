@@ -138,4 +138,5 @@ emitter.meta = {
     minMaxNaN: "propagate",
 };
 
+emitter.lang = "julia";
 module.exports = emitter;

@@ -711,4 +711,5 @@ emitter.meta = {
     minMaxNaN: "erratic",
 };
 
+emitter.lang = "cobol";
 module.exports = emitter;

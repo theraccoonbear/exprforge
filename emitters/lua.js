@@ -199,4 +199,5 @@ emitter.meta = {
     minMaxNaN: "positional",
 };
 
+emitter.lang = "lua";
 module.exports = emitter;

@@ -163,4 +163,5 @@ emitter.meta = {
     minMaxNaN: null,
 };
 
+emitter.lang = "expr";
 module.exports = emitter;

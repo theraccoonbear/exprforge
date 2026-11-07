@@ -127,4 +127,5 @@ emitter.meta = {
     minMaxNaN: "propagate",
 };
 
+emitter.lang = "java";
 module.exports = emitter;

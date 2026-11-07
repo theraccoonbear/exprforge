@@ -176,4 +176,5 @@ emitter.meta = {
     minMaxNaN: "raises",
 };
 
+emitter.lang = "ruby";
 module.exports = emitter;

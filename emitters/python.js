@@ -261,4 +261,5 @@ emitter.meta = {
     minMaxNaN: "positional",
 };
 
+emitter.lang = "python";
 module.exports = emitter;

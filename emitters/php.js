@@ -143,4 +143,5 @@ emitter.meta = {
     minMaxNaN: "positional",
 };
 
+emitter.lang = "php";
 module.exports = emitter;
