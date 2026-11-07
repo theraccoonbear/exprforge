@@ -1,6 +1,5 @@
 // exprforge/index.js
 const { num, v, bin, call, add, mul, sub, div, neg, letIn, letChain, cmp, select, outputs, field, collectLets, checkUnboundVars } = require("./ast.js");
-const { forComponents } = require("./util.js");
 const { expr } = require("./expr.js");
 const { fn } = require("./fn.js");
 const { evaluate } = require("./evaluate.js");
@@ -158,8 +157,6 @@ function createSession() {
 module.exports = {
     // AST builders — use these to define your own formulas.
     num, v, bin, call, add, mul, sub, div, neg, letIn, letChain, cmp, select, outputs, field, collectLets, checkUnboundVars,
-    // Authoring convenience — not an AST primitive, see util.js.
-    forComponents,
     // Infix syntax sugar over the builders above — same Nodes, see expr.js.
     expr,
     // Full function-body syntax (let/return) on top of expr's grammar —

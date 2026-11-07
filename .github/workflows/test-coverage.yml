@@ -24,8 +24,8 @@ name: Test Coverage
 # time this workflow was added) -- enough to catch a genuine coverage
 # drop without failing on ordinary test-count noise. This aggregate is
 # lower than core-logic coverage alone (ast.js/evaluate.js/expr.js/
-# fn.js/index.js/load-expr.js/macros.js/math//primitives.js/samples//
-# util.js all sit at 95-100%, in every environment, toolchains or not)
+# fn.js/index.js/load-expr.js/macros.js/math//primitives.js/samples/
+# all sit at 95-100%, in every environment, toolchains or not)
 # specifically because per-target emitter code that only ever runs
 # inside a real compiled/interpreted program can't be exercised without
 # that target's own toolchain -- see the per-file table this step prints

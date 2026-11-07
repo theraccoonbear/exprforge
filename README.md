@@ -1990,7 +1990,7 @@ same thing on every run — installing zero, one, or a different subset of
 the per-language toolchains would make an aggregate threshold either
 flaky or meaningless. Core logic (`ast.js`/`evaluate.js`/`expr.js`/
 `fn.js`/`index.js`/`load-expr.js`/`macros.js`/`math/`/`primitives.js`/
-`samples/`/`util.js`) sits at 95-100% in every environment, toolchains or
+`samples/`) sits at 95-100% in every environment, toolchains or
 not; per-target emitter coverage is intentionally excluded from that
 mental model — code that only really runs inside a real compiled/
 interpreted program can't be exercised without that target's own
