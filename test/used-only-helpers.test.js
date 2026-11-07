@@ -1,7 +1,7 @@
 // exprforge/test/used-only-helpers.test.js
 //
 // Generated code must define only the support helpers it actually calls
-// (see selectHelpers / Emitter.usedHelpers in emitters/base.js). Unused
+// (see selectHelpers in emitters/base.js). Unused
 // definitions are namespace pollution in the consumer's file.
 const test = require("node:test");
 const assert = require("node:assert");
@@ -149,16 +149,6 @@ test("cobol: a program with no cmp()/select() has no helpers and no REPOSITORY",
     assert.ok(!out.includes("FUNCTION-ID"));
 });
 
-test("cobol: includeHelpers false still declares the comparators the program calls", () => {
-    const out = emitters.cobol.emitFunction(
-        { name: "s", params: ["x"], body: select(cmp(v("x"), "==", num(0)), v("x"), num(0)) },
-        undefined,
-        { includeHelpers: false },
-    );
-    assert.ok(!out.includes("FUNCTION-ID"));
-    assert.ok(out.includes("FUNCTION ef-cmp-eq."));
-});
-
 // --- Multi-function files / suites ------------------------------------------
 
 const MULTI = {
@@ -190,13 +180,11 @@ const MULTI = {
 
 for (const [lang, { fns, names }] of Object.entries(MULTI)) {
     test(`${lang}: a multi-function file defines the union of used helpers exactly once`, () => {
-        const emittedHelpers = new Set();
-        const out = fns.map((fn) => emitters[lang].emitFunction(fn, undefined, { emittedHelpers })).join("\n");
+        const out = emitters[lang].emitFile(fns);
         assert.deepStrictEqual(helperNamesIn(lang, out).sort(), [...names].sort());
         for (const name of names) {
             assert.strictEqual(definitionCount(lang, out, name), 1, `${lang}: ${name} defined once`);
         }
-        assert.deepStrictEqual([...emittedHelpers].filter((k) => !k.startsWith("import:")).sort(), [...names].sort());
     });
 }
 
@@ -214,7 +202,7 @@ test("python: a suite brings in only the helpers its outputs use", () => {
 
 // =============================================================================
 // Imports: the same rule as helpers. Generated code carries only the
-// imports/includes it uses (selectImports / Emitter.usedImports).
+// imports/includes it uses (selectImports).
 // =============================================================================
 
 const { selectImports } = require("../emitters/base.js");
@@ -345,10 +333,6 @@ test("zig: std.math calls bring in std; compiler builtins and plain arithmetic d
     assert.deepStrictEqual(importsIn("zig", binary("wrapIndex")).lines, []);
 });
 
-test("zig: includeHelpers false still means no preamble", () => {
-    assert.deepStrictEqual(importsIn("zig", unary("sqrt"), { includeHelpers: false }).lines, []);
-});
-
 test("zig: a suite imports std only when an output uses it", () => {
     const { outputs } = require("../ast.js");
     assert.strictEqual(
@@ -371,7 +355,7 @@ test("go: math is imported only when a math call is used (existing behavior)", (
 const noImportFn = { name: "f0", params: ["x"], body: add(v("x"), num(1)) };
 
 function emitAll(lang, fns, opts) {
-    return fns.map((fn) => emitters[lang].emitFunction(fn, undefined, opts)).join("\n");
+    return emitters[lang].emitFile(fns, undefined, opts);
 }
 
 const MULTI_IMPORTS = {
@@ -385,26 +369,24 @@ const MULTI_IMPORTS = {
 };
 
 for (const [lang, { fns, lines }] of Object.entries(MULTI_IMPORTS)) {
-    test(`${lang}: a multi-function file imports each module once, at the first function that uses it`, () => {
-        const emittedHelpers = new Set();
-        const out = emitAll(lang, fns, { emittedHelpers });
+    test(`${lang}: a whole file imports each module once, above every function`, () => {
+        const out = emitAll(lang, fns);
         const found = preambleLines(out).filter((l) => !(MANDATORY_PREAMBLE[lang] || []).includes(l));
         assert.deepStrictEqual(found.sort(), [...lines].sort());
-        for (const line of lines) assert.ok(out.indexOf(line) > out.indexOf("f0"), `${lang}: ${line} not before first use`);
-        // Without a shared Set each function is self-contained.
+        for (const line of lines) assert.ok(out.indexOf(line) < out.indexOf("f0"), `${lang}: ${line} not above the first function`);
+        // A standalone function is self-contained.
         const solo = emitters[lang].emitFunction(fns[fns.length - 1]);
         assert.ok(lines.some((l) => solo.includes(l)));
     });
 
-    test(`${lang}: the first function that needs no import carries none`, () => {
-        const first = emitters[lang].emitFunction(fns[0], undefined, { emittedHelpers: new Set() });
+    test(`${lang}: a file whose functions need no import carries none`, () => {
+        const first = emitAll(lang, [fns[0]]);
         for (const line of lines) assert.ok(!first.includes(line), `${lang}: ${line} appeared before it was needed`);
     });
 }
 
-test("python: a helper and a function share one import math in a multi-function file", () => {
-    const emittedHelpers = new Set();
-    const out = emitAll("python", [divFn, unary("sqrt", "f2"), { name: "q3", params: ["a", "b"], body: div(v("b"), v("a")) }], { emittedHelpers });
+test("python: a helper and a function share one import math in a whole file", () => {
+    const out = emitAll("python", [divFn, unary("sqrt", "f2"), { name: "q3", params: ["a", "b"], body: div(v("b"), v("a")) }]);
     assert.strictEqual(count(out, "import math"), 1);
     assert.strictEqual(definitionCount("python", out, "_exprforge_div"), 1);
 });

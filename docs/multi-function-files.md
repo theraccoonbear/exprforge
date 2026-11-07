@@ -1,72 +1,81 @@
-# Concatenating multiple emitted functions into one file
+# Emitting several functions as one file
 
-`emitFunction`'s default output assumes one function per compiled unit.
-Every conformance sample in this repo, until now, only ever compiled one
-function per binary — a real gap, only found when a consumer reported it
-(see the "Found by" note on each target below).
-
-A real, common pattern this project didn't originally support: a
-consumer emitting N functions for the same target and concatenating them
-into ONE file (one `.bi`/`.cob`/`.go`/etc. per *program*, not per
-function) — e.g. a spline-path tool emitting 21 QB64 functions into one
-`.bi` file. Several targets have some kind of always-on, per-function
-preamble (an import, a package clause, an opening tag, a shared helper
-block) that's safe to repeat within its OWN function's output but
-becomes a duplicate/conflicting declaration once two functions' outputs
-are concatenated — the target's compiler then rejects the file outright.
-
-## The fix, per target
-
-Every fix below is opt-in and backward compatible: the default output
-(no `opts`, or `opts` without the relevant key) is byte-for-byte
-identical to before this existed.
-
-| Target | What repeats | Fix | Found by |
-|---|---|---|---|
-| QB64 | the `ef_safe_*` helper `FUNCTION`s the function calls | one shared `opts.emittedHelpers` Set across all calls (see "Helpers: used-only, defined once" below) | Real consumer report (PR #37) |
-| COBOL | the `ef-cmp-*` `FUNCTION-ID`s the program calls (NOT the `REPOSITORY` entries — those are a per-program reference, not a shared definition, and stay in every program that uses `cmp()`/`select()`) | one shared `opts.emittedHelpers` Set across all calls | Found proactively, auditing the same bug class after the QB64 report |
-| Go | `package exprforge` + `import "math"` | `opts.includeHelpers: false` on every call after the first; `opts.forceMathImport: true` on the FIRST call if ANY of the concatenated functions use a math primitive (Go requires every import before any other declaration — a later function's own usage can't add one after the fact) | Found proactively |
-| Zig | `const std = @import("std");`, only when the function uses `std.` | one shared `opts.emittedHelpers` Set across all calls (see "Imports: used-only, written once" below); `opts.includeHelpers: false` still drops the import from a call, so it is only safe when an earlier call in the file imported `std` | Found proactively |
-| PHP | the `<?php` opening tag | `opts.includeHelpers: false` on every call after the first | Found proactively |
-| Python | `_exprforge_div` (see ADR 0004) and the `_ef_*` helper `def`s (`_ef_sqrt`, `_ef_asin`, `_ef_acos`, `_ef_log`, `_ef_log2`, `_ef_log10`, `_ef_min`, `_ef_max`, `_ef_floor`, `_ef_ceil`, `_ef_trunc`, `_ef_round`, `_ef_sign`, `_ef_wrap_index`, `_ef_pow`, `_ef_exp`), each only when the function uses it. The `_ef_` and `_exprforge_` prefixes are reserved identifiers | one shared `opts.emittedHelpers` Set across all calls | Added with the division-by-zero fix; domain guards moved into helpers in #58 |
-| Perl | `_exprforge_div` helper `sub` (see ADR 0004), only when a division needs it | one shared `opts.emittedHelpers` Set across all calls (a repeat triggers a "Subroutine redefined" warning) | Added with the division-by-zero fix |
-| Ruby | `_ef_*` guard helper methods (`_ef_sqrt`, `_ef_pow`, `_ef_floor`, ... 16 in total), emitted only when the function uses them | pass one shared `opts.emittedHelpers` Set to every call: each used helper is defined once, at its first use (`includeHelpers: false` emits none, so it is only right when the helpers are defined elsewhere) | Added with the helper preamble |
-| Java | `public final class <Name>` | `opts.publicClass: false` on every call except ONE (Java allows at most one *public* top-level type per file; a package-private class is still fully callable from another class in the same file/package) | Found proactively |
-
-| MATLAB/Octave | the `ef_*` local helper functions the function calls | one shared `opts.emittedHelpers` Set across all calls. Unlike the other rows, the default (one function per file, helpers inside it) is the natural MATLAB layout; the shared Set is only for putting several functions in one file, where MATLAB exposes just the first function and Octave needs a leading `1;` to `source()` the rest | Designed in, verified in `test/multi-function-files.test.js` |
-
-## Helpers: used-only, defined once
-
-Targets with support helpers (Python, Perl, Ruby, MATLAB/Octave, QB64, COBOL)
-emit only the helper definitions the generated code actually calls, plus
-the helpers those call. A pure-arithmetic function such as a lerp has no
-helper definitions at all. The selection is `Emitter.usedHelpers()` in
-`emitters/base.js` over each emitter's `helpers` map
-(`name -> { source, deps }`).
-
-For a multi-function file, pass ONE shared `Set` as `opts.emittedHelpers`
-to every call. Each call defines the helpers it uses that are not yet in
-the Set (and adds them), so the file ends up with the union of used
-helpers, each defined exactly once, at its first use:
+`emit(fn, lang)` produces one standalone unit: the file header, the imports and
+support helpers that one function uses, and the function. `emitFile(fns, lang)`
+produces one complete source file for an ordered list of functions:
 
 ```js
-const emittedHelpers = new Set();
-const out = fns.map((fn) => emit(fn, "qb64", undefined, { emittedHelpers }).source).join("\n");
+const { emitFile } = require("exprforge");
+
+const { ext, source } = emitFile([fn1, fn2, fn3], "qb64");
+fs.writeFileSync(`spline.${ext}`, source);
 ```
 
-`opts.includeHelpers: false` still means "define no helpers in this
-call". It is no longer a safe way to share helpers between functions,
-because the first function may not use a helper a later one needs; use
-the shared Set. A function emitted on its own (no Set) is self-contained.
+The file has, in this order:
 
-## Imports: used-only, written once
+1. the target's header comment, once;
+2. the target's mandatory file structure, once (see the table below);
+3. every import the file uses, once each, where the target requires them;
+4. every support helper the file uses, once each, with the helpers they call,
+   dependencies first;
+5. the functions, in the order given.
 
-Imports follow the same rule as helpers: generated code carries only the
-imports it uses. A lerp has none. The selection is
-`Emitter.usedImports()` in `emitters/base.js` over each emitter's
-`imports` map (`name -> { source, pattern }`); a pattern is matched against
-the function's code plus the sources of the helpers it pulls in (the
-division helper needs `math.nan` in Python and `POSIX::copysign` in Perl).
+Imports and helpers are selected over the whole file, so a helper that three
+functions need is defined once, and an import needed only by the last function
+still lands at the top of the file. Function names must be unique, and the list
+must not be empty. Suites (`outputs()`) are accepted like any other definition.
+
+`emitFile(fns, lang, registry, opts)` takes the same `registry` and `opts` as
+`emit`, plus `wrapperName` (below). Inside a session, `session.emitFile(fns,
+lang, opts)`. A file of one function is the same as `emit` for every target
+except those with a wrapper (Java, C#, Fortran, MATLAB/Octave), where the file
+form always uses the wrapper.
+
+## Removed in 0.10.0
+
+Before `emitFile`, callers assembled multi-function files by hand with
+`opts.includeHelpers`, a shared `opts.emittedHelpers` Set, Go's
+`opts.forceMathImport` and Java's `opts.publicClass`. All four are removed:
+passing any of them to `emit`, `emitFunction` or `emitFile` throws an error
+that points here. A single `emit` still emits exactly what its function uses.
+
+## Layout per target
+
+| Target | File structure |
+|---|---|
+| Go | `package exprforge` once, then every `import` before the first declaration (Go requires this), then the functions. |
+| Java | One `public final class` named by `opts.wrapperName` (default `ExprForge`) holding every function as a static method; save the file as `<wrapperName>.java`. A suite's nested result type is named `<Fn>Result` in a file, so two suites don't collide. |
+| C# | One `public static class` named by `opts.wrapperName` (default `ExprForge`) holding every function. |
+| Fortran | One `module` named by `opts.wrapperName` (default `ExprForge`), `implicit none`, `contains`, then every function and subroutine. Callers `use` the module and get explicit interfaces. |
+| COBOL | One `>>SOURCE FORMAT FREE` line, the `ef-cmp-*` `FUNCTION-ID` helpers the file uses once each, then one `PROGRAM-ID` per function. Each program keeps its own `REPOSITORY` paragraph naming the helpers it calls: that is a per-program declaration, not a definition. |
+| QB64 | Header, the `ef_safe_*` helper `FUNCTION`s once each, then the `FUNCTION`/`SUB` definitions. Place the file before the main program code, as for a single function. |
+| Perl | `use strict; use warnings;`, the `use` lines once, the helper `sub`s, the functions, then a single `1;` at the very end. |
+| PHP | `<?php` once at the top. |
+| Python | `import math` once at the top, the helper `def`s, then the functions. |
+| Ruby | The helper `def`s (`_ef_*`) once each, then the functions. |
+| C | `#include <math.h>` once at the top when anything uses it, then the functions. |
+| Zig | `const std = @import("std");` once at the top when anything uses it, then the functions. |
+| Rust | The functions. Items need no import (`f64::` is in the prelude). |
+| MATLAB/Octave | With more than one function, a leading `1;` makes the file an Octave script file that `source()` loads in full; the functions follow, then the `ef_*` local helper functions once each. MATLAB exposes only the first function of a file to callers, so a MATLAB library should call `emitFile` with a single function once per `.m` file. |
+| Lua, Julia, R, Scheme, JS, TypeScript | Header once, then the functions. TypeScript functions are `export`ed. JS functions are plain top-level declarations. |
+| expr | The `fn` definitions concatenated: this is the `.expr` file format, so `loadExprSource` reads the result back, and a later function may use an earlier one as a macro. |
+| LaTeX | Each function becomes its own equation, one after another. With `wrap: "document"` the file is one document (one `\documentclass`, one `document` environment) holding one display block per function. |
+
+No target rejects `emitFile`: every row above has a meaningful multi-function
+form. A target that cannot emit one of the functions (for example an unmapped
+primitive) throws that error from `emitFile` as it would from `emit`.
+
+## Helpers and imports: used-only
+
+Targets with support helpers (Python, Perl, Ruby, MATLAB/Octave, QB64, COBOL)
+emit only the helper definitions the generated code calls, plus the helpers
+those call. A pure-arithmetic function such as a lerp has no helper
+definitions. The selection is `selectHelpers` in `emitters/base.js` over each
+emitter's `helpers` map (`name -> { source, deps }`).
+
+Imports follow the same rule over each emitter's `imports` map
+(`name -> { source, pattern }`); a pattern is matched against the file's code
+plus the sources of the helpers it pulls in.
 
 | Target | Import | Written when the code references |
 |---|---|---|
@@ -74,54 +83,33 @@ division helper needs `math.nan` in Python and `POSIX::copysign` in Perl).
 | Perl | `use POSIX ();` | `POSIX::` |
 | Perl | `use List::Util ();` | `List::Util::` |
 | C | `#include <math.h>` | any `<math.h>` function, macro or `M_*` constant (list in `emitters/c.js`); always, when an extern's template is used |
-| Zig | `const std = @import("std");` | `std.` (the `@floor`, `@abs`, `@mod`, ... builtins and the `@as(f64, ...)` literals need no import) |
-| Go | `import "math"` | `math.` (still limited to the call that carries the package clause, see above) |
+| Zig | `const std = @import("std");` | `std.` |
+| Go | `import "math"` | `math.` |
 
 Language-mandatory scaffolding stays unconditional: Perl's `use strict;`,
 `use warnings;` and `1;`, PHP's `<?php`, Go's `package`, COBOL's divisions,
-Fortran's `implicit none` and every header comment. Targets that name
-library members fully qualified without a file-level import (Java and C#
-`Math`, Rust `f64::`, Julia, Lua, R, PHP, Scheme, MATLAB/Octave, QB64,
-COBOL intrinsic functions, JS/TS `Math`) have no import to prune.
+Fortran's `implicit none` and every header comment. Targets that name library
+members fully qualified without a file-level import (Java and C# `Math`, Rust
+`f64::`, Julia, Lua, R, PHP, Scheme, MATLAB/Octave, QB64, COBOL intrinsic
+functions, JS/TS `Math`) have no import to prune.
 
-For a multi-function file the shared `opts.emittedHelpers` Set also records
-written imports (as `import:<name>`), so each is written once, at the first
-function that needs it, wherever that function is in the file. Python, Perl,
-C and Zig all accept an import after earlier function definitions. Go does
-not, which is why it keeps `forceMathImport`.
+## How a target defines its file
 
-## Already correct — verified, not assumed
+An emitter's `formatFunction`/`formatSuite` return only the text of one
+function. The emitter's `header` and `frame` configuration (see the config
+comment in `emitters/base.js`) assemble the file from the per-function texts
+and the selected imports and helpers. A target that declares `helpers` or
+`imports` must supply a `frame`.
 
-<!-- exprforge:list:multi-file-safe -->TypeScript, C, Rust, C#, Lua, Julia, R, Fortran, and Scheme<!-- /exprforge -->
-have no file-level declaration that repeats per function (multiple
-`def`/`function`/`fn`/`sub`/`class` in one file is each language's own
-normal, unremarkable structure). Verified directly against a real
-compiler/interpreter (see `test/multi-function-files.test.js`), not
-just assumed from reading the emitter source — the whole point of this
-audit was that "obviously fine" isn't evidence.
+Which targets assemble their own file is read from the registry, not
+declared twice: <!-- exprforge:list:file-framed -->QB64, C, Java, Go, C#, Python, Perl, Ruby, Fortran, Zig, COBOL, and MATLAB/Octave<!-- /exprforge --> configure a
+`frame`; <!-- exprforge:list:file-unframed -->JavaScript, TypeScript, Rust, Lua, PHP, Julia, R, and Scheme<!-- /exprforge --> are the header
+followed by the functions, concatenated.
 
-## LaTeX
+## Tests
 
-The LaTeX target's default output (`wrap: "none"`) and the `"inline"`,
-`"display"` and `"equation"` wrappers concatenate fine: each is
-self-contained math. `wrap: "document"` is a complete file with its own
-`\documentclass` and `document` environment, so concatenating several
-of them is not valid LaTeX. Use `"none"` or `"display"` for multi-function
-files. See the README's "Typeset output (LaTeX)" section.
-
-## Example (QB64)
-
-```js
-const { emit } = require("exprforge");
-
-const emittedHelpers = new Set();
-const out1 = emit(fn1, "qb64", undefined, { emittedHelpers }).source;
-const out2 = emit(fn2, "qb64", undefined, { emittedHelpers }).source;
-const out3 = emit(fn3, "qb64", undefined, { emittedHelpers }).source;
-
-fs.writeFileSync("spline.bi", [out1, out2, out3].join("\n"));
-```
-
-See `test/multi-function-files.test.js` for a real, compiled/executed
-example of every target in the table above, and `emitters/base.js`'s own
-`emitFunction` doc comment for the underlying `opts` threading.
+`test/multi-function-files.test.js` compiles or runs a real file for every
+target with an available toolchain. `test/emit-file.test.js` iterates the
+registry and asserts, for every emitter, that a file of three functions sharing
+a helper and an import defines each exactly once. See the README's
+"Several functions in one file" section for a usage example.

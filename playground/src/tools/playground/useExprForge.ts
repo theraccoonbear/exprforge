@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { ExprForge } from "../../lib/exprforge";
 import type { EmitResult, FnDef } from "../../lib/exprforgeTypes";
 
-const { fn, loadExprSource, emit, emitMany, checkUnboundVars } = ExprForge;
+const { fn, loadExprSource, emit, emitFile, emitMany, checkUnboundVars } = ExprForge;
 
 function isFnDef(x: unknown): x is FnDef {
     return (
@@ -35,6 +35,24 @@ export interface ExprForgeResult {
     // doesn't parse as a runnable definition at all (an unsigned bare
     // expression, or a genuine error -- see `error` above).
     functions: FunctionResult[];
+    // Every function together as one source file per language
+    // (emitFile), keyed like FunctionResult.outputs. Empty unless the
+    // buffer holds more than one function.
+    fileOutputs: Record<string, CardResult>;
+}
+
+function emitFileOutputs(defs: FnDef[]): Record<string, CardResult> {
+    const outputs: Record<string, CardResult> = {};
+    if (defs.length < 2) return outputs;
+    for (const lang of Object.keys(ExprForge.emitters)) {
+        try {
+            const result = emitFile(defs, lang);
+            outputs[lang] = { ok: true, ext: result.ext, source: result.source };
+        } catch (e) {
+            outputs[lang] = { ok: false, error: e instanceof Error ? e.message : String(e) };
+        }
+    }
+    return outputs;
 }
 
 function emitLatexDocument(def: FnDef): string | null {
@@ -73,7 +91,7 @@ function emitOutputs(def: FnDef): Record<string, CardResult> {
 export function useExprForge(source: string): ExprForgeResult {
     return useMemo<ExprForgeResult>(() => {
         if (!source.trim()) {
-            return { error: null, functions: [] };
+            return { error: null, functions: [], fileOutputs: {} };
         }
 
         let defs: Record<string, FnDef>;
@@ -88,7 +106,7 @@ export function useExprForge(source: string): ExprForgeResult {
                 // definition there needs a signature, see its own doc
                 // comment), so this case is only reachable via THIS
                 // branch, not the multi-definition fallback below.
-                return { error: MISSING_SIGNATURE_MESSAGE, functions: [] };
+                return { error: MISSING_SIGNATURE_MESSAGE, functions: [], fileOutputs: {} };
             }
             defs = { [parsed.name]: parsed };
         } catch {
@@ -100,7 +118,7 @@ export function useExprForge(source: string): ExprForgeResult {
             try {
                 defs = loadExprSource(source, "playground");
             } catch (e) {
-                return { error: e instanceof Error ? e.message : String(e), functions: [] };
+                return { error: e instanceof Error ? e.message : String(e), functions: [], fileOutputs: {} };
             }
         }
 
@@ -120,11 +138,11 @@ export function useExprForge(source: string): ExprForgeResult {
             try {
                 checkUnboundVars(def);
             } catch (e) {
-                return { error: e instanceof Error ? e.message : String(e), functions: [] };
+                return { error: e instanceof Error ? e.message : String(e), functions: [], fileOutputs: {} };
             }
             functions.push({ def, outputs: emitOutputs(def), latexDocument: emitLatexDocument(def) });
         }
 
-        return { error: null, functions };
+        return { error: null, functions, fileOutputs: emitFileOutputs(functions.map((f) => f.def)) };
     }, [source]);
 }

@@ -116,7 +116,13 @@ export function PlaygroundTool() {
     // to the first one whenever this name isn't (or isn't yet) present.
     const [selectedName, setSelectedName] = useState<string | null>(null);
 
-    const { error, functions } = useExprForge(source);
+    // "Whole file": show every function of a multi-function buffer as ONE
+    // source file per language (emitFile) instead of the selected
+    // function alone.
+    const [wholeFile, setWholeFile] = useState(false);
+
+    const { error, functions, fileOutputs } = useExprForge(source);
+    const showWholeFile = wholeFile && functions.length > 1;
     const languageIds = useMemo(() => Object.keys(LANGUAGE_META), []);
 
     const selectedFunction: FunctionResult | null = useMemo(() => {
@@ -228,6 +234,13 @@ export function PlaygroundTool() {
                 </div>
             )}
 
+            {functions.length > 1 && (
+                <label className="playground-whole-file">
+                    <input type="checkbox" checked={wholeFile} onChange={(e) => setWholeFile(e.target.checked)} />
+                    <span>Whole file (all {functions.length} functions in one source file per language)</span>
+                </label>
+            )}
+
             {selectedFunction && <InterpreterCard def={selectedFunction.def} />}
 
             <div className="playground-toggles" role="group" aria-label="Toggle visible outputs">
@@ -248,7 +261,7 @@ export function PlaygroundTool() {
                     languageIds
                         .filter((id) => enabled.has(id))
                         .map((id) => (
-                            <LanguageCard key={id} languageId={id} label={LANGUAGE_META[id].label} result={selectedFunction.outputs[id]} latexDocument={selectedFunction.latexDocument} />
+                            <LanguageCard key={id} languageId={id} label={LANGUAGE_META[id].label} result={showWholeFile ? fileOutputs[id] : selectedFunction.outputs[id]}latexDocument={selectedFunction.latexDocument} />
                         ))}
             </div>
         </div>

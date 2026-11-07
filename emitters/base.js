@@ -21,9 +21,21 @@
 //                    never divide by zero. Absent on every target whose
 //                    native "/" is already IEEE-correct.
 //   formatFunction — (fn: {name, params, body}, bodyStr: string, letBindings: {name, valueStr}[]) => string
-//                    Full source text for one function, including any
-//                    language-specific signature/type/wrapper syntax.
+//                    Source text for one function: signature and body in the
+//                    language's syntax. File-level scaffolding (header
+//                    comment, imports, support helpers, package clause,
+//                    wrapper class) is NOT part of it; `frame` assembles
+//                    that once per output.
 //                    letBindings is [] for let-free expressions.
+//   header         — optional string: file header comment (default "").
+//   frame          — optional ({ header, imports, helpers, bodies, fns,
+//                    file, opts }) => string. Assembles one output from the
+//                    per-function texts. `imports`/`helpers` are the
+//                    [{ name, source }] arrays this output actually uses,
+//                    deduplicated, helpers' dependencies first; `file` is
+//                    true for emitFile. Required when the target declares
+//                    `imports` or `helpers`; the default is header + bodies
+//                    joined by a blank line.
 //   emitSelect     — optional override: (condNode, thenStr, elseStr) => string
 //                    Default is a ternary; QB64 has no ternary and overrides
 //                    this with the equivalent arithmetic expression instead.
@@ -121,6 +133,10 @@ function selectImports(imports, code, { exclude, externUsed } = {}) {
         .map((name) => ({ name, source: imports[name].source }));
 }
 
+// Options that managed helper/import/preamble dedup by hand before
+// emitFile() existed. Rejected loudly rather than silently ignored.
+const REMOVED_OPTS = ["includeHelpers", "emittedHelpers", "forceMathImport", "publicClass"];
+
 class Emitter {
     constructor(config) {
         this.ext = config.ext;
@@ -129,11 +145,16 @@ class Emitter {
         this.emitDivImpl = config.emitDiv ? config.emitDiv.bind(this) : null;
         this.formatFunctionImpl = config.formatFunction;
         this.formatSuiteImpl = config.formatSuite || null;
+        this.header = config.header || "";
+        this.frameImpl = config.frame ? config.frame.bind(this) : null;
+        if (!this.frameImpl && (config.helpers || config.imports)) {
+            throw new Error(`emitter for .${config.ext}: a target with helpers or imports must configure frame`);
+        }
         // Optional: name -> { source, deps } map of this target's support
-        // definitions. See selectHelpers and usedHelpers.
+        // definitions. See selectHelpers.
         this.helpers = config.helpers || {};
         // Optional: name -> { source, pattern } map of this target's
-        // import/include preamble lines. See selectImports and usedImports.
+        // import/include preamble lines. See selectImports.
         this.imports = config.imports || {};
         this.emitSelectImpl = config.emitSelect
             ? config.emitSelect.bind(this)
@@ -169,33 +190,6 @@ class Emitter {
         // gets an equivalent check from its own compiler/runtime, e.g. a
         // Rust slice's .len() bounds-checks on access regardless).
         this.lengthGuardImpl = config.lengthGuard || null;
-    }
-
-    // The helper definitions `code` (generated text without any helper
-    // definitions) actually uses, dependencies first -- see selectHelpers.
-    // `opts.includeHelpers === false` yields none. When `opts.emittedHelpers`
-    // (a Set) is passed it records helpers already defined earlier in the
-    // same output: those are skipped and the newly returned ones are added,
-    // so concatenating several functions' output defines the union of used
-    // helpers exactly once.
-    usedHelpers(code, opts = {}) {
-        if (opts.includeHelpers === false) return [];
-        const used = selectHelpers(this.helpers, code, { exclude: opts.emittedHelpers });
-        if (opts.emittedHelpers) for (const h of used) opts.emittedHelpers.add(h.name);
-        return used;
-    }
-
-    // The import lines `code` (generated text without helper definitions)
-    // plus the selected `helpers` (the array usedHelpers returned) actually
-    // need -- see selectImports. Shares `opts.emittedHelpers` with
-    // usedHelpers: an import already recorded there (key `import:<name>`) is
-    // skipped and newly returned ones are recorded, so concatenated
-    // functions import each module once.
-    usedImports(code, helpers = [], opts = {}) {
-        const text = code + helpers.map((h) => h.source).join("\n");
-        const used = selectImports(this.imports, text, { exclude: opts.emittedHelpers, externUsed: this._externUsed });
-        if (opts.emittedHelpers) for (const i of used) opts.emittedHelpers.add(importKey(i.name));
-        return used;
     }
 
     // Default ternary (cond ? a : b) — correct for JS, C, and Java, which
@@ -306,38 +300,68 @@ class Emitter {
     // check per declared pair, same 9-target availability and the same
     // "not perfect, real protection at the boundary" spirit as
     // `typeGuard` itself. See docs/runtime-type-guards.md's "Array
-    // length" section.
     //
-    // `opts.includeHelpers` (default true): whether this call may define
-    // the target's support helpers at all; false defines none (and, for Go
-    // and Zig, omits the package/import preamble). Targets that declare a
-    // `helpers` map (python, perl, matlab, qb64, cobol) define only the
-    // helpers the call's own code uses -- see usedHelpers above.
-    //
-    // Imports follow the same rule (python, perl, c, zig, go declare an
-    // `imports` map): a preamble line such as `import math` is written only
-    // when the call's code, or a helper it pulls in, references the module
-    // -- see usedImports. The same shared `opts.emittedHelpers` Set records
-    // written imports (as `import:<name>`), so a concatenated file imports
-    // each module once, at the first function that needs it. Go is the one
-    // exception: it requires imports before any declaration, so it keeps
-    // its package-clause-call plus `forceMathImport` mechanism.
-    //
-    // `opts.emittedHelpers` (a Set, optional): for concatenating N functions
-    // emitted for the SAME target into one compiled unit (a real, common
-    // pattern -- one .bi/.cob file per program), pass ONE shared Set to
-    // every call. Each helper is then defined once, at the first call that
-    // uses it, so the file holds the union of used helpers with no
-    // duplicate definition (which QB64 and GnuCOBOL reject, see
-    // github.com/theraccoonbear/exprforge/pull/37). `formatFunctionImpl`/
-    // `formatSuiteImpl` receive the full `opts` object as a 5th argument, so
-    // a target-specific concern stays local to that target's emitter file.
-    // See docs/multi-function-files.md.
+    // Emits ONE function as a standalone unit: the file header, then only
+    // the imports and support helpers that function uses, then the
+    // function. To put several functions in one file, use emitFile().
     emitFunction(fn, registry = undefined, opts = {}) {
-        this._registry = registry;
+        return this._assemble([fn], registry, opts, false);
+    }
+
+    // Emits SEVERAL functions as one complete source file: the file
+    // header, every import the file uses (once each, where the target
+    // requires them), every support helper the file uses (once each, with
+    // the helpers they depend on, dependencies first), then the functions
+    // in the order given. Helper and import selection is made over the
+    // whole file, so a helper several functions need is defined once.
+    // Targets whose files have a mandatory shape (a Go package clause, a
+    // Java/C# wrapper class, a Fortran module, a Perl `1;` terminator, a
+    // PHP open tag) get that shape exactly once. `fns` are function
+    // definitions as emitFunction takes them (suites included); names
+    // must be unique. `opts` is emitFunction's opts plus `wrapperName`
+    // (Java/C# class, Fortran module; default "ExprForge"). See
+    // docs/multi-function-files.md for the per-target layout.
+    emitFile(fns, registry = undefined, opts = {}) {
+        if (!Array.isArray(fns) || fns.length === 0) {
+            throw new Error(`emitFile(): expected a non-empty array of function definitions for .${this.ext}`);
+        }
+        const seen = new Set();
+        for (const fn of fns) {
+            if (seen.has(fn.name)) {
+                throw new Error(`emitFile(): duplicate function name "${fn.name}" for .${this.ext}`);
+            }
+            seen.add(fn.name);
+        }
+        return this._assemble(fns, registry, opts, true);
+    }
+
+    _assemble(fns, registry, opts, file) {
+        opts = opts || {};
+        for (const removed of REMOVED_OPTS) {
+            if (Object.hasOwn(opts, removed)) {
+                throw new Error(
+                    `emitter for .${this.ext}: opts.${removed} was removed in 0.10.0 -- use emitFile(fns, lang) ` +
+                    `to emit several functions as one file (see docs/multi-function-files.md)`,
+                );
+            }
+        }
         // Set by emitExpr when an extern template contributes to the
-        // output; read by usedImports (see selectImports' `onExtern`).
+        // output; read below for selectImports' `onExtern`.
         this._externUsed = false;
+        this._fileMode = file;
+        const bodies = fns.map((fn) => this._emitBody(fn, registry, opts));
+        const code = bodies.join("\n");
+        const helpers = selectHelpers(this.helpers, code);
+        const imports = selectImports(this.imports, code + helpers.map((h) => h.source).join("\n"), {
+            externUsed: this._externUsed,
+        });
+        const parts = { header: this.header, imports, helpers, bodies, fns, file, opts };
+        return this.frameImpl ? this.frameImpl(parts) : this.header + bodies.join("\n");
+    }
+
+    // One function's text, without any file-level scaffolding.
+    _emitBody(fn, registry, opts) {
+        this._registry = registry;
         // Resolves every macro call and field() access into plain
         // arithmetic first -- see macros.js's own header comment. Must
         // run before checkUnboundVars: expansion is what introduces the

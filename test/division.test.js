@@ -14,6 +14,7 @@ const os = require("node:os");
 const path = require("node:path");
 const { v, num, div, add, call } = require("../ast.js");
 const emitters = require("../emitters/registry.js");
+const { emitFile } = require("../index.js");
 const { tmpDir } = require("./harness-util.js");
 
 function emitBody(lang, body, params = ["x", "y"]) {
@@ -69,16 +70,10 @@ for (const [lang, { plain, helperCall }] of Object.entries(GUARDED)) {
     });
 }
 
-test("python: includeHelpers false omits the division helper", () => {
+test("python and perl: a standalone function that divides carries the division helper", () => {
     const fn = { name: "f", params: ["x", "y"], body: div(v("x"), v("y")) };
     assert.ok(emitters.python.emitFunction(fn).includes("def _exprforge_div("));
-    assert.ok(!emitters.python.emitFunction(fn, undefined, { includeHelpers: false }).includes("def _exprforge_div("));
-});
-
-test("perl: includeHelpers false omits the division helper", () => {
-    const fn = { name: "f", params: ["x", "y"], body: div(v("x"), v("y")) };
     assert.ok(emitters.perl.emitFunction(fn).includes("sub _exprforge_div {"));
-    assert.ok(!emitters.perl.emitFunction(fn, undefined, { includeHelpers: false }).includes("sub _exprforge_div {"));
 });
 
 test("targets with native IEEE division emit no helper", () => {
@@ -106,9 +101,7 @@ const fnB = { name: "fb", params: ["x", "y"], body: add(div(v("x"), v("y")), num
 
 test("python: two concatenated functions share one division helper", { skip: !hasTool("python3", ["--version"]) && "python3 not available" }, () => {
     const src =
-        emitters.python.emitFunction(fnA) +
-        "\n\n" +
-        emitters.python.emitFunction(fnB, undefined, { includeHelpers: false }) +
+        emitFile([fnA, fnB], "python").source +
         "\nprint(fa(1.0, 0.0), fb(-1.0, 0.0), fa(1.0, 4.0))\n";
     assert.strictEqual(src.split("def _exprforge_div(").length - 1, 1);
     const dir = tmpDir("ef-div-py-");
@@ -121,9 +114,7 @@ test("python: two concatenated functions share one division helper", { skip: !ha
 
 test("perl: two concatenated functions share one division helper", { skip: !hasTool("perl", ["-v"]) && "perl not available" }, () => {
     const src =
-        emitters.perl.emitFunction(fnA) +
-        "\n" +
-        emitters.perl.emitFunction(fnB, undefined, { includeHelpers: false }) +
+        emitFile([fnA, fnB], "perl").source +
         "\nprint join(' ', fa(1.0, 0.0), fb(-1.0, 0.0), fa(1.0, 4.0)), \"\\n\";\n";
     assert.strictEqual(src.split("sub _exprforge_div {").length - 1, 1);
     const dir = tmpDir("ef-div-pl-");

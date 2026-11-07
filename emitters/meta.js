@@ -48,9 +48,6 @@
 //                        (defaults "==" / "!="), forbid* are tokens that
 //                        must not leak through, and shared maps the four
 //                        shared operators to a different spelling.
-//   multiFile            "safe" (concatenating functions needs nothing) or
-//                        "opt-out" (needs opts.includeHelpers / publicClass
-//                        / forceMathImport); absent where not applicable.
 //   roundTies            Native round() tie behavior of the target language
 //                        ("away", "even", "posInf"); ExprForge's emitted
 //                        round() ties away from zero regardless.
@@ -165,7 +162,11 @@ function docFacts() {
     const lazy = exec.filter((t) => t.meta.selectShortCircuits === true);
     const guarded = all.filter((t) => t.meta.guards !== null);
     const unguarded = exec.filter((t) => t.meta.guards === null);
-    const multiSafe = all.filter((t) => t.meta.multiFile === "safe");
+    // Whole-file framing has one source of truth: an emitter that
+    // configures `frame` (emitters/base.js) assembles its own file in
+    // emitFile; the rest are header + functions concatenated.
+    const framed = exec.filter((t) => t.emitter.frameImpl);
+    const unframed = exec.filter((t) => !t.emitter.frameImpl);
     const facts = {
         "count:executable": String(exec.length),
         "count:outputs": String(all.length),
@@ -183,7 +184,8 @@ function docFacts() {
         "list:type-guards": oxford(names(guarded)),
         "count:no-type-guards": String(unguarded.length),
         "list:no-type-guards": oxford(names(unguarded)),
-        "list:multi-file-safe": oxford(names(multiSafe)),
+        "list:file-framed": oxford(names(framed)),
+        "list:file-unframed": oxford(names(unframed)),
         "list:toolchain-commands": [...new Set(exec.flatMap((t) => ((t.meta.toolchain && t.meta.toolchain.probes) || []).map((p) => p.candidates[0])))].map((c) => "`" + c + "`").join("/"),
         "table:toolchains": toolchainTable(),
         badges: badges(),

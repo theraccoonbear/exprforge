@@ -13,6 +13,7 @@ export interface ExprForgeModuleShape {
     // on evaluate() for what that means.
     evaluate(def: FnDef, args: (number | number[])[]): number | Record<string, number>;
     emit(def: FnDef, lang: string, registry?: unknown, opts?: Record<string, unknown>): EmitResult;
+    emitFile(defs: FnDef[], lang: string, registry?: unknown, opts?: Record<string, unknown>): EmitResult;
     emitMany(def: FnDef, langs?: string[]): Record<string, BatchEmitResult>;
     emitAll(def: FnDef): Record<string, BatchEmitResult>;
     checkUnboundVars(def: FnDef): void;

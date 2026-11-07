@@ -3,8 +3,8 @@
 // Python's domain guards live in one-line _ef_* helper functions (emitted
 // only when used, via the shared helpers mechanism) instead of inline
 // conditionals that repeat their operand. This file checks:
-//   - the static shape (no operand repeated, helper block gated on
-//     includeHelpers, cheap calls still inline),
+//   - the static shape (no operand repeated, helper block
+//     used-only, cheap calls still inline),
 //   - that every guarded primitive, run through a real python3 on edge
 //     inputs (out-of-domain, +-Infinity, NaN, zero, negative), agrees with
 //     the native evaluator -- evaluate() alone cannot show this, because
@@ -19,6 +19,7 @@ const path = require("node:path");
 const { v, num, call, add, mul, outputs, checkUnboundVars } = require("../ast.js");
 const { evaluate } = require("../evaluate.js");
 const emitters = require("../emitters/registry.js");
+const { emitFile } = require("../index.js");
 
 function hasPython() {
     try {
@@ -85,20 +86,21 @@ test("python helpers: emitted only when used, each defined once", () => {
     const both = emitters.python.emitFunction({ name: "g", params: ["x", "y"], body: add(call("sqrt", v("x")), call("log", v("y"))) });
     assert.strictEqual(both.split("def _ef_").length - 1, 2);
     assert.ok(both.includes("def _ef_sqrt(") && both.includes("def _ef_log("));
-    const without = emitters.python.emitFunction(fn, undefined, { includeHelpers: false });
-    assert.ok(!without.includes("def _ef_"));
+    assert.throws(() => emitters.python.emitFunction(fn, undefined, { includeHelpers: false }), /removed in 0\.10\.0/);
     const suite = emitters.python.emitFunction({
         name: "g", params: ["x"], body: outputs({ a: call("sqrt", v("x")) }),
     });
     assert.ok(suite.includes("def _ef_sqrt("));
 });
 
-test("python helpers: shared emittedHelpers defines each helper once across functions", () => {
-    const emittedHelpers = new Set();
-    const o1 = emitters.python.emitFunction({ name: "f1", params: ["x"], body: call("sqrt", v("x")) }, undefined, { emittedHelpers });
-    const o2 = emitters.python.emitFunction({ name: "f2", params: ["x", "y"], body: add(call("sqrt", v("x")), call("min", v("x"), v("y"))) }, undefined, { emittedHelpers });
-    assert.ok(o1.includes("def _ef_sqrt("));
-    assert.ok(!o2.includes("def _ef_sqrt(") && o2.includes("def _ef_min("));
+test("python helpers: emitFile defines each helper once across functions", () => {
+    const { source } = emitFile([
+        { name: "f1", params: ["x"], body: call("sqrt", v("x")) },
+        { name: "f2", params: ["x", "y"], body: add(call("sqrt", v("x")), call("min", v("x"), v("y"))) },
+    ], "python");
+    assert.strictEqual(source.split("def _ef_sqrt(").length - 1, 1);
+    assert.strictEqual(source.split("def _ef_min(").length - 1, 1);
+    assert.ok(source.indexOf("def _ef_sqrt(") < source.indexOf("def f1("));
 });
 
 test("python helpers: cheap unguarded calls stay inline", () => {
@@ -130,18 +132,11 @@ test("python helpers: real python3 agrees with the evaluator on edge inputs", { 
     for (const p of ["min", "max"]) for (const a of EDGE) for (const b of EDGE) cases.push({ p, args: [a, b] });
     for (const i of EDGE.filter((n) => Number.isFinite(n))) for (const m of MODULI) cases.push({ p: "wrapIndex", args: [i, m] });
 
-    let src = "";
-    const emittedHelpers = new Set();
-    for (const p of [...UNARY, ...BINARY]) {
+    const defs = [...UNARY, ...BINARY].map((p) => {
         const params = BINARY.includes(p) ? ["x", "y"] : ["x"];
-        const argNodes = params.map((n) => v(n));
-        src += emitters.python.emitFunction(
-            { name: `f_${p}`, params, body: call(p, ...argNodes) },
-            undefined,
-            { emittedHelpers },
-        ) + "\n\n";
-    }
-    src += "import sys\n";
+        return { name: `f_${p}`, params, body: call(p, ...params.map((n) => v(n))) };
+    });
+    let src = emitFile(defs, "python").source + "\n\nimport sys\n";
     for (const [idx, c] of cases.entries()) {
         src += `try:\n    print(${idx}, repr(float(f_${c.p}(${c.args.map(pyLiteral).join(", ")}))))\n` +
                `except Exception as e:\n    print(${idx}, 'RAISED', type(e).__name__)\n`;
@@ -170,10 +165,11 @@ test("python helpers: real python3 agrees with the evaluator on edge inputs", { 
 });
 
 test("python helpers: round is exact ties-away, sign preserves -0/NaN, pow IEEE specials", { skip: !PYTHON && "python3 not available" }, () => {
-    const shared = new Set();
-    const src = emitters.python.emitFunction({ name: "r", params: ["x"], body: call("round", v("x")) }, undefined, { emittedHelpers: shared }) + "\n\n" +
-        emitters.python.emitFunction({ name: "s", params: ["x"], body: call("sign", v("x")) }, undefined, { emittedHelpers: shared }) + "\n\n" +
-        ["floor", "ceil", "trunc"].map((p) => emitters.python.emitFunction({ name: p[0], params: ["x"], body: call(p, v("x")) }, undefined, { emittedHelpers: shared })).join("\n\n") + "\n\n" +
+    const src = emitFile([
+        { name: "r", params: ["x"], body: call("round", v("x")) },
+        { name: "s", params: ["x"], body: call("sign", v("x")) },
+        ...["floor", "ceil", "trunc"].map((p) => ({ name: p[0], params: ["x"], body: call(p, v("x")) })),
+    ], "python").source + "\n\n" +
         "import math\n" +
         "print(f(-0.0), f(-0.4), f(0.4), f(-1.5), f(1e300), f(math.inf), f(-math.inf), f(math.nan))\n" +
         "print(c(-0.0), c(-0.4), c(0.4), c(-1.5), c(1e300), c(math.inf), c(-math.inf), c(math.nan))\n" +

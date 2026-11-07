@@ -493,8 +493,7 @@ comes from both operands, including a `-0` denominator), and `0/0` and
   fixed: PHP emits `fdiv()`; Python and Perl emit a small
   `_exprforge_div` helper (once per file, so each operand is still
   evaluated exactly once). A nonzero literal denominator keeps the
-  plain `/`. For concatenated files, pass `{ includeHelpers: false }`
-  on every call after the first (see below).
+  plain `/`. `emitFile` defines the helper once per file (see below).
 - Every other executable target except COBOL already returned IEEE
   results and is unchanged.
 - **GnuCOBOL** is a documented, unfixed exception: `COMPUTE` is decimal
@@ -1047,11 +1046,11 @@ evaluated as arguments, matching the "select is not a branch" contract.
 **File layout.** Each emitted function is followed by its local helper
 functions (all prefixed `ef_`), so one emitted function is one
 self-contained `.m` file, which must be saved as `<function name>.m`.
-To put several functions in one file, pass `{ includeHelpers: false }` for
-every call after the first (see `docs/multi-function-files.md`). In
-MATLAB only the first function of a file is callable from outside it; in
-Octave, a file loaded with `source()` needs a leading `1;` line to define
-all of its functions.
+`emitFile(fns, "matlab")` with several functions emits one Octave script
+file: a leading `1;` line (so `source()` defines all of its functions), the
+functions, then each `ef_*` helper once (see `docs/multi-function-files.md`).
+In MATLAB only the first function of a file is callable from outside it, so
+emit one function per file there.
 
 ## Adding a language
 
@@ -1282,32 +1281,33 @@ cost when unused, not the general one. See
 [`docs/runtime-type-guards.md`](./docs/runtime-type-guards.md)'s own
 "Array length" section for the full per-language guard table.
 
-## Concatenating multiple functions into one file
+## Several functions in one file
 
-`emitFunction`'s default output assumes one function per compiled unit
-— but a real, common pattern is emitting N functions for the same
-target and concatenating them into ONE file (one `.bi`/`.cob`/`.go`
-file per *program*, not per function). Several targets have some kind
-of always-on preamble per function (QB64's math-safety helpers,
-COBOL's comparison helpers, Go's `package`/`import`, Zig's `@import`,
-PHP's `<?php` tag, Python's and Perl's division helper, Java's one-public-class-per-file rule) that's fine
-in isolation but becomes a duplicate/conflicting declaration once two
-functions' outputs are concatenated as-is — confirmed directly (a real
-consumer report, then the same bug class found in 5 more targets by
-auditing for it): the target's compiler rejects the file outright.
+`emit(fn, lang)` produces one standalone unit. To put several functions in
+one source file, hand the ordered list to `emitFile`:
 
 ```js
-const emittedHelpers = new Set();                                            // shared: each helper defined once
-const out1 = emit(fn1, "qb64", undefined, { emittedHelpers }).source;
-const out2 = emit(fn2, "qb64", undefined, { emittedHelpers }).source;
-fs.writeFileSync("spline.bi", [out1, out2].join("\n"));
+const { emitFile } = require("exprforge");
+
+const { ext, source } = emitFile([fn1, fn2, fn3], "qb64");
+fs.writeFileSync(`spline.${ext}`, source);
 ```
 
-See [`docs/multi-function-files.md`](./docs/multi-function-files.md)
-for the full per-target table (what repeats, the exact `opts` to pass,
-and which targets needed no fix at all — verified, not assumed) and
-`test/multi-function-files.test.js` for the permanent regression
-coverage, compiled/run for real on every target.
+The result has the target's header once, its mandatory file structure once (Go's
+`package` clause with every import above the first declaration, one Java/C#
+wrapper class holding every function, a Fortran module, Perl's `1;` at the end,
+PHP's `<?php` once, one COBOL `FUNCTION-ID` per shared comparator plus one
+program per function), every import the file uses once, every support helper
+the file uses once with its dependencies first, then the functions in order.
+Java/C# class and Fortran module names come from `{ wrapperName }` (default
+`ExprForge`). `emitFile(fns, lang, registry, opts)` mirrors `emit`'s argument
+order; sessions have `session.emitFile(fns, lang, opts)`.
+
+**Breaking in 0.10.0:** `opts.includeHelpers`, `opts.emittedHelpers`,
+`opts.forceMathImport` and `opts.publicClass` are removed (passing one throws).
+See [`docs/multi-function-files.md`](./docs/multi-function-files.md) for the
+layout per target and `test/multi-function-files.test.js` for compiled/run
+coverage on every target with a toolchain.
 
 ## Infix expression syntax (`` expr` ` ``)
 
@@ -1684,10 +1684,9 @@ emit(fn`area(w, h): return w * h;`, "latex", undefined, { wrap: "document" }).so
 a minimal TeX Live install (Ubuntu's `texlive-latex-base`). A document
 holds exactly one preamble and one `document` environment, so
 **concatenating several `"document"` outputs is not valid LaTeX**. To put
-several functions in one file, emit each with `"none"` or `"display"` and
-join those (or wrap them in your own document). Unlike the per-target
-fixes in [docs/multi-function-files.md](docs/multi-function-files.md),
-there is no flag that makes `"document"` output concatenable.
+several functions in one file, use `emitFile(fns, "latex", undefined, { wrap: "document" })`,
+which produces one document with one display block per function (see
+[docs/multi-function-files.md](docs/multi-function-files.md)).
 
 ## Multiple named outputs
 
@@ -2051,8 +2050,7 @@ compiling/running against a real toolchain rather than assumed to work:
   non-finite values are passed through. All of these guards (plus `sqrt`,
   `asin`, `acos`, `log*`, `pow`, `min`, `max`, `sign` and `clampIndex`) live
   in 16 `_ef_*` helper methods, a preamble emitted once per file in plain
-  `def ... end` form; pass `{ includeHelpers: false }` on every call after
-  the first when concatenating files. `pow` returns NaN for any non-Float
+  `def ... end` form; `emitFile` defines each used helper once per file. `pow` returns NaN for any non-Float
   result (a Complex), including a NaN exponent with a negative base.
   `pow` is IEEE otherwise (`1 ** NaN` and `(-1) ** +-Infinity` are 1).
   `floor`/`ceil`/`trunc`/`round` keep the sign of a zero result (`-0.0`,

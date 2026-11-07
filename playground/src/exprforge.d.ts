@@ -79,6 +79,11 @@ declare module "exprforge" {
     // `registry` is the macro registry (undefined = the default one); `opts`
     // is the per-emitter option bag, e.g. { wrap: "document" } for latex.
     export function emit(def: FnDef, lang: string, registry?: unknown, opts?: Record<string, unknown>): EmitResult;
+    // Several functions as ONE complete source file for one target: header,
+    // imports and support helpers once each, then the functions in order.
+    // `opts` is emit()'s option bag plus `wrapperName` (Java/C# class,
+    // Fortran module). Throws like emit().
+    export function emitFile(defs: FnDef[], lang: string, registry?: unknown, opts?: Record<string, unknown>): EmitResult;
     // Several targets (default: every registered one), each isolated from
     // the others' failures -- see BatchEmitResult above. This is what
     // useExprForge.ts actually calls now, replacing the hand-rolled
