@@ -303,8 +303,9 @@ console.log(outputs.rust.source);
 
 ## Samples
 
-`samples/` has worked, non-trivial examples (also exported from the
-package individually, or together as `samples`):
+`samples/` has worked, non-trivial examples (exported from the
+package together as the `samples` object, keyed by name, e.g.
+`samples.catmullRom`):
 
 - `samples/catmull-rom.js` — uniform Catmull-Rom spline interpolation.
 - `samples/fibonacci.js` — nth Fibonacci number via Binet's closed form.
@@ -1228,9 +1229,9 @@ JS/TypeScript/Python/PHP/Lua/Perl/Ruby/Scheme/Julia source (and, since it was ad
 check at all. Opt in with a 4th argument to `emit()`/`emitMany()`:
 
 ```js
-const { emit, cyclicElemAst } = require("exprforge");
+const { emit, samples } = require("exprforge");
 
-emit(cyclicElemAst, "js", undefined, { addTypeGuards: true }).source;
+emit(samples.cyclicElem, "js", undefined, { addTypeGuards: true }).source;
 // function cyclicElem(arr, m, i) {
 //     if (!Array.isArray(arr)) throw new Error("cyclicElem: \"arr\" must be an array");
 //     return arr[(((i % m) + m) % m)];
