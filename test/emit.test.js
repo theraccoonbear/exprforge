@@ -1,16 +1,14 @@
 // exprforge/test/emit.test.js
 //
-// index.js's own emit()/emitMany()/emitAll() -- see issue #21 asks 1/2.
-// emitAll() unconditionally ran every registered emitter and threw (killing
-// the whole batch) the moment any single one did; emit()/emitMany() are the
-// explicit replacements ("just the target(s) I asked for"), and emitAll is
-// now a thin deprecated alias for emitMany(fnDef) -- same isolated
-// { source: null, error } shape on a per-language failure, not a throw.
+// index.js's own emit()/emitMany() -- see issue #21 asks 1/2.
+// emit() runs exactly one target and throws on its failure; emitMany() runs
+// several (default: all) and reports a per-language failure as an isolated
+// { source: null, error } entry instead of a throw.
 
 const test = require("node:test");
 const assert = require("node:assert");
 const {
-    num, v, call, letIn, emit, emitMany, emitAll, emitters,
+    num, v, call, letIn, emit, emitMany, emitters,
 } = require("../index.js");
 
 test("emit(fnDef, lang) returns { ext, source } for one target", () => {
@@ -31,7 +29,7 @@ test("emit() propagates a single target's own emitter error -- there's nothing e
     assert.throws(() => emit(fnDef, "qb64"), /"LEN" is a reserved QB64 builtin/);
 });
 
-test("emitMany() defaults to every registered language, same coverage emitAll used to require", () => {
+test("emitMany() defaults to every registered language, one result per registered emitter", () => {
     const fnDef = { name: "f", params: ["x"], body: v("x") };
     const out = emitMany(fnDef);
     assert.deepStrictEqual(Object.keys(out).sort(), Object.keys(emitters).sort());
@@ -65,19 +63,4 @@ test("emitMany() reports an unregistered language in the isolated shape too, not
     assert.strictEqual(out.js.error, null);
     assert.strictEqual(out["not-a-real-language"].source, null);
     assert.match(out["not-a-real-language"].error, /no emitter registered for language "not-a-real-language"/);
-});
-
-test("emitAll() (deprecated) never throws anymore -- a single emitter's failure no longer takes the whole batch down", () => {
-    const fnDef = { name: "f", params: ["x"], body: letIn("LEN", num(1), v("LEN")) };
-    const out = emitAll(fnDef);
-    assert.strictEqual(out.qb64.source, null);
-    assert.match(out.qb64.error, /"LEN" is a reserved QB64 builtin/);
-    assert.strictEqual(out.js.error, null);
-    assert.match(out.js.source, /function f/);
-});
-
-test("emitAll() still covers every registered language, same as before", () => {
-    const fnDef = { name: "f", params: ["x"], body: v("x") };
-    const out = emitAll(fnDef);
-    assert.deepStrictEqual(Object.keys(out).sort(), Object.keys(emitters).sort());
 });

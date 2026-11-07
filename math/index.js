@@ -4,7 +4,7 @@
 // the level-0 AST primitives (ast.js), built to save every consumer from
 // re-deriving the same safe-math/vector patterns samples/spline-frame.js
 // used to hand-roll locally (dot3/len3/safeDiv/EPS there predate this file
-// and motivated it). No new emitter logic — emitAll handles these
+// and motivated it). No new emitter logic — emit()/emitMany() handle these
 // transparently, same as any other AST the caller builds by hand.
 //
 // require("exprforge/math") is a separate export path from require("exprforge")

@@ -90,7 +90,7 @@
 // exactly as before this was added (fully backward compatible -- every
 // fn`...` template written before this feature existed still parses
 // identically); a signature present -> the full {name, params, body}
-// shape, usable directly in emitAll()/evaluate() with no wrapping. This
+// shape, usable directly in emit()/evaluate() with no wrapping. This
 // was a deliberate API choice, not an oversight -- see the GitHub issue
 // this shipped from for the alternative considered (a separate,
 // always-full-definition tag) and why this was preferred.

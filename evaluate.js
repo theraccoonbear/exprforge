@@ -124,7 +124,7 @@ function evalNode(node, env, registry) {
 }
 
 // evaluate(fn, args) -- fn is a {name, params, body} definition (the
-// same shape emitAll() consumes), args is a plain array positional to
+// same shape emit() consumes), args is a plain array positional to
 // fn.params. Returns a number for a plain body, or a {name: value}
 // object for a multi-output (outputs()) body -- matching the shape
 // test/conformance.test.js's own parseSuiteOutput() already expects

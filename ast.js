@@ -368,7 +368,7 @@ function collectVarRefs(node, refs = new Set()) {
 // or on whichever target language's own compiler/runtime eventually
 // notices, with wildly inconsistent timing and clarity (a real compile
 // error in Java, a silent-until-called ReferenceError in JS). Confirmed
-// the gap first, not assumed: before this existed, emitAll() silently
+// the gap first, not assumed: before this existed, emit() silently
 // succeeded across every registered target for a body referencing a completely
 // undeclared name.
 //

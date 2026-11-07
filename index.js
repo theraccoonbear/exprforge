@@ -1,6 +1,5 @@
 // exprforge/index.js
 const { num, v, bin, call, add, mul, sub, div, neg, letIn, letChain, cmp, select, outputs, field, collectLets, checkUnboundVars } = require("./ast.js");
-const { forComponents } = require("./util.js");
 const { expr } = require("./expr.js");
 const { fn } = require("./fn.js");
 const { evaluate } = require("./evaluate.js");
@@ -36,9 +35,8 @@ const { zeroParamDemoAst } = require("./samples/zero-param-demo.js");
  * that emitter itself throws for this fn (an unmapped Math function, a
  * reserved-name collision, ...) -- the caller picked exactly this one
  * target, so there's no "other languages" for a per-language error to be
- * isolated from; let it propagate. Prefer this over emitAll (deprecated,
- * below) when you only need one or a few targets -- it doesn't pay for
- * every registered emitter to get one.
+ * isolated from; let it propagate. For one or a few targets this is the
+ * cheapest path -- it doesn't pay for every registered emitter to get one.
  *
  * `registry` (see macros.js's createRegistry()) defaults to the
  * process-wide default when omitted -- pass a session's own (see
@@ -121,21 +119,6 @@ function emitMany(fnDef, langs = Object.keys(emitters), registry = undefined, op
 }
 
 /**
- * @deprecated Runs every registered emitter unconditionally, whether you
- * need all of them or not -- prefer emit(fnDef, lang) for one target, or
- * emitMany(fnDef, langs) for an explicit subset (or emitMany(fnDef) with
- * no `langs` for the same "every language" behavior this has always had).
- * Kept working, not scheduled for removal -- existing callers reading
- * result[lang].ext/.source see no change; the only behavior change is the
- * bug fix this shares with emitMany: a single emitter throwing used to
- * abort the whole batch (nothing for ANY language came back), and now
- * surfaces as { source: null, error } for that language alone.
- */
-function emitAll(fnDef) {
-    return emitMany(fnDef);
-}
-
-/**
  * Creates an isolated "session": its own private macro/extern registry
  * (see macros.js's createRegistry()), plus every macro/extern/evaluate/
  * emit-shaped function bound to use it instead of the process-wide
@@ -174,8 +157,6 @@ function createSession() {
 module.exports = {
     // AST builders — use these to define your own formulas.
     num, v, bin, call, add, mul, sub, div, neg, letIn, letChain, cmp, select, outputs, field, collectLets, checkUnboundVars,
-    // Authoring convenience — not an AST primitive, see util.js.
-    forComponents,
     // Infix syntax sugar over the builders above — same Nodes, see expr.js.
     expr,
     // Full function-body syntax (let/return) on top of expr's grammar —
@@ -218,60 +199,8 @@ module.exports = {
     // (a text editor buffer, an HTTP response, ...). loadExpr(path) is
     // now just this plus a readFileSync.
     loadExprSource,
-    // Built-in example formulas — see samples/ for the source.
-    catmullRomAst,
-    fibonacciAst,
-    splineFrameAsts,
-    // Not a worked example -- a conformance-test fixture that calls every
-    // supported Math function once. See samples/kitchen-sink.js.
-    kitchenSinkAst,
-    // Also not a worked example -- a conformance-test fixture for
-    // require("exprforge/math"). See samples/math-demo.js.
-    mathDemoAst,
-    // Also not a worked example -- a conformance-test fixture for
-    // macros.js's AST-fn-def macro tier specifically (loadMacro(name,
-    // fn`...`), not the plain-JS-function tier mathDemoAst already
-    // covers). See samples/macro-demo.js.
-    macroDemoAst,
-    // Array-typed parameters + wrapIndex/clampIndex, reading through an
-    // idx() node -- see docs/array-index-primitives.md and
-    // samples/array-index-demo.js. Not wired into test/conformance.test.js
-    // yet (its runners assume scalar-only positional arguments -- see
-    // that doc's own "Not done here" section).
-    cyclicElemAst,
-    clampedElemAst,
-    // Coverage fixture for every cmp() operator against every real
-    // target -- see samples/comparison-ops-demo.js's own header comment
-    // for the real bug this exists because of.
-    comparisonOpsAst,
-    // Coverage fixtures for two more risks the same audit surfaced but
-    // hadn't yet actually broken anything for -- see each file's own
-    // header comment.
-    nestedSelectAst,
-    numberExtremesAst,
-    roundTieBoundaryAst,
-    domainSafetyAst,
-    arraySuiteAst,
-    arrayMacroDemoAst,
-    // Coverage fixture for min()/max()'s NaN-propagation divergence --
-    // see samples/math-edge-cases-demo.js's own header comment for the
-    // real bug this exists because of, and docs/adr/0003-min-max-nan-
-    // propagation.md for the full decision record.
-    mathEdgeCasesAst,
-    // Coverage fixture for division by a runtime zero -- see
-    // samples/division-by-zero-demo.js and docs/adr/0004-division-by-zero.md.
-    divisionByZeroAst,
-    // Coverage fixture for floor/ceil/trunc/round of NaN and +-Infinity --
-    // see samples/non-finite-rounding-demo.js.
-    nonFiniteRoundingAst,
-    roundingZeroSignAst,
-    // Coverage fixture for differentiate()'s own output compiled through
-    // a real target -- see samples/differentiate-demo.js's own header
-    // comment for the gap this closes.
-    differentiateDemoAst,
-    // Coverage fixture for a zero-parameter function -- see
-    // samples/zero-param-demo.js's own header comment.
-    zeroParamDemoAst,
+    // Built-in example and conformance-fixture formulas, keyed by name --
+    // see samples/ for the source and each file's own header comment.
     samples: {
         catmullRom: catmullRomAst,
         fibonacci: fibonacciAst,
@@ -304,9 +233,6 @@ module.exports = {
     emitFile,
     // Several targets at once, each isolated from the others' failures.
     emitMany,
-    // Deprecated: every target at once, no way to ask for fewer. Prefer
-    // emit()/emitMany() above -- kept working, not removed.
-    emitAll,
     // Creates an isolated session: its own private macro/extern registry,
     // plus loadMacro/loadExtern/evaluate/emit/emitMany/loadExpr/
     // loadExprSource bound to use it. See this function's own doc
