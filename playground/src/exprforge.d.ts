@@ -145,10 +145,8 @@ declare module "exprforge" {
         certain?: boolean;
         guards?: string[];
         guardConditions?: string[];
-        inDeadBranch?: boolean;
         outcome?: "always-then" | "always-else";
     }
-    export type RangeWarning = RangeFinding;
     export interface RangeSelect {
         at: string;
         outcome: "always-then" | "always-else" | "either";
@@ -159,8 +157,6 @@ declare module "exprforge" {
     }
     export interface RangeAnalysis {
         range: Interval | Record<string, Interval>;
-        // The findings with severity "warning".
-        warnings: RangeFinding[];
         // Every finding, warnings and informational notes alike.
         findings: RangeFinding[];
         selects: RangeSelect[];

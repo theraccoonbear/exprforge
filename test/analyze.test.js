@@ -22,6 +22,7 @@ const { safeDiv, normalize3 } = require("../math/index.js");
 const { createSession } = require("../index.js");
 const samples = require("../index.js").samples;
 
+const warningsOf = (r) => r.findings.filter((x) => x.severity === "warning");
 const def = (params, body) => ({ name: "f", params, body });
 
 // Deterministic PRNG so failures reproduce.
@@ -71,7 +72,7 @@ function assertSound(fnDef, ranges, count = 400, seed = 1) {
 test("arithmetic: + - * propagate bounds", () => {
     const r = analyzeRanges(def(["x", "y"], sub(add(v("x"), mul(v("y"), num(2))), num(1))), { x: [0, 10], y: [-5, 5] });
     assert.deepEqual(r.range, { lo: -11, hi: 19, nan: false });
-    assert.deepEqual(r.warnings, []);
+    assert.deepEqual(warningsOf(r), []);
 });
 
 test("x*x uses the squared range, not the sign-mixed product", () => {
@@ -96,22 +97,22 @@ test("invalid range declarations are rejected", () => {
 
 test("division: denominator interval containing zero is flagged", () => {
     const r = analyzeRanges(def(["x", "d"], div(v("x"), v("d"))), { x: [1, 2], d: [-1, 1] });
-    assert.equal(r.warnings.length, 1);
-    assert.equal(r.warnings[0].kind, "div-by-zero");
-    assert.equal(r.warnings[0].certain, false);
-    assert.deepEqual(r.warnings[0].denominator, { lo: -1, hi: 1, nan: false });
+    assert.equal(warningsOf(r).length, 1);
+    assert.equal(warningsOf(r)[0].kind, "div-by-zero");
+    assert.equal(warningsOf(r)[0].certain, false);
+    assert.deepEqual(warningsOf(r)[0].denominator, { lo: -1, hi: 1, nan: false });
     assert.equal(r.range.lo, -Infinity);
     assert.equal(r.range.hi, Infinity);
 });
 
 test("division: a denominator exactly zero is reported as certain", () => {
     const r = analyzeRanges(def(["x"], div(v("x"), num(0))), { x: [1, 2] });
-    assert.equal(r.warnings[0].certain, true);
+    assert.equal(warningsOf(r)[0].certain, true);
 });
 
 test("division: denominator proven nonzero gives a finite range and no warning", () => {
     const r = analyzeRanges(def(["x", "d"], div(v("x"), v("d"))), { x: [1, 2], d: [2, 4] });
-    assert.deepEqual(r.warnings, []);
+    assert.deepEqual(warningsOf(r), []);
     assert.deepEqual(r.range, { lo: 0.25, hi: 1, nan: false });
     const neg = analyzeRanges(def(["x", "d"], div(v("x"), v("d"))), { x: [1, 2], d: [-4, -2] });
     assert.deepEqual(neg.range, { lo: -1, hi: -0.25, nan: false });
@@ -120,9 +121,9 @@ test("division: denominator proven nonzero gives a finite range and no warning",
 test("division: a denominator computed from other terms is analyzed, not just a variable", () => {
     const body = div(v("x"), add(mul(v("y"), v("y")), num(1)));
     const r = analyzeRanges(def(["x", "y"], body), { x: [-1, 1], y: [-3, 3] });
-    assert.deepEqual(r.warnings, []);
+    assert.deepEqual(warningsOf(r), []);
     const bad = div(v("x"), sub(mul(v("y"), v("y")), num(1)));
-    assert.equal(analyzeRanges(def(["x", "y"], bad), { x: [-1, 1], y: [-3, 3] }).warnings[0].kind, "div-by-zero");
+    assert.equal(warningsOf(analyzeRanges(def(["x", "y"], bad), { x: [-1, 1], y: [-3, 3] }))[0].kind, "div-by-zero");
 });
 
 // Guard patterns: for every comparison operator, a select() whose condition
@@ -153,9 +154,9 @@ for (const [op, range, bound, guardedThen] of GUARDS) {
         const f = def(["x", "d"], body);
         const r = analyzeRanges(f, { x: [1, 2], d: range });
         // A flat-out guarded division is never "div-by-zero"...
-        assert.equal(r.warnings.filter((w) => w.kind === "div-by-zero").length, 0, JSON.stringify(r.warnings));
+        assert.equal(warningsOf(r).filter((w) => w.kind === "div-by-zero").length, 0, JSON.stringify(warningsOf(r)));
         // ...but it does depend on the guard.
-        assert.equal(r.warnings.filter((w) => w.kind === "div-guarded").length, 1, JSON.stringify(r.warnings));
+        assert.equal(warningsOf(r).filter((w) => w.kind === "div-guarded").length, 1, JSON.stringify(warningsOf(r)));
         assert.equal(r.selects[0].loadBearing, true);
         assert.equal(r.selects[0].outcome, "either");
         assertSound(f, { x: [1, 2], d: range });
@@ -165,21 +166,21 @@ for (const [op, range, bound, guardedThen] of GUARDS) {
 test("guard refinement: the unguarded branch of a select is still flagged", () => {
     const f = def(["x", "d"], select(cmp(v("d"), ">", num(0.5)), num(0), div(v("x"), v("d"))));
     const r = analyzeRanges(f, { x: [1, 2], d: [-3, 3] });
-    assert.deepEqual(r.warnings.map((w) => w.kind), ["div-by-zero"]);
+    assert.deepEqual(warningsOf(r).map((w) => w.kind), ["div-by-zero"]);
 });
 
 test("guard refinement: operands may be swapped (constant on the left)", () => {
     const f = def(["x", "d"], select(cmp(num(0.5), "<", v("d")), div(v("x"), v("d")), num(0)));
     const r = analyzeRanges(f, { x: [1, 2], d: [-3, 3] });
-    assert.deepEqual(r.warnings.map((w) => w.kind), ["div-guarded"]);
+    assert.deepEqual(warningsOf(r).map((w) => w.kind), ["div-guarded"]);
 });
 
 test("guard refinement: abs(d) > eps excludes the open interval around zero", () => {
     const eps = num(1e-6);
     const f = def(["x", "d"], select(cmp(call("abs", v("d")), ">", eps), div(v("x"), v("d")), num(0)));
     const r = analyzeRanges(f, { x: [1, 2], d: [-1, 1] });
-    assert.deepEqual(r.warnings.map((w) => w.kind), ["div-guarded"]);
-    assert.deepEqual(r.warnings[0].guards, ["body"]);
+    assert.deepEqual(warningsOf(r).map((w) => w.kind), ["div-guarded"]);
+    assert.deepEqual(warningsOf(r)[0].guards, ["body"]);
     assert.equal(r.selects[0].loadBearing, true);
     assert.equal(r.range.lo, -2e6);
     assert.equal(r.range.hi, 2e6);
@@ -187,14 +188,14 @@ test("guard refinement: abs(d) > eps excludes the open interval around zero", ()
 
 test("guard refinement: abs(d) >= eps behaves the same as abs(d) > eps", () => {
     const f = def(["x", "d"], select(cmp(call("abs", v("d")), ">=", num(1e-6)), div(v("x"), v("d")), num(0)));
-    assert.deepEqual(analyzeRanges(f, { x: [1, 2], d: [-1, 1] }).warnings.map((w) => w.kind), ["div-guarded"]);
+    assert.deepEqual(warningsOf(analyzeRanges(f, { x: [1, 2], d: [-1, 1] })).map((w) => w.kind), ["div-guarded"]);
 });
 
 test("guard refinement: applies through let-bound names", () => {
     const f = def(["x", "y"], letIn("m", call("sqrt", add(mul(v("x"), v("x")), mul(v("y"), v("y")))),
         select(cmp(v("m"), ">", num(1e-9)), div(v("x"), v("m")), num(0))));
     const r = analyzeRanges(f, { x: [-1, 1], y: [-1, 1] });
-    assert.deepEqual(r.warnings.map((w) => w.kind), ["div-guarded"]);
+    assert.deepEqual(warningsOf(r).map((w) => w.kind), ["div-guarded"]);
     assertSound(f, { x: [-1, 1], y: [-1, 1] });
 });
 
@@ -206,16 +207,16 @@ test("the QB64-eager normalizeX shape: guarded but not safe where select evaluat
         call("sqrt", add(mul(v("x"), v("x")), mul(v("y"), v("y")), mul(v("z"), v("z")))),
         select(cmp(v("mag"), ">", num(1e-9)), div(v("x"), v("mag")), num(0))));
     const r = analyzeRanges(f, { x: [-1, 1], y: [-1, 1], z: [-1, 1] });
-    assert.equal(r.warnings.length, 1);
-    assert.equal(r.warnings[0].kind, "div-guarded");
-    assert.equal(r.warnings[0].denominator.lo, 0);
+    assert.equal(warningsOf(r).length, 1);
+    assert.equal(warningsOf(r)[0].kind, "div-guarded");
+    assert.equal(warningsOf(r)[0].denominator.lo, 0);
     assert.equal(r.selects[0].loadBearing, true);
 });
 
 test("safeDiv's clamped denominator is provably safe: no warnings, guard not load-bearing", () => {
     const f = def(["x", "d"], safeDiv(v("x"), v("d"), num(0)));
     const r = analyzeRanges(f, { x: [1, 2], d: [-1, 1] });
-    assert.deepEqual(r.warnings, []);
+    assert.deepEqual(warningsOf(r), []);
     assert.ok(r.selects.every((s) => !s.loadBearing));
     assert.ok(Number.isFinite(r.range.lo) && Number.isFinite(r.range.hi));
     assertSound(f, { x: [1, 2], d: [-1, 1] });
@@ -225,7 +226,7 @@ test("normalize3 (math/index.js) is warning-free", () => {
     const f = def(["x", "y", "z"], outputs(normalize3(v("x"), v("y"), v("z"), num(1), num(0), num(0))));
     const ranges = { x: [-4, 4], y: [-4, 4], z: [-4, 4] };
     const r = analyzeRanges(f, ranges);
-    assert.deepEqual(r.warnings, []);
+    assert.deepEqual(warningsOf(r), []);
     assertSound(f, ranges, 200);
 });
 
@@ -258,17 +259,18 @@ test("dead-branch divisions are informational, not warnings", () => {
     const f = def(["x", "d"], select(cmp(v("x"), ">", num(10)), div(num(1), v("d")), num(0)));
     const r = analyzeRanges(f, { x: [0, 1], d: [-1, 1] });
     assert.equal(r.selects[0].outcome, "always-else");
-    assert.deepEqual(r.warnings, []);
+    assert.deepEqual(warningsOf(r), []);
     const note = r.findings.find((x) => x.kind === "div-unreachable");
     assert.equal(note.severity, "info");
-    assert.equal(note.inDeadBranch, true);
+    assert.equal("inDeadBranch" in note, false);
+    assert.equal("warnings" in r, false);
     assert.deepEqual(r.range, { lo: 0, hi: 0, nan: false });
 });
 
 test("a guard that excludes nothing is not load-bearing", () => {
     const f = def(["x", "d"], select(cmp(v("x"), ">", num(0)), div(num(1), v("d")), num(0)));
     const r = analyzeRanges(f, { x: [-1, 1], d: [1, 2] });
-    assert.deepEqual(r.warnings, []);
+    assert.deepEqual(warningsOf(r), []);
     assert.equal(r.selects[0].loadBearing, false);
 });
 
@@ -279,8 +281,8 @@ test("nested selects: only the guard actually excluding zero is load-bearing", (
     assert.equal(r.selects.length, 2);
     assert.equal(r.selects[0].loadBearing, false);
     assert.equal(r.selects[1].loadBearing, true);
-    assert.equal(r.warnings[0].guards.length, 1);
-    assert.equal(r.warnings[0].guards[0], r.selects[1].at);
+    assert.equal(warningsOf(r)[0].guards.length, 1);
+    assert.equal(warningsOf(r)[0].guards[0], r.selects[1].at);
 });
 
 test("outputs() bodies return a range per field", () => {
@@ -296,13 +298,13 @@ test("macros are expanded before analysis", () => {
         return safeDiv(x, d, 0);
     `;
     const r = analyzeRanges(f, { x: [1, 2], d: [-1, 1] });
-    assert.deepEqual(r.warnings, []);
+    assert.deepEqual(warningsOf(r), []);
 });
 
 test("array parameters: the declared range bounds every element", () => {
     const f = { name: "f", params: ["a", "i"], paramTypes: { a: "number[]" }, body: div(num(1), idx(v("a"), v("i"))) };
-    assert.deepEqual(analyzeRanges(f, { a: [1, 4] }).warnings, []);
-    assert.equal(analyzeRanges(f, { a: [-1, 4] }).warnings[0].kind, "div-by-zero");
+    assert.deepEqual(warningsOf(analyzeRanges(f, { a: [1, 4] })), []);
+    assert.equal(warningsOf(analyzeRanges(f, { a: [-1, 4] }))[0].kind, "div-by-zero");
 });
 
 test("externs are opaque: unbounded and possibly NaN", () => {
@@ -422,7 +424,7 @@ test("spline-frame's hand-written EPS guards all clamp their own denominators: n
         const ranges = {};
         for (const p of ast.params) ranges[p] = [-10, 10];
         const r = analyzeRanges(ast, ranges);
-        assert.deepEqual(r.warnings, [], ast.name);
+        assert.deepEqual(warningsOf(r), [], ast.name);
         assert.ok(r.selects.every((s) => !s.loadBearing), ast.name);
         selectCount += r.selects.length;
     }
@@ -443,7 +445,7 @@ test("narrowing: x in [-20, 20], x > 10 ? 1/x : 0 has no div-by-zero", () => {
 test("narrowing: x in [-1, 1] gives only informational notes and the range [0, 0]", () => {
     const r = analyzeRanges(def(["x"], X_GT_10_RECIP()), { x: [-1, 1] });
     assert.deepEqual(r.range, { lo: 0, hi: 0, nan: false });
-    assert.deepEqual(r.warnings, []);
+    assert.deepEqual(warningsOf(r), []);
     assert.ok(r.findings.length > 0);
     assert.ok(r.findings.every((x) => x.severity === "info"));
 });
@@ -494,7 +496,7 @@ test("narrowing: the else side of x != 0 is x == 0, a certain hazard", () => {
 test("unreachable: contradictory conditions mark the branch unreachable", () => {
     const f = def(["x"], select(cmp(v("x"), ">", num(0)), num(1), select(cmp(v("x"), ">", num(1)), div(num(1), num(0)), num(2))));
     const r = analyzeRanges(f, { x: [0, 5] });
-    assert.deepEqual(r.warnings, []);
+    assert.deepEqual(warningsOf(r), []);
     assert.ok(r.findings.some((x) => x.kind === "div-unreachable"));
 });
 
@@ -509,7 +511,7 @@ test("nested selects: the inner condition is decided using the outer narrowing",
     assert.equal(r.findings.filter((x) => x.kind === "condition-decided").length, 1);
 });
 
-test("findings: every finding carries a severity and a message; warnings are the non-info ones", () => {
+test("findings: every finding carries a severity and a message", () => {
     const f = def(["x", "d"], add(div(v("x"), v("d")), X_GT_10_RECIP()));
     const r = analyzeRanges(f, { x: [-1, 1], d: [-1, 1] });
     for (const x of r.findings) {
@@ -517,7 +519,6 @@ test("findings: every finding carries a severity and a message; warnings are the
         assert.equal(typeof x.message, "string");
         assert.equal(typeof x.at, "string");
     }
-    assert.deepEqual(r.warnings, r.findings.filter((x) => x.severity === "warning"));
     assert.ok(r.selects.every((s) => s.severity === "info" && typeof s.message === "string"));
 });
 

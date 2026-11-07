@@ -671,7 +671,7 @@ const f = fn`
 `;
 const r = analyzeRanges(f, { x: [1, 2], d: [-1, 1] });
 // r.range    -> { lo: -Infinity, hi: Infinity, nan: false }
-// r.warnings -> [{ kind: "div-by-zero", severity: "warning", at: "body",
+// r.findings -> [{ kind: "div-by-zero", severity: "warning", at: "body",
 //                  expr: "x / d", certain: false,
 //                  denominator: { lo: -1, hi: 1, nan: false },
 //                  message: "`x / d` can divide by zero: `d` can be 0 (range −1…1)." }]
@@ -692,8 +692,8 @@ every element. A function with `outputs()` gets one range per field.
 - **Findings**: `r.findings` lists everything worth reporting. Each has
   `kind`, `severity` (`"warning"` or `"info"`), a plain-language `message`
   that quotes the source expression, `expr` (that source text) and `at`
-  (the internal AST path, for debugging). `r.warnings` is the subset with
-  severity `"warning"`.
+  (the internal AST path, for debugging). Filter on `severity` to separate
+  hazards (`"warning"`) from notes (`"info"`).
 - **`div-by-zero`** (warning): the denominator's interval includes zero
   even after narrowing by enclosing `select()` conditions.
   `certain: true` means it is exactly `[0, 0]`.
@@ -708,8 +708,7 @@ every element. A function with `outputs()` gets one range per field.
   use produces neither warning.
 - **`div-unreachable`** (info): a division that would see a zero
   denominator but sits in a branch the ranges never take. It is not a
-  hazard, so it is not in `r.warnings` (earlier versions listed it there
-  with `inDeadBranch: true`; that flag is still set on the note).
+  hazard, so it carries severity `"info"`.
 - **`condition-decided`** (info): a `select()` condition is always or never
   true for the declared ranges, so the other branch is dead.
 - **`selects`**: one entry per `select()` with `outcome`

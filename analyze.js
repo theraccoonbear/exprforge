@@ -14,7 +14,6 @@
 //   {
 //     range:    { lo, hi, nan }   or, for an outputs() body, { name: {lo,hi,nan} }
 //     findings: [ ... ]            everything worth telling a human, see below
-//     warnings: [ ... ]            the findings whose severity is "warning"
 //     selects:  [ ... ]            one entry per select() node, see below
 //   }
 //
@@ -47,11 +46,9 @@
 //                   `guardConditions` their condition text.
 //   "div-unreachable"  severity "info". A division whose denominator includes
 //                   zero sits in a select() branch the ranges prove is never
-//                   taken, so it is not a hazard. Also `inDeadBranch: true`.
+//                   taken, so it is not a hazard.
 //   "condition-decided"  severity "info". A select() condition is always
 //                   true / never true for the declared ranges (`outcome`).
-// `warnings` is exactly the "warning" findings, so unreachable divisions are
-// no longer in it (they used to appear there with `inDeadBranch: true`).
 //
 // selects entries: { at, outcome, loadBearing, condition, severity, message }
 //   outcome      "always-then" | "always-else" | "either": whether the
@@ -392,7 +389,7 @@ function checkRanges(fnDef, ranges) {
 }
 
 /**
- * analyzeRanges(fnDef, ranges, registry?) -> { range, warnings, selects, findings }
+ * analyzeRanges(fnDef, ranges, registry?) -> { range, selects, findings }
  * See this file's header comment for the result shape.
  */
 function analyzeRanges(fnDef, ranges = {}, registry = undefined) {
@@ -486,7 +483,7 @@ function analyzeRanges(fnDef, ranges = {}, registry = undefined) {
             if (containsZero(r)) {
                 findings.push({
                     kind: "div-unreachable", severity: "info", at, expr: text,
-                    denominator: strip(r), inDeadBranch: true,
+                    denominator: strip(r),
                     message: `${code(text)} never runs for these inputs (${ctx.dead}), so its zero denominator is not a hazard.`,
                 });
             }
@@ -642,8 +639,7 @@ function analyzeRanges(fnDef, ranges = {}, registry = undefined) {
         range = strip(an(body, top));
         path.pop();
     }
-    const warnings = findings.filter((f) => f.severity !== "info");
-    return { range, warnings, selects, findings };
+    return { range, selects, findings };
 }
 
 module.exports = { analyzeRanges };
