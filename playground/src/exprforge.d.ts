@@ -43,7 +43,7 @@ declare module "exprforge" {
         source: string;
     }
 
-    // What emitMany()/emitAll() actually return per language: `ext` is
+    // What emitMany() actually return per language: `ext` is
     // always present (even on failure, so a failed card still knows its
     // file extension), `source` is null and `error` is the failure
     // message when that one language's emitter threw, otherwise `source`
@@ -86,13 +86,8 @@ declare module "exprforge" {
     export function emitFile(defs: FnDef[], lang: string, registry?: unknown, opts?: Record<string, unknown>): EmitResult;
     // Several targets (default: every registered one), each isolated from
     // the others' failures -- see BatchEmitResult above. This is what
-    // useExprForge.ts actually calls now, replacing the hand-rolled
-    // per-emitter loop this file used to need to work around emitAll's
-    // lack of isolation.
+    // useExprForge.ts actually calls.
     export function emitMany(def: FnDef, langs?: string[]): Record<string, BatchEmitResult>;
-    // Deprecated: every target at once, no way to ask for fewer. Now just
-    // emitMany(def) -- kept working, not removed. See index.js.
-    export function emitAll(def: FnDef): Record<string, BatchEmitResult>;
     // Confirms every variable reference in def.body is actually declared
     // (a parameter, or a let binding somewhere in the function) --
     // throws with a clear message otherwise. Called once, up front, by

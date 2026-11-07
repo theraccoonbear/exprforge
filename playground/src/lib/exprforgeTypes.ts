@@ -15,7 +15,6 @@ export interface ExprForgeModuleShape {
     emit(def: FnDef, lang: string, registry?: unknown, opts?: Record<string, unknown>): EmitResult;
     emitFile(defs: FnDef[], lang: string, registry?: unknown, opts?: Record<string, unknown>): EmitResult;
     emitMany(def: FnDef, langs?: string[]): Record<string, BatchEmitResult>;
-    emitAll(def: FnDef): Record<string, BatchEmitResult>;
     checkUnboundVars(def: FnDef): void;
     emitters: Record<string, Emitter>;
     loadExprSource(source: string, label?: string): Record<string, FnDef>;

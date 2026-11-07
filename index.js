@@ -36,9 +36,8 @@ const { zeroParamDemoAst } = require("./samples/zero-param-demo.js");
  * that emitter itself throws for this fn (an unmapped Math function, a
  * reserved-name collision, ...) -- the caller picked exactly this one
  * target, so there's no "other languages" for a per-language error to be
- * isolated from; let it propagate. Prefer this over emitAll (deprecated,
- * below) when you only need one or a few targets -- it doesn't pay for
- * every registered emitter to get one.
+ * isolated from; let it propagate. For one or a few targets this is the
+ * cheapest path -- it doesn't pay for every registered emitter to get one.
  *
  * `registry` (see macros.js's createRegistry()) defaults to the
  * process-wide default when omitted -- pass a session's own (see
@@ -118,21 +117,6 @@ function emitMany(fnDef, langs = Object.keys(emitters), registry = undefined, op
         }
     }
     return result;
-}
-
-/**
- * @deprecated Runs every registered emitter unconditionally, whether you
- * need all of them or not -- prefer emit(fnDef, lang) for one target, or
- * emitMany(fnDef, langs) for an explicit subset (or emitMany(fnDef) with
- * no `langs` for the same "every language" behavior this has always had).
- * Kept working, not scheduled for removal -- existing callers reading
- * result[lang].ext/.source see no change; the only behavior change is the
- * bug fix this shares with emitMany: a single emitter throwing used to
- * abort the whole batch (nothing for ANY language came back), and now
- * surfaces as { source: null, error } for that language alone.
- */
-function emitAll(fnDef) {
-    return emitMany(fnDef);
 }
 
 /**
@@ -304,9 +288,6 @@ module.exports = {
     emitFile,
     // Several targets at once, each isolated from the others' failures.
     emitMany,
-    // Deprecated: every target at once, no way to ask for fewer. Prefer
-    // emit()/emitMany() above -- kept working, not removed.
-    emitAll,
     // Creates an isolated session: its own private macro/extern registry,
     // plus loadMacro/loadExtern/evaluate/emit/emitMany/loadExpr/
     // loadExprSource bound to use it. See this function's own doc
