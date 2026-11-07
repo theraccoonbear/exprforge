@@ -6,9 +6,21 @@
   "type": "commonjs",
   "exports": {
     ".": "./index.js",
+    "./core": "./entry/core.js",
+    "./parse": "./entry/parse.js",
+    "./eval": "./entry/eval.js",
+    "./analyze": "./entry/analyze.js",
+    "./macros": "./entry/macros.js",
+    "./emitters/*": "./emitters/*.js",
     "./math": "./math/index.js",
     "./package.json": "./package.json"
   },
+  "sideEffects": [
+    "./index.js",
+    "./math/index.js",
+    "./samples/macro-demo.js",
+    "./samples/array-macro-demo.js"
+  ],
   "files": [
     "index.js",
     "ast.js",
@@ -23,6 +35,7 @@
     "primitives.js",
     "load-expr.js",
     "build.js",
+    "entry/",
     "emitters/",
     "samples/",
     "math/"

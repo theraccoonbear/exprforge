@@ -86,9 +86,9 @@ const { collectLets, checkUnboundVars } = require("./ast.js");
 const { expandMacros } = require("./macros.js");
 const { PRIMITIVE_ARITY } = require("./primitives.js");
 const exprSyntax = require("./emitters/exprsyntax.js");
-// The targets that evaluate both branches of a select() are read from the
-// emitter registry (meta.selectShortCircuits), not listed here.
-const { eagerSelectTargets } = require("./emitters/meta.js");
+// Read lazily: emitters/meta.js pulls in the whole emitter registry, which a
+// caller of analyzeRanges() alone should not pay for.
+const lazyEagerSelectTargets = () => require("./emitters/meta.js").eagerSelectTargets();
 
 const INF = Infinity;
 const TWO_PI = 2 * Math.PI;
@@ -518,7 +518,7 @@ function analyzeRanges(fnDef, ranges = {}, registry = undefined) {
             denominator,
             message: `${code(text)} is protected from a zero denominator only by the condition ${conds} ` +
                 `(${code(denomText)} can be 0 on its own, range ${fmtRange(denominator)}). ` +
-                `Targets that evaluate both branches of a select (${eagerSelectTargets()}) still run the division.`,
+                `Targets that evaluate both branches of a select (${lazyEagerSelectTargets()}) still run the division.`,
         });
         return result;
     }

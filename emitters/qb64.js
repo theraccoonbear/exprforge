@@ -399,4 +399,5 @@ emitter.meta = {
     minMaxNaN: "positional",
 };
 
+emitter.lang = "qb64";
 module.exports = emitter;

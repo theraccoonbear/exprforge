@@ -132,4 +132,5 @@ emitter.meta = {
     minMaxNaN: "propagate",
 };
 
+emitter.lang = "go";
 module.exports = emitter;

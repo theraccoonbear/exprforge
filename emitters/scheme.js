@@ -253,4 +253,5 @@ emitter.meta = {
     minMaxNaN: "propagate",
 };
 
+emitter.lang = "scheme";
 module.exports = emitter;

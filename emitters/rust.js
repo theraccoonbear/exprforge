@@ -140,4 +140,5 @@ emitter.meta = {
     minMaxNaN: "ignore",
 };
 
+emitter.lang = "rust";
 module.exports = emitter;

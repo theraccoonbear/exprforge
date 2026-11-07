@@ -140,4 +140,5 @@ emitter.meta = {
     minMaxNaN: "ignore",
 };
 
+emitter.lang = "c";
 module.exports = emitter;

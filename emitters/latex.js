@@ -444,4 +444,5 @@ emitter.meta = {
     minMaxNaN: null,
 };
 
+emitter.lang = "latex";
 module.exports = emitter;

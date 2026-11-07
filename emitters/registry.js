@@ -26,13 +26,14 @@ const emitters = {
     latex: require("./latex.js"),
 };
 
-// Each emitter learns its own registered key here, once -- base.js's
-// emitExpr uses this.lang to resolve an extern (see loadExtern() in
-// macros.js), and this is the one place that already knows the
-// name<->instance mapping, so it's the only file that needs to change
-// for this instead of every emitters/<lang>.js.
+// Each emitters/<lang>.js sets its own `lang` (its registered key) so it
+// also works standalone, outside this registry -- base.js's emitExpr uses
+// this.lang to resolve an extern (see loadExtern() in macros.js). The
+// registry only asserts that the two agree.
 for (const [lang, emitter] of Object.entries(emitters)) {
-    emitter.lang = lang;
+    if (emitter.lang !== lang) {
+        throw new Error(`emitters/registry.js: emitter registered as "${lang}" has lang "${emitter.lang}"`);
+    }
 }
 
 module.exports = emitters;
