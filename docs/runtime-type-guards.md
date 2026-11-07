@@ -31,14 +31,14 @@ An opt-in 4th argument to `emit()`/`emitMany()` (and the equivalent on a
 session's own `emit`/`emitMany`, see `createSession()`):
 
 ```js
-const { emit, cyclicElemAst } = require("exprforge");
+const { emit, samples } = require("exprforge");
 
-emit(cyclicElemAst, "js").source;
+emit(samples.cyclicElem, "js").source;
 // function cyclicElem(arr, m, i) {
 //     return arr[(((i % m) + m) % m)];
 // }
 
-emit(cyclicElemAst, "js", undefined, { addTypeGuards: true }).source;
+emit(samples.cyclicElem, "js", undefined, { addTypeGuards: true }).source;
 // function cyclicElem(arr, m, i) {
 //     if (!Array.isArray(arr)) throw new Error("cyclicElem: \"arr\" must be an array");
 //     return arr[(((i % m) + m) % m)];

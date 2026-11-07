@@ -70,18 +70,18 @@ test("the packed tarball installs and require()s cleanly, with the real exports 
 
         // Exercises both export paths (require("exprforge") and
         // require("exprforge/math")) and actually CALLS a representative
-        // function from each, plus emitAll -- not just checks that
+        // function from each, plus emitMany -- not just checks that
         // requiring doesn't throw, since a missing file inside a
         // subdirectory that's otherwise present (e.g. one emitter) would
         // only surface once that specific code path runs.
         const script = `
-            const { expr, v, add, mul, emitAll, emitters } = require("exprforge");
+            const { expr, v, add, mul, emitMany, emitters } = require("exprforge");
             const { safeDiv, dot3 } = require("exprforge/math");
             const assert = require("node:assert");
             assert.deepStrictEqual(expr\`a + b * c\`, add(v("a"), mul(v("b"), v("c"))));
             assert.strictEqual(typeof safeDiv, "function");
             assert.strictEqual(typeof dot3, "function");
-            const out = emitAll({ name: "t", params: ["x"], body: expr\`x * 2\` });
+            const out = emitMany({ name: "t", params: ["x"], body: expr\`x * 2\` });
             assert.strictEqual(Object.keys(out).length, Object.keys(emitters).length);
             console.log("OK");
         `;

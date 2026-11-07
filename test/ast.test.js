@@ -144,7 +144,7 @@ test("letChain output round-trips through collectLets exactly like hand-nested l
 //
 // Nothing previously checked that a v(name) reference in a tree
 // actually corresponds to a parameter or a let binding -- confirmed the
-// gap first, not assumed: before this existed, emitAll() silently
+// gap first, not assumed: before this existed, emit() silently
 // succeeded across every registered target for a body referencing a completely
 // undeclared name, and evaluate() would only ever notice if it happened
 // to walk that exact node for the args it was given.

@@ -337,8 +337,9 @@ console.log(outputs.rust.source);
 
 ## Samples
 
-`samples/` has worked, non-trivial examples (also exported from the
-package individually, or together as `samples`):
+`samples/` has worked, non-trivial examples (exported from the
+package together as the `samples` object, keyed by name, e.g.
+`samples.catmullRom`):
 
 - `samples/catmull-rom.js` — uniform Catmull-Rom spline interpolation.
 - `samples/fibonacci.js` — nth Fibonacci number via Binet's closed form.
@@ -705,7 +706,7 @@ const f = fn`
 `;
 const r = analyzeRanges(f, { x: [1, 2], d: [-1, 1] });
 // r.range    -> { lo: -Infinity, hi: Infinity, nan: false }
-// r.warnings -> [{ kind: "div-by-zero", severity: "warning", at: "body",
+// r.findings -> [{ kind: "div-by-zero", severity: "warning", at: "body",
 //                  expr: "x / d", certain: false,
 //                  denominator: { lo: -1, hi: 1, nan: false },
 //                  message: "`x / d` can divide by zero: `d` can be 0 (range −1…1)." }]
@@ -726,8 +727,8 @@ every element. A function with `outputs()` gets one range per field.
 - **Findings**: `r.findings` lists everything worth reporting. Each has
   `kind`, `severity` (`"warning"` or `"info"`), a plain-language `message`
   that quotes the source expression, `expr` (that source text) and `at`
-  (the internal AST path, for debugging). `r.warnings` is the subset with
-  severity `"warning"`.
+  (the internal AST path, for debugging). Filter on `severity` to separate
+  hazards (`"warning"`) from notes (`"info"`).
 - **`div-by-zero`** (warning): the denominator's interval includes zero
   even after narrowing by enclosing `select()` conditions.
   `certain: true` means it is exactly `[0, 0]`.
@@ -742,8 +743,7 @@ every element. A function with `outputs()` gets one range per field.
   use produces neither warning.
 - **`div-unreachable`** (info): a division that would see a zero
   denominator but sits in a branch the ranges never take. It is not a
-  hazard, so it is not in `r.warnings` (earlier versions listed it there
-  with `inDeadBranch: true`; that flag is still set on the note).
+  hazard, so it carries severity `"info"`.
 - **`condition-decided`** (info): a `select()` condition is always or never
   true for the declared ranges, so the other branch is dead.
 - **`selects`**: one entry per `select()` with `outcome`
@@ -1263,9 +1263,9 @@ JS/TypeScript/Python/PHP/Lua/Perl/Ruby/Scheme/Julia source (and, since it was ad
 check at all. Opt in with a 4th argument to `emit()`/`emitMany()`:
 
 ```js
-const { emit, cyclicElemAst } = require("exprforge");
+const { emit, samples } = require("exprforge");
 
-emit(cyclicElemAst, "js", undefined, { addTypeGuards: true }).source;
+emit(samples.cyclicElem, "js", undefined, { addTypeGuards: true }).source;
 // function cyclicElem(arr, m, i) {
 //     if (!Array.isArray(arr)) throw new Error("cyclicElem: \"arr\" must be an array");
 //     return arr[(((i % m) + m) % m)];
@@ -2025,7 +2025,7 @@ same thing on every run — installing zero, one, or a different subset of
 the per-language toolchains would make an aggregate threshold either
 flaky or meaningless. Core logic (`ast.js`/`evaluate.js`/`expr.js`/
 `fn.js`/`index.js`/`load-expr.js`/`macros.js`/`math/`/`primitives.js`/
-`samples/`/`util.js`) sits at 95-100% in every environment, toolchains or
+`samples/`) sits at 95-100% in every environment, toolchains or
 not; per-target emitter coverage is intentionally excluded from that
 mental model — code that only really runs inside a real compiled/
 interpreted program can't be exercised without that target's own

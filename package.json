@@ -24,7 +24,6 @@
   "files": [
     "index.js",
     "ast.js",
-    "util.js",
     "expr.js",
     "fn.js",
     "evaluate.js",

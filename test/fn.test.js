@@ -264,14 +264,14 @@ test("a signature wrapping a multi-output return", () => {
     );
 });
 
-test("the produced {name, params, body} plugs directly into emitAll() and evaluate() with no wrapping", () => {
-    const { emitAll, evaluate } = require("../index.js");
+test("the produced {name, params, body} plugs directly into emitMany() and evaluate() with no wrapping", () => {
+    const { emitMany, evaluate } = require("../index.js");
     const def = fn`
         hyp(a, b):
         return sqrt(a^2 + b^2);
     `;
     assert.strictEqual(evaluate(def, [3, 4]), 5);
-    const out = emitAll(def);
+    const out = emitMany(def);
     assert.match(out.python.source, /def hyp\(a, b\)/);
     assert.match(out.rust.source, /fn hyp\(a: f64, b: f64\)/);
 });

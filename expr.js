@@ -6,9 +6,8 @@
 // div/neg/call/cmp/select directly (never constructing a raw {type: ...}
 // object by hand), so every guarantee those builders already have
 // (collectLets round-tripping, emitter compatibility) carries over for
-// free. Unlike util.js's forComponents, this DOES return a Node -- it's
-// closer in spirit to letChain (also in ast.js): a different way to
-// spell the same tree, not a different tree.
+// free. It is closer in spirit to letChain (also in ast.js): a different
+// way to spell the same tree, not a different tree.
 //
 // A tagged template literal, not a plain string function: `expr` is
 // called by JS itself as expr(strings, ...values) -- see the grammar

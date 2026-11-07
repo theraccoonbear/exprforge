@@ -2,7 +2,7 @@
 // in exprforge.d.ts -- consumer files import types from here, and the
 // actual runtime value from "./exprforge" (see that file's header
 // comment for why the two are kept separate).
-export type { Node, FnDef, EmitResult, BatchEmitResult, Emitter, Interval, RangeAnalysis, RangeWarning, RangeFinding, RangeSelect, DuplicateCandidate, DuplicateOccurrence } from "exprforge";
+export type { Node, FnDef, EmitResult, BatchEmitResult, Emitter, Interval, RangeAnalysis, RangeFinding, RangeSelect, DuplicateCandidate, DuplicateOccurrence } from "exprforge";
 
 import type { FnDef, EmitResult, BatchEmitResult, Emitter, RangeAnalysis, DuplicateCandidate } from "exprforge";
 
@@ -15,7 +15,6 @@ export interface ExprForgeModuleShape {
     emit(def: FnDef, lang: string, registry?: unknown, opts?: Record<string, unknown>): EmitResult;
     emitFile(defs: FnDef[], lang: string, registry?: unknown, opts?: Record<string, unknown>): EmitResult;
     emitMany(def: FnDef, langs?: string[]): Record<string, BatchEmitResult>;
-    emitAll(def: FnDef): Record<string, BatchEmitResult>;
     checkUnboundVars(def: FnDef): void;
     emitters: Record<string, Emitter>;
     loadExprSource(source: string, label?: string): Record<string, FnDef>;
