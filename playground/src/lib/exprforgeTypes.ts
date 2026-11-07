@@ -2,7 +2,7 @@
 // in exprforge.d.ts -- consumer files import types from here, and the
 // actual runtime value from "./exprforge" (see that file's header
 // comment for why the two are kept separate).
-export type { Node, FnDef, EmitResult, BatchEmitResult, Emitter, Interval, RangeAnalysis, RangeWarning, RangeSelect, DuplicateCandidate, DuplicateOccurrence } from "exprforge";
+export type { Node, FnDef, EmitResult, BatchEmitResult, Emitter, Interval, RangeAnalysis, RangeWarning, RangeFinding, RangeSelect, DuplicateCandidate, DuplicateOccurrence } from "exprforge";
 
 import type { FnDef, EmitResult, BatchEmitResult, Emitter, RangeAnalysis, DuplicateCandidate } from "exprforge";
 

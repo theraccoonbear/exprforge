@@ -57,6 +57,9 @@ declare module "exprforge" {
     export interface Emitter {
         ext: string;
         emitFunction(def: FnDef): string;
+        // Per-target facts declared next to each emitter (see the root
+        // package's emitters/meta.js); the playground reads displayName.
+        meta?: { displayName: string; kind: string };
     }
 
     // fn(strings, ...values) is a tagged-template function; called
@@ -128,18 +131,38 @@ declare module "exprforge" {
     // Interval analysis: see analyze.js. `ranges` maps parameter names to
     // [min, max].
     export interface Interval { lo: number; hi: number; nan: boolean }
-    export interface RangeWarning {
-        kind: "div-by-zero" | "div-guarded";
+    export type FindingSeverity = "warning" | "info";
+    export interface RangeFinding {
+        kind: "div-by-zero" | "div-guarded" | "div-unreachable" | "condition-decided";
+        severity: FindingSeverity;
+        // Plain-language sentence quoting the source expression.
+        message: string;
+        // Source text the finding is about.
+        expr: string;
+        // Internal AST path, for debugging only.
         at: string;
-        denominator: Interval;
+        denominator?: Interval;
         certain?: boolean;
         guards?: string[];
+        guardConditions?: string[];
         inDeadBranch?: boolean;
+        outcome?: "always-then" | "always-else";
     }
-    export interface RangeSelect { at: string; outcome: "always-then" | "always-else" | "either"; loadBearing: boolean }
+    export type RangeWarning = RangeFinding;
+    export interface RangeSelect {
+        at: string;
+        outcome: "always-then" | "always-else" | "either";
+        loadBearing: boolean;
+        condition: string;
+        severity: "info";
+        message: string;
+    }
     export interface RangeAnalysis {
         range: Interval | Record<string, Interval>;
-        warnings: RangeWarning[];
+        // The findings with severity "warning".
+        warnings: RangeFinding[];
+        // Every finding, warnings and informational notes alike.
+        findings: RangeFinding[];
         selects: RangeSelect[];
     }
     export function analyzeRanges(def: FnDef, ranges?: Record<string, [number, number]>): RangeAnalysis;

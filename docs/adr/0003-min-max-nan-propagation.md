@@ -51,8 +51,8 @@ target, both argument orders:
 
 Standardize on **NaN propagation** (any NaN operand → NaN result),
 matching the interpreter (`evaluate.js`, JS-based, the reference every
-conformance test compares against) and the largest existing group (8 of
-20 executable targets, for free). Fixed with an explicit guard ahead of
+conformance test compares against) and the largest existing group of
+executable targets (no change needed). Fixed with an explicit guard ahead of
 the real call on every non-conforming target except one:
 
 - **C/Rust/Zig**: `isnan()`/`.is_nan()`/`std.math.isNan()` guard.

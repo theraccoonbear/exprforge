@@ -94,4 +94,26 @@ function capitalize(s) {
     return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
+// Per-target facts that registry-wide docs and tests read; field reference
+// in emitters/meta.js.
+emitter.meta = {
+    displayName: "TypeScript",
+    kind: "executable",
+    testTarget: "TypeScript",
+    ci: { workflow: "test-typescript.yml", badge: "TypeScript" },
+    toolchain: {
+        probes: [{ candidates: ["tsc"], args: ["--version"] }],
+        docs: {
+            minimum: "tsc accepting `--strict --target es2020 --module commonjs`",
+            tested: "5.9.3",
+            notes: "Source text is only generated; type-checked in tests.",
+        },
+    },
+    guards: "Array.isArray(arr)",
+    division: "(x / y)",
+    roundTies: "posInf",
+    selectShortCircuits: true,
+    minMaxNaN: "propagate",
+};
+
 module.exports = emitter;

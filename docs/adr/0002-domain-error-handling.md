@@ -25,8 +25,10 @@ that's achievable without disproportionate risk:
   `FUNCTION`s using genuine `IF`/`THEN`/`ELSE` *statements* (confirmed
   to actually short-circuit, unlike `select()`'s arithmetic-emulation
   trick, which can't guard this at all).
-- **Python**: raises `ValueError`. Fixed with an inline `if`/`else`
-  ternary (confirmed short-circuiting).
+- **Python**: raises `ValueError`. Fixed with one-line `_ef_*` helper
+  functions (an `if`/`else` conditional inside each), emitted only when
+  used, so the operand is evaluated once. An earlier inline ternary
+  repeated its operand at every call site.
 - **Ruby**: `Math.sqrt`/`log`/`log2`/`log10`/`asin`/`acos` raise
   `Math::DomainError`; `Float ** Float` with a negative base and
   non-integer exponent returns a `Complex` (and `pow(-8, NaN)` does too).

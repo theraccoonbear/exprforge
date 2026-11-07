@@ -29,7 +29,13 @@ export const RANGE_EXAMPLES: RangeExample[] = [
         id: "dead-branch",
         label: "condition decided by the ranges",
         source: `f(x):\n  return x > 10 ? 1 / x : 0;\n`,
-        ranges: { x: "0, 1" },
+        ranges: { x: "-1, 1" },
+    },
+    {
+        id: "narrowed",
+        label: "condition narrows x away from zero",
+        source: `f(x):\n  return x > 10 ? 1 / x : 0;\n`,
+        ranges: { x: "-20, 20" },
     },
     {
         id: "length",

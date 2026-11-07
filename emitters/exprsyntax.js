@@ -148,4 +148,19 @@ const emitter = new ExprSyntaxEmitter({
     },
 });
 
+// Per-target facts that registry-wide docs and tests read; field reference
+// in emitters/meta.js.
+emitter.meta = {
+    displayName: "ExprForge syntax (printer)",
+    kind: "syntax",
+    testTarget: null,
+    ci: null,
+    toolchain: null,
+    guards: null,
+    division: "(x / y)",
+    roundTies: null,
+    selectShortCircuits: null,
+    minMaxNaN: null,
+};
+
 module.exports = emitter;

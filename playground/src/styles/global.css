@@ -675,6 +675,29 @@ pre,
     color: #fbbf24;
 }
 
+.ranges-explainer {
+    margin: 0;
+    padding: 0.5rem 0.9rem 0;
+    color: var(--text-dim);
+    font-size: 0.8rem;
+}
+
+.ranges-badge {
+    font-size: 0.68rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.ranges-finding code {
+    font-family: inherit;
+    font-weight: 600;
+}
+
+.ranges-finding-info {
+    color: var(--text-dim);
+}
+
 .ranges-note {
     color: var(--text-dim);
     font-size: 0.78rem;

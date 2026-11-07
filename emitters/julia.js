@@ -116,4 +116,26 @@ const emitter = new Emitter({
     },
 });
 
+// Per-target facts that registry-wide docs and tests read; field reference
+// in emitters/meta.js.
+emitter.meta = {
+    displayName: "Julia",
+    kind: "executable",
+    testTarget: "Julia",
+    ci: { workflow: "test-julia.yml", badge: "Julia" },
+    toolchain: {
+        probes: [{ candidates: ["julia"], args: ["--version"] }],
+        docs: {
+            minimum: "1.0 (`clamp`, `RoundNearestTiesAway`)",
+            tested: "1.11.5 (exact)",
+            notes: "",
+        },
+    },
+    guards: "arr isa AbstractVector",
+    division: "(x / y)",
+    roundTies: "away",
+    selectShortCircuits: true,
+    minMaxNaN: "propagate",
+};
+
 module.exports = emitter;

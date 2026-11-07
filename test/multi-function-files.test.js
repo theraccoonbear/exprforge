@@ -20,52 +20,15 @@ const assert = require("node:assert");
 const { execFileSync } = require("node:child_process");
 const fs = require("node:fs");
 const path = require("node:path");
-const { tmpDir, hasQb64, compileQb64, runQb64, QB64_ERROR_PROLOGUE, QB64_ERROR_HANDLER } = require("./harness-util.js");
+const { tmpDir, compileQb64, runQb64, QB64_ERROR_PROLOGUE, QB64_ERROR_HANDLER } = require("./harness-util.js");
 const { v, num, call, add, sub, cmp, select } = require("../ast.js");
 const emitters = require("../emitters/registry.js");
 const { emitFile } = require("../index.js");
 const { DOTNET_TFM } = require("./dotnet-tfm.js");
 
-function hasTool(cmd, args) {
-    try {
-        execFileSync(cmd, args, { stdio: "ignore" });
-        return true;
-    } catch {
-        return false;
-    }
-}
-
-function resolveTool(candidates, args) {
-    for (const cmd of candidates) {
-        if (hasTool(cmd, args)) return cmd;
-    }
-    return null;
-}
-
-const GUILE_BIN = resolveTool(["guile3.0", "guile-3.0", "guile"], ["--version"]);
-const LUA_BIN = resolveTool(["lua5.4", "lua"], ["-v"]);
-
-const TOOLS = {
-    gcc: hasTool("gcc", ["--version"]),
-    go: hasTool("go", ["version"]),
-    rustc: hasTool("rustc", ["--version"]),
-    java: hasTool("javac", ["-version"]) && hasTool("java", ["-version"]),
-    tsc: hasTool("tsc", ["--version"]),
-    qb64: hasQb64(),
-    dotnet: hasTool("dotnet", ["--version"]),
-    python: hasTool("python3", ["--version"]),
-    lua: LUA_BIN !== null,
-    perl: hasTool("perl", ["-v"]),
-    ruby: hasTool("ruby", ["-v"]),
-    php: hasTool("php", ["--version"]),
-    julia: hasTool("julia", ["--version"]),
-    rscript: hasTool("Rscript", ["--version"]),
-    octave: hasTool("octave-cli", ["--version"]),
-    gfortran: hasTool("gfortran", ["--version"]),
-    zig: hasTool("zig", ["version"]),
-    guile: GUILE_BIN !== null,
-    cobc: hasTool("cobc", ["--version"]),
-};
+const { TOOLS, bin, queried } = require("./toolchains.js");
+const GUILE_BIN = bin("scheme");
+const LUA_BIN = bin("lua");
 
 // Two real functions, deliberately using DIFFERENT primitives (sqrt/log)
 // so a mixup between them is obvious in the results -- f1(16) == 4,
@@ -121,7 +84,7 @@ test("whole file: QB64 -- 2 functions compile and run correctly", { skip: !TOOLS
 const cobolFn1 = { name: "f1", params: ["x"], body: select(cmp(v("x"), ">", num(0)), add(v("x"), num(1)), sub(v("x"), num(1))) };
 const cobolFn2 = { name: "f2", params: ["x"], body: select(cmp(v("x"), "<", num(0)), add(v("x"), num(1)), sub(v("x"), num(1))) };
 
-test("whole file: COBOL -- 2 programs compile and run correctly, helpers defined once", { skip: !TOOLS.cobc && "cobc not available" }, () => {
+test("whole file: COBOL -- 2 programs compile and run correctly, helpers defined once", { skip: !TOOLS.cobol && "cobc not available" }, () => {
     const src = file([cobolFn1, cobolFn2], "cobol");
     assert.strictEqual((src.match(/FUNCTION-ID\. ef-cmp-gt\./g) || []).length, 1);
     assert.strictEqual((src.match(/FUNCTION-ID\. ef-cmp-lt\./g) || []).length, 1);
@@ -286,7 +249,7 @@ test("whole file: Java -- two suites in one class get distinct result types", { 
 
 // --- Targets with no file-level declaration of their own ---------------
 
-test("whole file: C -- math.h included once, above every function", { skip: !TOOLS.gcc && "gcc not available" }, () => {
+test("whole file: C -- math.h included once, above every function", { skip: !TOOLS.c && "gcc not available" }, () => {
     const src = file([fn0, fn1, fn2], "c");
     importedOnce(src, "#include <math.h>", "c");
     assert.ok(src.indexOf("#include <math.h>") < src.indexOf("double f0("));
@@ -303,7 +266,7 @@ test("whole file: C -- math.h included once, above every function", { skip: !TOO
     fs.rmSync(dir, { recursive: true, force: true });
 });
 
-test("whole file: Rust -- 2 functions compile and run correctly", { skip: !TOOLS.rustc && "rustc not available" }, () => {
+test("whole file: Rust -- 2 functions compile and run correctly", { skip: !TOOLS.rust && "rustc not available" }, () => {
     const dir = tmpDir("ef-multi-rust-");
     fs.writeFileSync(path.join(dir, "fns.rs"), file([fn1, fn2], "rust"));
     const mainSrc = `mod fns;\nfn main() { println!("{}\\n{}", fns::f1(${F1_ARG}.0), fns::f2(${F2_ARG})); }\n`;
@@ -397,7 +360,7 @@ test("whole file: Julia -- 2 functions run", { skip: !TOOLS.julia && "julia not 
     fs.rmSync(dir, { recursive: true, force: true });
 });
 
-test("whole file: R -- 2 functions run", { skip: !TOOLS.rscript && "Rscript not available" }, () => {
+test("whole file: R -- 2 functions run", { skip: !TOOLS.r && "Rscript not available" }, () => {
     const dir = tmpDir("ef-multi-r-");
     const fnsPath = path.join(dir, "fns.R");
     fs.writeFileSync(fnsPath, file([fn1, fn2], "r") + `\ncat(sprintf("%.17g", f1(${F1_ARG})), "\\n", sep = "")\ncat(sprintf("%.17g", f2(${F2_ARG})), "\\n", sep = "")\n`);
@@ -407,7 +370,7 @@ test("whole file: R -- 2 functions run", { skip: !TOOLS.rscript && "Rscript not 
     fs.rmSync(dir, { recursive: true, force: true });
 });
 
-test("whole file: MATLAB/Octave -- script-file layout, helpers once, runs", { skip: !TOOLS.octave && "octave-cli not available" }, () => {
+test("whole file: MATLAB/Octave -- script-file layout, helpers once, runs", { skip: !TOOLS.matlab && "octave-cli not available" }, () => {
     const src = file([fn1, fn2], "matlab");
     assert.ok(src.includes("\n1;\n"), "Octave script-file marker");
     assert.strictEqual((src.match(/function ef_r = ef_sqrt\(/g) || []).length, 1);
@@ -432,7 +395,7 @@ test("single function: MATLAB/Octave -- carries only the helpers it uses", () =>
     assert.ok(!out1.includes("\n1;\n"));
 });
 
-test("MATLAB/Octave -- one function per file, each self-contained (the MATLAB layout)", { skip: !TOOLS.octave && "octave-cli not available" }, () => {
+test("MATLAB/Octave -- one function per file, each self-contained (the MATLAB layout)", { skip: !TOOLS.matlab && "octave-cli not available" }, () => {
     const dir = tmpDir("ef-multi-octave-files-");
     fs.writeFileSync(path.join(dir, "f1.m"), file([fn1], "matlab"));
     fs.writeFileSync(path.join(dir, "f2.m"), file([fn2], "matlab"));
@@ -446,7 +409,7 @@ test("MATLAB/Octave -- one function per file, each self-contained (the MATLAB la
     fs.rmSync(dir, { recursive: true, force: true });
 });
 
-test("whole file: Scheme -- 2 functions run", { skip: !TOOLS.guile && "guile not available" }, () => {
+test("whole file: Scheme -- 2 functions run", { skip: !TOOLS.scheme && "guile not available" }, () => {
     const dir = tmpDir("ef-multi-scheme-");
     const fnsPath = path.join(dir, "fns.scm");
     fs.writeFileSync(
@@ -459,7 +422,7 @@ test("whole file: Scheme -- 2 functions run", { skip: !TOOLS.guile && "guile not
     fs.rmSync(dir, { recursive: true, force: true });
 });
 
-test("whole file: TypeScript -- 2 functions compile and run correctly", { skip: !TOOLS.tsc && "tsc not available" }, () => {
+test("whole file: TypeScript -- 2 functions compile and run correctly", { skip: !TOOLS.ts && "tsc not available" }, () => {
     const dir = tmpDir("ef-multi-ts-");
     fs.writeFileSync(path.join(dir, "fns.ts"), file([fn1, fn2], "ts"));
     const mainSrc = `import { f1, f2 } from "./fns";\nconsole.log(f1(${F1_ARG}));\nconsole.log(f2(${F2_ARG}));\n`;
@@ -472,7 +435,7 @@ test("whole file: TypeScript -- 2 functions compile and run correctly", { skip: 
     fs.rmSync(dir, { recursive: true, force: true });
 });
 
-test("whole file: Fortran -- one module holding every function compiles and runs", { skip: !TOOLS.gfortran && "gfortran not available" }, () => {
+test("whole file: Fortran -- one module holding every function compiles and runs", { skip: !TOOLS.fortran && "gfortran not available" }, () => {
     const src = file([fn1, fn2], "fortran");
     importedOnce(src, "\nmodule ExprForge\n", "fortran");
     const dir = tmpDir("ef-multi-fortran-");
@@ -493,7 +456,7 @@ test("whole file: Fortran -- one module holding every function compiles and runs
     fs.rmSync(dir, { recursive: true, force: true });
 });
 
-test("whole file: C# -- one static class holding every function compiles and runs", { skip: !TOOLS.dotnet && "dotnet not available" }, () => {
+test("whole file: C# -- one static class holding every function compiles and runs", { skip: !TOOLS.csharp && "dotnet not available" }, () => {
     const src = file([fn1, fn2], "csharp");
     importedOnce(src, "public static class ExprForge", "csharp");
     const dir = tmpDir("ef-multi-cs-");
@@ -549,5 +512,13 @@ test("emitFile -- rejects an empty list, duplicate names and the removed options
     for (const removed of ["includeHelpers", "emittedHelpers", "forceMathImport", "publicClass"]) {
         assert.throws(() => emitFile([fn1], "python", undefined, { [removed]: true }), new RegExp(`opts\\.${removed} was removed in 0\\.10\\.0`));
         assert.throws(() => emitters.python.emitFunction(fn1, undefined, { [removed]: true }), /removed in 0\.10\.0/);
+    }
+});
+
+test("every toolchain-backed executable target has a whole-file test above", () => {
+    for (const [lang, emitter] of Object.entries(emitters)) {
+        const probes = emitter.meta.toolchain && emitter.meta.toolchain.probes;
+        if (!probes) continue;
+        assert.ok(queried.has(lang), `${lang}: no whole-file test consults TOOLS.${lang}`);
     }
 });

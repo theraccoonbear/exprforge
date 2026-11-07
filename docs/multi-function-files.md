@@ -101,6 +101,11 @@ comment in `emitters/base.js`) assemble the file from the per-function texts
 and the selected imports and helpers. A target that declares `helpers` or
 `imports` must supply a `frame`.
 
+Which targets assemble their own file is read from the registry, not
+declared twice: <!-- exprforge:list:file-framed -->QB64, C, Java, Go, C#, Python, Perl, Ruby, Fortran, Zig, COBOL, and MATLAB/Octave<!-- /exprforge --> configure a
+`frame`; <!-- exprforge:list:file-unframed -->JavaScript, TypeScript, Rust, Lua, PHP, Julia, R, and Scheme<!-- /exprforge --> are the header
+followed by the functions, concatenated.
+
 ## Tests
 
 `test/multi-function-files.test.js` compiles or runs a real file for every

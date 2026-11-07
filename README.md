@@ -3,15 +3,16 @@
 ![ExprForge — a blacksmith forging 3a² + 2ab − b² = (a+b)² − 2ab on a glowing anvil](https://raw.githubusercontent.com/theraccoonbear/exprforge/main/assets/expression-forge.png)
 
 [![npm version](https://img.shields.io/npm/v/exprforge.svg)](https://www.npmjs.com/package/exprforge)
+<!-- exprforge:badges -->
 [![TypeScript](https://github.com/theraccoonbear/exprforge/actions/workflows/test-typescript.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test-typescript.yml)
-[![Python](https://github.com/theraccoonbear/exprforge/actions/workflows/test-python.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test-python.yml)
-[![C#](https://github.com/theraccoonbear/exprforge/actions/workflows/test-csharp.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test-csharp.yml)
-[![Lua](https://github.com/theraccoonbear/exprforge/actions/workflows/test-lua.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test-lua.yml)
 [![QB64](https://github.com/theraccoonbear/exprforge/actions/workflows/test-qb64.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test-qb64.yml)
 [![C](https://github.com/theraccoonbear/exprforge/actions/workflows/test-c.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test-c.yml)
 [![Java](https://github.com/theraccoonbear/exprforge/actions/workflows/test-java.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test-java.yml)
 [![Go](https://github.com/theraccoonbear/exprforge/actions/workflows/test-go.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test-go.yml)
 [![Rust](https://github.com/theraccoonbear/exprforge/actions/workflows/test-rust.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test-rust.yml)
+[![C#](https://github.com/theraccoonbear/exprforge/actions/workflows/test-csharp.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test-csharp.yml)
+[![Python](https://github.com/theraccoonbear/exprforge/actions/workflows/test-python.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test-python.yml)
+[![Lua](https://github.com/theraccoonbear/exprforge/actions/workflows/test-lua.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test-lua.yml)
 [![Perl](https://github.com/theraccoonbear/exprforge/actions/workflows/test-perl.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test-perl.yml)
 [![Ruby](https://github.com/theraccoonbear/exprforge/actions/workflows/test-ruby.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test-ruby.yml)
 [![PHP](https://github.com/theraccoonbear/exprforge/actions/workflows/test-php.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test-php.yml)
@@ -23,15 +24,14 @@
 [![COBOL](https://github.com/theraccoonbear/exprforge/actions/workflows/test-cobol.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test-cobol.yml)
 [![Octave](https://github.com/theraccoonbear/exprforge/actions/workflows/test-octave.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test-octave.yml)
 [![LaTeX](https://github.com/theraccoonbear/exprforge/actions/workflows/test-latex.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test-latex.yml)
+<!-- /exprforge -->
 [![Test Coverage](https://github.com/theraccoonbear/exprforge/actions/workflows/test-coverage.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test-coverage.yml)
 [![VS Code Syntax](https://github.com/theraccoonbear/exprforge/actions/workflows/test-vscode-syntax.yml/badge.svg)](https://github.com/theraccoonbear/exprforge/actions/workflows/test-vscode-syntax.yml)
 
 ## Brief
 
 ExprForge authors a math formula once, as a small AST, and emits
-verified, identical-behavior implementations in JavaScript, TypeScript,
-Python, C#, Lua, QB64, C, Java, Go, Rust, Perl, Ruby, PHP, Julia, MATLAB/Octave, R,
-Fortran, Zig, Scheme (Guile), and COBOL (GnuCOBOL) — plus a native in-process
+verified, identical-behavior implementations in <!-- exprforge:list:executable-dialects -->JavaScript, TypeScript, QB64, C, Java, Go, Rust, C#, Python, Lua, Perl, Ruby, PHP, Julia, R, Fortran, Zig, Scheme (Guile), COBOL (GnuCOBOL), and MATLAB/Octave<!-- /exprforge --> — plus a native in-process
 evaluator, a printer for its own readable syntax, and typeset LaTeX
 output for documenting the formula itself. No required dependencies.
 
@@ -85,9 +85,9 @@ Two shapes of real use this tends to fall into:
 ## Intents
 
 **What it does**: turns one small, pure-arithmetic AST into
-identical-behavior source text for 20 programming languages (executable
+identical-behavior source text for <!-- exprforge:count:executable -->20<!-- /exprforge --> programming languages (executable
 targets), a native evaluator, typeset LaTeX output, and a printer for
-ExprForge's own syntax (22 output targets in total) — all from the same
+ExprForge's own syntax (<!-- exprforge:count:outputs -->22<!-- /exprforge --> output targets in total) — all from the same
 tree, walked once per target. Symbolic differentiation (`differentiate`) works over
 that same AST too, so a derivative is just another tree, emittable and
 evaluable exactly the same way.
@@ -364,8 +364,8 @@ call regardless of target, checked unconditionally at the same tier as
 ### `round()` at exact `.5` boundaries: standardized, NOT your language's native behavior
 
 **If you're reading emitted code and expected `round()` to behave like
-your target language's own native rounding function, it doesn't, on 9
-of the 20 programming-language targets, by deliberate design.** `round(x)` ties **away from
+your target language's own native rounding function, it doesn't, on <!-- exprforge:count:round-other -->9<!-- /exprforge -->
+of the <!-- exprforge:count:executable -->20<!-- /exprforge --> programming-language targets, by deliberate design.** `round(x)` ties **away from
 zero** everywhere, unconditionally — `round(-0.5)` is `-1`,
 `round(1.5)` is `2`, `round(2.5)` is `3` — identical on every target,
 confirmed directly against a real compiler/interpreter for every one of
@@ -386,7 +386,7 @@ rounding function directly:
 | **C#** (`Math.Round(double)`) | ties to even (default) | same pattern as Python |
 | **R** (`round()`) | ties to even (IEC 60559) | same pattern as Python; emitted with the exact floor-plus-fraction form |
 
-The other 11 programming-language targets (C, Rust, Go, Perl, Ruby, Zig, Fortran, COBOL, Julia, PHP, MATLAB/Octave)
+The other <!-- exprforge:count:round-away -->11<!-- /exprforge --> programming-language targets (<!-- exprforge:list:round-away -->C, Go, Rust, Perl, Ruby, PHP, Julia, Fortran, Zig, COBOL, MATLAB/Octave<!-- /exprforge -->)
 already tie away from zero natively, so ExprForge's `round()` matches
 what you'd expect from those languages directly — no surprise there.
 
@@ -395,7 +395,7 @@ this library's entire value proposition is "author once, get identical
 behavior everywhere" — `round()` was the one primitive quietly not
 living up to that (three incompatible native conventions, silently
 inherited with zero normalization). Away-from-zero was chosen because
-it was already the majority (11 of the 20 programming-language
+it was already the majority (<!-- exprforge:count:round-away -->11<!-- /exprforge --> of the <!-- exprforge:count:executable -->20<!-- /exprforge --> programming-language
 targets), and because this project's own Julia emitter had already,
 independently, made a deliberate choice to match it
 (`RoundNearestTiesAway`, not Julia's own ties-to-even default) before
@@ -406,12 +406,12 @@ reapplied. That form is exact for every finite double, unlike
 `floor(|x| + 0.5)`, which is off by one at `0.49999999999999994` and
 above 2^52 (see ADR 0001's addendum). See
 `samples/round-tie-demo.js`'s own header comment for the full,
-directly-verified breakdown of what each of the 8 changed targets used
+directly-verified breakdown of what each changed target used
 to do, and `test/conformance.test.js`'s `roundTieBoundary` entry for the
 permanent regression test proving every target agrees now.
 
-This is a real, deliberate, one-time behavior change on those 8
-targets — not configurable, no opt-out. If your use case genuinely
+This is a real, deliberate, one-time behavior change on the
+targets whose native rounding differed — not configurable, no opt-out. If your use case genuinely
 needs a DIFFERENT guaranteed tie-breaking convention (half-up, or
 half-to-even) across every target, don't reach for `round()` — compose
 it yourself from `floor`/`ceil`/`sign`/`abs` (all of which agree
@@ -432,7 +432,12 @@ number":
   harness), hang forever on an interactive "Continue?" prompt. A crash,
   not a wrong answer.
 - **Python**: `math.sqrt`/`log`/`log2`/`log10`/`asin`/`acos`/`pow` all
-  **raise `ValueError`**.
+  **raise `ValueError`**. Fixed with one-line `_ef_sqrt`/`_ef_log`/...
+  helper functions, emitted only when the generated code uses them (so
+  each operand is evaluated once, not repeated in an inline conditional).
+  `floor`/`ceil`/`trunc`/`round` (which raise on `Infinity`/`NaN`),
+  `min`/`max`, `sign` and `wrapIndex` use helpers too. The `_ef_` and
+  `_exprforge_` identifier prefixes are reserved.
 - **Ruby**: `Math.sqrt`/`log`/`log2`/`log10`/`asin`/`acos` **raise
   `Math::DomainError`**, and `Float ** Float` with a negative base and a
   non-integer exponent (or a NaN exponent) returns a **`Complex`**.
@@ -489,8 +494,7 @@ comes from both operands, including a `-0` denominator), and `0/0` and
   `_exprforge_div` helper (once per file, so each operand is still
   evaluated exactly once). A nonzero literal denominator keeps the
   plain `/`. `emitFile` defines the helper once per file (see below).
-- Every other target except COBOL (JS, TypeScript, C, Go, Rust, Java,
-  Lua, C#, Zig, Julia, R, Ruby, Fortran, Scheme, QB64) already returned IEEE
+- Every other executable target except COBOL already returned IEEE
   results and is unchanged.
 - **GnuCOBOL** is a documented, unfixed exception: `COMPUTE` is decimal
   arithmetic with no Infinity or NaN, so a zero denominator leaves the
@@ -667,8 +671,10 @@ const f = fn`
 `;
 const r = analyzeRanges(f, { x: [1, 2], d: [-1, 1] });
 // r.range    -> { lo: -Infinity, hi: Infinity, nan: false }
-// r.warnings -> [{ kind: "div-by-zero", at: "body", certain: false,
-//                  denominator: { lo: -1, hi: 1, nan: false } }]
+// r.warnings -> [{ kind: "div-by-zero", severity: "warning", at: "body",
+//                  expr: "x / d", certain: false,
+//                  denominator: { lo: -1, hi: 1, nan: false },
+//                  message: "`x / d` can divide by zero: `d` can be 0 (range −1…1)." }]
 ```
 
 `analyzeRanges(fnDef, ranges)` is an opt-in static analysis: it propagates
@@ -683,27 +689,45 @@ every element. A function with `outputs()` gets one range per field.
   `nan` is true when NaN is possible (out-of-domain `sqrt`/`log*`/
   `asin`/`acos`/`pow`, `0/0`, an opaque extern). Every built-in primitive
   has a rule; macros are expanded first.
-- **`div-by-zero` warning**: the denominator's interval includes zero
-  even after taking enclosing `select()` guards into account.
+- **Findings**: `r.findings` lists everything worth reporting. Each has
+  `kind`, `severity` (`"warning"` or `"info"`), a plain-language `message`
+  that quotes the source expression, `expr` (that source text) and `at`
+  (the internal AST path, for debugging). `r.warnings` is the subset with
+  severity `"warning"`.
+- **`div-by-zero`** (warning): the denominator's interval includes zero
+  even after narrowing by enclosing `select()` conditions.
   `certain: true` means it is exactly `[0, 0]`.
-- **`div-guarded` warning**: the denominator includes zero on its own, and
-  an enclosing `select()` condition is what excludes it. That is safe
+- **`div-guarded`** (warning): the denominator includes zero on its own,
+  and an enclosing `select()` condition is what excludes it. That is safe
   where `select` short-circuits, but `select` is modeled as evaluating both
   branches and QB64, Fortran and COBOL do exactly that, so the division
   still runs there with a zero denominator (the case
   `test/conformance.test.js`'s `normalizeX` is excluded from QB64 for).
-  `guards` lists the `select()` paths the exclusion depends on. The
-  clamped-denominator pattern `safeDiv` and `normalize3` use produces
-  neither warning.
+  `guards` / `guardConditions` name the `select()` conditions the exclusion
+  depends on. The clamped-denominator pattern `safeDiv` and `normalize3`
+  use produces neither warning.
+- **`div-unreachable`** (info): a division that would see a zero
+  denominator but sits in a branch the ranges never take. It is not a
+  hazard, so it is not in `r.warnings` (earlier versions listed it there
+  with `inDeadBranch: true`; that flag is still set on the note).
+- **`condition-decided`** (info): a `select()` condition is always or never
+  true for the declared ranges, so the other branch is dead.
 - **`selects`**: one entry per `select()` with `outcome`
-  (`"always-then"`, `"always-else"` or `"either"`, i.e. whether the ranges
-  alone decide the condition, which makes the other branch provably dead
-  and the `select()` removable) and `loadBearing` (removing the guard
-  would expose a zero denominator).
-- **Guard refinement** understands all six comparison operators, with
-  the constant on either side, on any expression (including let-bound
-  names), and treats `abs(E) > c` / `abs(E) >= c` as excluding `(-c, c)`
-  from `E`.
+  (`"always-then"`, `"always-else"` or `"either"`), `loadBearing` (removing
+  the guard would expose a zero denominator), `condition` (source text),
+  `severity` and `message`.
+- **Branch narrowing**: the then-branch is analysed with each side of the
+  condition's range narrowed by the comparison, the else-branch by its
+  negation (`>`/`<=`, `<`/`>=`, `==`/`!=`), for all six operators, with the
+  constant on either side, on any expression (including let-bound names).
+  So `x > 10 ? 1 / x : 0` with `x` in `[-20, 20]` divides by `x` in
+  `[10, 20]` and has no `div-by-zero`. If the narrowed ranges make the
+  condition impossible, the branch is unreachable. Intervals are closed, so
+  a strict bound is approximated by its closed hull (`x > c` as `x >= c`),
+  which can only widen a range, never drop a reachable value; whether zero
+  is excluded is tracked separately (`x > 0` and `x >= 1` exclude it,
+  `x >= 0` does not). `!=` narrows nothing except `x != 0`, which marks
+  `x` nonzero. `abs(E) > c` / `abs(E) >= c` excludes `(-c, c)` from `E`.
 
 Bounds are conservative: a range may be wider than the true range, never
 narrower (interval arithmetic cannot see correlation between two different
@@ -1121,16 +1145,16 @@ expression model without introducing control flow:
   emulation or an indexing idiom).
 
   **`select` is not a branch** — modeled as if both `then` and `else`
-  are always evaluated, matching the four real targets where that's
-  literally true: QB64 (the arithmetic expression above genuinely
+  are always evaluated, matching the <!-- exprforge:count:select-eager -->4<!-- /exprforge --> real targets where that's
+  literally true (<!-- exprforge:list:select-eager -->QB64, Fortran, COBOL, and MATLAB/Octave<!-- /exprforge -->). How each does it: QB64 (the arithmetic expression above genuinely
   computes both sides), Fortran (`MERGE`, an elemental intrinsic that
   doesn't short-circuit its arguments — confirmed against a real
   compiler), and COBOL (its picker helper spills both branches into
   temps before the call), and MATLAB/Octave (its `ef_select` helper receives
-  both already-evaluated values as arguments). The other 16 programming-language targets — including
+  both already-evaluated values as arguments). The other <!-- exprforge:count:select-lazy -->16<!-- /exprforge --> programming-language targets — including
   `evaluate()` itself — happen to short-circuit via their native
   ternary/`if`-`else`/`and`-`or` (Ruby's ternary, R's lazy `if`), but that's an implementation detail
-  those 16 share and the other 4 don't, not part of this AST's own
+  those <!-- exprforge:count:select-lazy -->16<!-- /exprforge --> share and the other <!-- exprforge:count:select-eager -->4<!-- /exprforge --> don't, not part of this AST's own
   contract — don't rely on it. Don't use `select` to guard division by
   zero or anything else undefined; clamp the operand itself with its
   own `select` first (see `safeDiv` in `samples/spline-frame.js`), or
@@ -1774,29 +1798,31 @@ have the version that image ships. Every workflow prints its resolved
 toolchain version. Bump pinned versions deliberately, in a reviewed
 change that also updates this table.
 
+<!-- exprforge:table:toolchains -->
 | Target | Minimum | Tested in CI | Notes |
 |---|---|---|---|
 | Node (library + JS target) | Node 22 (`engines`) | 22, 24, 26 (`test-node.yml`); 22 for all other workflows | Every supported Node line is tested. Node 18 and 20 are end-of-life and no longer supported. |
-| C | C99 | gcc from Ubuntu 24.04 (13.x), default `-std` | Needs `fmin`/`fmax`/`isnan`/`log2`/`hypot`/`trunc`/`round` from C99 `math.h` and compound literals; link with `-lm`. |
-| C# | C# 7.0; .NET Core 3.0 / .NET 5+ when `log2` is used (`Math.Log2`) | .NET 10.0.x (SDK-matched target framework) | Output is standalone: no `using` needed, `Math` is emitted as `global::System.Math`. Value tuples (C# 7) are used only for multi-output suites; on .NET Framework they need `System.ValueTuple`. Everything else used (`Math.Sign/Floor/Ceiling/Truncate/Abs/Sqrt/Pow/Atan2/Min/Max/Log/Log10/Exp`, trig) exists on every .NET version. Lower versions than the tested ones are not exercised by CI. |
-| Go | any Go 1.x (`math` only) | 1.26 | |
-| Rust | 1.50 (`f64::clamp`; `rem_euclid` needs 1.38) | 1.99.1 | Not rewritten to `max`/`min`: Rust's `f64::max`/`min` ignore NaN, which would change results. |
-| Java | Java 8 (only `Math.*`) | 21 (Temurin) | |
-| Python | 3.3 (`math.log2`) | 3.13 | Python 3 only. |
 | TypeScript | tsc accepting `--strict --target es2020 --module commonjs` | 5.9.3 | Source text is only generated; type-checked in tests. |
-| Lua | 5.3 (two-argument `math.atan`, no `math.pow`/`math.atan2`) | 5.3 and 5.4 | Not valid on 5.1/LuaJIT without compatibility. |
-| Perl | Perl 5 with core `POSIX` | 5.38 (Ubuntu 24.04) | |
-| PHP | PHP 7 (believed; no version-specific features found) | 8.3 (Ubuntu 24.04 `php-cli`) | |
-| Julia | 1.0 (`clamp`, `RoundNearestTiesAway`) | 1.11.5 (exact) | |
-| Ruby | 2.4 (`round(half: :up)`) | 3.3 (`ruby/setup-ruby`) | |
-| R | base R (no packages) | 4.5.2 (exact, `r-lib/actions/setup-r`) | |
-| MATLAB/Octave | GNU Octave, or MATLAB, accepting `end`-terminated functions with local helper functions in one `.m` file (no version-specific features found; exact minimum not determined) | GNU Octave from Ubuntu 24.04's `octave` apt package (not pinned; 8.4 expected, `octave-cli --version` is printed in the log), run through `octave-cli` | CI exercises Octave only. MATLAB itself is not installed in CI, so MATLAB compatibility is by construction (shared syntax subset) and not machine-verified. |
-| Fortran | Fortran 2008 (`HYPOT`, `MODULO`) | gfortran 13.x (Ubuntu 24.04), `-O2`, default `-std` | |
-| Zig | 0.14.1 exactly | 0.14.1 (exact) | Builtins and `std` change between releases. To bump: edit `test-zig.yml`, run the Zig suite, fix `emitters/zig.js`, update this table. |
 | QB64 | QB64-PE (tested release) | v4.7.0-GLFW (exact tag) | Built from the release source bundle in CI. |
-| Scheme | Guile 3.0 | guile-3.0 (Ubuntu 24.04) | |
+| C | C99 | gcc from Ubuntu 24.04 (13.x), default `-std` | Needs `fmin`/`fmax`/`isnan`/`log2`/`hypot`/`trunc`/`round` from C99 `math.h` and compound literals; link with `-lm`. |
+| Java | Java 8 (only `Math.*`) | 21 (Temurin) |  |
+| Go | any Go 1.x (`math` only) | 1.26 |  |
+| Rust | 1.50 (`f64::clamp`; `rem_euclid` needs 1.38) | 1.99.1 | Not rewritten to `max`/`min`: Rust's `f64::max`/`min` ignore NaN, which would change results. |
+| C# | C# 7.0; .NET Core 3.0 / .NET 5+ when `log2` is used (`Math.Log2`) | .NET 10.0.x (SDK-matched target framework) | Output is standalone: no `using` needed, `Math` is emitted as `global::System.Math`. Value tuples (C# 7) are used only for multi-output suites; on .NET Framework they need `System.ValueTuple`. Everything else used (`Math.Sign/Floor/Ceiling/Truncate/Abs/Sqrt/Pow/Atan2/Min/Max/Log/Log10/Exp`, trig) exists on every .NET version. Lower versions than the tested ones are not exercised by CI. |
+| Python | 3.3 (`math.log2`) | 3.13 | Python 3 only. |
+| Lua | 5.3 (two-argument `math.atan`, no `math.pow`/`math.atan2`) | 5.3 and 5.4 | Not valid on 5.1/LuaJIT without compatibility. |
+| Perl | Perl 5 with core `POSIX` | 5.38 (Ubuntu 24.04) |  |
+| Ruby | 2.4 (`round(half: :up)`) | 3.3 (`ruby/setup-ruby`) |  |
+| PHP | PHP 7 (believed; no version-specific features found) | 8.3 (Ubuntu 24.04 `php-cli`) |  |
+| Julia | 1.0 (`clamp`, `RoundNearestTiesAway`) | 1.11.5 (exact) |  |
+| R | base R (no packages) | 4.5.2 (exact, `r-lib/actions/setup-r`) |  |
+| Fortran | Fortran 2008 (`HYPOT`, `MODULO`) | gfortran 13.x (Ubuntu 24.04), `-O2`, default `-std` |  |
+| Zig | 0.14.1 exactly | 0.14.1 (exact) | Builtins and `std` change between releases. To bump: edit `test-zig.yml`, run the Zig suite, fix `emitters/zig.js`, update this table. |
+| Scheme | Guile 3.0 | guile-3.0 (Ubuntu 24.04) |  |
 | COBOL | GnuCOBOL 3.x | `gnucobol3` (3.1.2) | Not 4.x early-dev: confirmed `cob_decimal` codegen issue. To bump: run the full COBOL suite on the new series, re-check the skipped samples, update this table. |
+| MATLAB/Octave | GNU Octave or MATLAB (the shared syntax subset; see "MATLAB / Octave target") | Octave from Ubuntu 24.04 `octave` (`octave-cli`) | CI exercises Octave only; MATLAB compatibility is by construction and not machine-verified. |
 | LaTeX | LaTeX2e with `amsmath` (`wrap: "document"` loads it; other wraps need it in the host document). KaTeX 0.16+ or MathJax for web rendering. | KaTeX 0.16 strict parse; `pdflatex` from Ubuntu 24.04 `texlive-latex-base` | Output is typeset math, never executed. `document` output compiles standalone; long one-line formulas can run past the margin (overfull boxes are reported, not failures). |
+<!-- /exprforge -->
 
 Adding a target, or raising a minimum, requires updating this table and
 the matching workflow.
@@ -1903,9 +1929,8 @@ Runs `node --test`. For each sample, that's three kinds of check:
 
 The compiled/interpreted-language checks need their toolchain on `PATH`
 and skip (not fail) when it's missing, so `npm test` degrades gracefully
-on any one machine. Every one of `tsc`/`qb64pe`/`dotnet`/`python3`/`lua`/
-`perl`/`ruby`/`php`/`julia`/`octave-cli`/`Rscript`/`gfortran`/`zig`/`guile3.0`/`cobc` is treated exactly
-like gcc/go/rustc/javac: looked up on `PATH`, never a project
+on any one machine. Every toolchain command (<!-- exprforge:list:toolchain-commands -->`tsc`/`qb64pe`/`gcc`/`javac`/`java`/`go`/`rustc`/`dotnet`/`python3`/`lua`/`perl`/`ruby`/`php`/`julia`/`Rscript`/`gfortran`/`zig`/`guile3.0`/`cobc`/`octave-cli`<!-- /exprforge -->) is
+looked up on `PATH`, never a project
 dependency — exprforge only ever generates source text for these, it
 doesn't execute or type-check any of it itself. `package.json` has zero
 dependencies of any kind, matching this.
@@ -1999,8 +2024,9 @@ compiling/running against a real toolchain rather than assumed to work:
   suffixed `d` unconditionally to rule that out, not just the cases that
   would otherwise break.
 - **Python**: `math.floor`/`math.ceil`/`math.trunc`/`round` all return
-  `int`, not `float` — wrapped with `float(...)` to stay float64
-  throughout, matching every other target.
+  `int`, not `float` — the `_ef_floor`/`_ef_ceil`/`_ef_trunc` helpers
+  wrap with `float(...)` to stay float64 throughout, matching every
+  other target.
 - **Lua**: 5.3+ removed `math.pow` (use the `^` operator) and
   `math.atan2` (use two-argument `math.atan(y, x)`); there's no
   `math.round` or `math.trunc` or `math.sign` at any version (manual

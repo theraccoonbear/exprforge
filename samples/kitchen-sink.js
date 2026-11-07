@@ -19,7 +19,7 @@
 // boundaries" section for the real, since-fixed three-way divergence
 // this used to have, and why this file's own inputs still don't bother
 // landing exactly on a .5 boundary for d: this file's whole point is
-// exercising the OTHER 21 primitives across every target for the first
+// exercising the OTHER primitives across every target for the first
 // time, not re-proving round()'s tie-breaking, which round-tie-demo.js
 // already covers on its own, more precisely.)
 const { v, call, add, sub } = require("../ast.js");

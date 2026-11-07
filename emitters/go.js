@@ -110,4 +110,26 @@ function capitalize(s) {
     return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
+// Per-target facts that registry-wide docs and tests read; field reference
+// in emitters/meta.js.
+emitter.meta = {
+    displayName: "Go",
+    kind: "executable",
+    testTarget: "Go",
+    ci: { workflow: "test-go.yml", badge: "Go" },
+    toolchain: {
+        probes: [{ candidates: ["go"], args: ["version"] }],
+        docs: {
+            minimum: "any Go 1.x (`math` only)",
+            tested: "1.26",
+            notes: "",
+        },
+    },
+    guards: null,
+    division: "(x / y)",
+    roundTies: "away",
+    selectShortCircuits: true,
+    minMaxNaN: "propagate",
+};
+
 module.exports = emitter;

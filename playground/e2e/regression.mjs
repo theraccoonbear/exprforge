@@ -34,9 +34,13 @@ import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { createRequire } from "node:module";
+import { readdirSync, existsSync } from "node:fs";
 import { chromium } from "playwright";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const requireCjs = createRequire(import.meta.url);
+const registry = requireCjs("../../emitters/registry.js");
 const DIST = path.join(__dirname, "..", "dist");
 const PORT = 4310;
 
@@ -106,6 +110,26 @@ async function main() {
             null,
             "stale/incompatible localStorage content must fall back to the default example, not surface a raw parse error",
         );
+
+        // --- Discovery: every registered target and tool is surfaced ------
+        // Languages and tools are discovered (import.meta.glob), not listed,
+        // so the only way one goes missing is the discovery itself breaking.
+        await page.evaluate(() => localStorage.clear());
+        await page.reload();
+        await page.waitForSelector(".playground-toggles .toggle-chip", { timeout: 15000 });
+        const chipLabels = await page.$$eval(".playground-toggles .toggle-chip", (els) => els.map((e) => e.textContent));
+        const expectedLabels = Object.values(registry).map((e) => e.meta.displayName);
+        assert.deepStrictEqual(
+            [...chipLabels].sort(),
+            [...expectedLabels].sort(),
+            "the playground must offer exactly one toggle per registered emitter",
+        );
+        const toolsDir = path.join(__dirname, "..", "src", "tools");
+        const toolDirs = readdirSync(toolsDir, { withFileTypes: true }).filter(
+            (d) => d.isDirectory() && existsSync(path.join(toolsDir, d.name, "index.ts")),
+        );
+        const navCount = await page.$$eval(".shell-nav .shell-nav-item", (els) => els.length);
+        assert.strictEqual(navCount, toolDirs.length, "the tab bar must show one tab per tools/<name>/index.ts");
 
         // --- Every bundled example must load with zero errors -----------
         // Not just the one that broke -- any future grammar change could
@@ -187,14 +211,43 @@ async function main() {
             "a ranges share link must activate the Range analysis tab",
         );
         assert.ok(
-            (await page.$eval(".ranges-result", (el) => el.textContent)).includes("div-by-zero"),
-            "an unguarded division over a zero-spanning range must be flagged",
+            (await page.$eval(".ranges-result", (el) => el.textContent)).includes("x / d can divide by zero: d can be 0 (range \u22121\u20261)."),
+            "an unguarded division over a zero-spanning range must be flagged in plain language",
+        );
+        assert.strictEqual(
+            await page.$$eval('.ranges-result [data-severity="warning"]', (els) => els.length),
+            1,
+            "the unguarded division must be a single warning-severity finding",
         );
         await page.fill('.ranges-input[data-param="d"]', "2, 4");
         await page.waitForTimeout(300);
         const rangesText = await page.$eval(".ranges-result", (el) => el.textContent);
-        assert.ok(!rangesText.includes("div-by-zero"), "a nonzero denominator range must clear the warning");
+        assert.ok(!rangesText.includes("can divide by zero"), "a nonzero denominator range must clear the warning");
+        for (const jargon of ["div-by-zero", "div-guarded", "always-else", "select.then"]) {
+            assert.ok(!rangesText.includes(jargon), `internal term ${jargon} must not appear in the result`);
+        }
         assert.ok(rangesText.includes("[0.25, 1]"), `expected output range [0.25, 1], got: ${rangesText}`);
+
+        // A branch the ranges never reach must be a plain note, not a warning;
+        // and narrowing by the condition must keep a guarded division from
+        // being reported as a plain divide-by-zero.
+        const BRANCH_SRC = "f(x):\n  return x > 10 ? 1 / x : 0;\n";
+        const branchUrl = (x) =>
+            `http://localhost:${PORT}/?tool=ranges&src=${encodeURIComponent(BRANCH_SRC)}&ranges=${encodeURIComponent(JSON.stringify({ x }))}`;
+        await page.goto(branchUrl("-1, 1"));
+        await page.waitForSelector(".ranges-result .ranges-body", { timeout: 15000 });
+        const deadText = await page.$eval(".ranges-result", (el) => el.textContent);
+        assert.ok(deadText.includes("Condition x > 10 is never true for these inputs, so this always returns 0."), `got: ${deadText}`);
+        assert.ok(deadText.includes("[0, 0]"), `expected output range [0, 0], got: ${deadText}`);
+        assert.strictEqual(
+            await page.$$eval('.ranges-result [data-severity="warning"]', (els) => els.length),
+            0,
+            "a division in a branch that never runs must not be a warning",
+        );
+        await page.goto(branchUrl("-20, 20"));
+        await page.waitForSelector(".ranges-result .ranges-body", { timeout: 15000 });
+        const narrowText = await page.$eval(".ranges-result", (el) => el.textContent);
+        assert.ok(!narrowText.includes("can divide by zero"), `x > 10 narrows x away from zero, got: ${narrowText}`);
 
         // --- Duplicates tab ------------------------------------------------
         // The bundled sample must report the shared distance computation

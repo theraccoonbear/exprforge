@@ -163,11 +163,9 @@ test("ruby: pow(-8, NaN) is NaN, not Complex", { skip }, () => {
     assert.strictEqual(runRuby(fn, "p(2, 10)"), "1024");
 });
 
-test("ruby: the _ef_ prefix is reserved, so a user name cannot shadow a helper", { skip }, () => {
-    const fn = { name: "g", params: ["_ef_sqrt", "_ef_pow"], body: call("sqrt", add(v("_ef_sqrt"), v("_ef_pow"))) };
-    const src = emitters.ruby.emitFunction(fn);
-    assert.ok(src.includes("def g(__ef_sqrt, __ef_pow)"), src);
-    assert.strictEqual(runRuby(fn, "g(7, 9)"), "4");
+test("ruby: the _ef_ prefix is reserved, so a user name cannot shadow a helper", () => {
+    assert.throws(() => v("_ef_sqrt"), /reserved prefix/);
+    assert.throws(() => v("_ef_pow"), /reserved prefix/);
 });
 
 test("ruby: floor/ceil/trunc/round pass NaN and Infinity through instead of raising", { skip }, () => {

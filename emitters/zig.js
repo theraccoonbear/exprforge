@@ -156,4 +156,26 @@ function builtin2(name) {
     return ([a, b]) => `@${name}(${a}, ${b})`;
 }
 
+// Per-target facts that registry-wide docs and tests read; field reference
+// in emitters/meta.js.
+emitter.meta = {
+    displayName: "Zig",
+    kind: "executable",
+    testTarget: "Zig",
+    ci: { workflow: "test-zig.yml", badge: "Zig" },
+    toolchain: {
+        probes: [{ candidates: ["zig"], args: ["version"] }],
+        docs: {
+            minimum: "0.14.1 exactly",
+            tested: "0.14.1 (exact)",
+            notes: "Builtins and `std` change between releases. To bump: edit `test-zig.yml`, run the Zig suite, fix `emitters/zig.js`, update this table.",
+        },
+    },
+    guards: null,
+    division: "(x / y)",
+    roundTies: "away",
+    selectShortCircuits: true,
+    minMaxNaN: "ignore",
+};
+
 module.exports = emitter;

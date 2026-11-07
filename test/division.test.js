@@ -22,66 +22,30 @@ function emitBody(lang, body, params = ["x", "y"]) {
 }
 
 // The exact text each target prints for div(x, y) with a variable
-// denominator. Targets whose native division is already IEEE 754 keep the
-// plain infix form.
-const VARIABLE_DENOMINATOR = {
-    js: "(x / y)",
-    ts: "(x / y)",
-    c: "(x / y)",
-    java: "(x / y)",
-    go: "(x / y)",
-    rust: "(x / y)",
-    csharp: "(x / y)",
-    lua: "(x / y)",
-    julia: "(x / y)",
-    r: "(x / y)",
-    ruby: "(x / y)",
-    fortran: "(x / y)",
-    zig: "(x / y)",
-    qb64: "(x / y)",
-    scheme: "(/ x y)",
-    python: "_exprforge_div(x, y)",
-    perl: "_exprforge_div($x, $y)",
-    php: "fdiv($x, $y)",
-    cobol: "(x / y)",
-    matlab: "(x / y)",
-};
-
-// LaTeX is typeset, not executed, so there is no runtime behavior to
-// observe: the check is on the rendered fraction.
-const TYPESET = {
-    latex: "\\frac{x}{y}",
-};
-
-for (const [lang, expected] of Object.entries(TYPESET)) {
-    test(`${lang}: division by a variable denominator is typeset as ${expected}`, () => {
-        assert.ok(emitters[lang], `no emitter registered for ${lang}`);
-        assert.ok(emitBody(lang, div(v("x"), v("y"))).includes(expected));
-    });
-}
-
-for (const [lang, expected] of Object.entries(VARIABLE_DENOMINATOR)) {
+// denominator is declared next to the emitter, as meta.division in
+// emitters/<lang>.js. Targets whose native division is already IEEE 754 keep
+// the plain infix form; LaTeX is typeset, not executed, so its check is on
+// the rendered fraction.
+for (const [lang, emitter] of Object.entries(emitters)) {
+    const expected = emitter.meta && emitter.meta.division;
     test(`${lang}: division by a variable denominator is emitted as ${expected}`, () => {
-        assert.ok(emitters[lang], `no emitter registered for ${lang}`);
+        assert.strictEqual(typeof expected, "string", `emitters/${lang}.js has no meta.division`);
         assert.ok(emitBody(lang, div(v("x"), v("y"))).includes(expected));
     });
 }
 
-test("every registered emitter is covered by the division table above", () => {
-    const covered = new Set([...Object.keys(VARIABLE_DENOMINATOR), ...Object.keys(TYPESET), "expr"]);
-    for (const lang of Object.keys(emitters)) {
-        assert.ok(covered.has(lang), `emitter "${lang}" has no division check in test/division.test.js`);
-    }
-});
+// Targets whose native "/" raises on a zero denominator get a guarded
+// form (meta.divisionGuard), but only when the denominator could be zero: a
+// nonzero numeric literal keeps the plain, readable operator.
+const GUARDED = Object.fromEntries(
+    Object.entries(emitters)
+        .filter(([, e]) => e.meta && e.meta.divisionGuard)
+        .map(([lang, e]) => [lang, e.meta.divisionGuard]),
+);
 
-// The three targets whose native "/" raises on a zero denominator get a
-// guarded form, but only when the denominator could be zero: a nonzero
-// numeric literal keeps the plain, readable operator.
-const GUARDED = {
-    python: { plain: "(x / 2)", helperCall: "_exprforge_div(" },
-    perl: { plain: "($x / 2)", helperCall: "_exprforge_div(" },
-    php: { plain: "($x / 2)", helperCall: "fdiv(" },
-};
+test("the guarded-division set is non-empty", () => {
+    assert.ok(Object.keys(GUARDED).length >= 3, Object.keys(GUARDED).join(", "));
+});
 
 for (const [lang, { plain, helperCall }] of Object.entries(GUARDED)) {
     test(`${lang}: a nonzero literal denominator stays plain division`, () => {
@@ -100,7 +64,7 @@ for (const [lang, { plain, helperCall }] of Object.entries(GUARDED)) {
         const numerator = call("sin", v("p"));
         const denominator = call("cos", v("q"));
         const out = emitBody(lang, div(numerator, denominator), ["p", "q"]);
-        const body = out.split("\n").filter((l) => l.includes("return") && l.includes("sin")).join("\n");
+        const body = out.split("\n").filter((l) => !l.trimStart().startsWith("def ") && l.includes("return") && l.includes("sin")).join("\n");
         assert.strictEqual(body.split("sin").length - 1, 1, body);
         assert.strictEqual(body.split("cos").length - 1, 1, body);
     });
@@ -113,7 +77,8 @@ test("python and perl: a standalone function that divides carries the division h
 });
 
 test("targets with native IEEE division emit no helper", () => {
-    for (const lang of ["js", "c", "go", "rust", "lua", "qb64", "matlab"]) {
+    for (const [lang, emitter] of Object.entries(emitters)) {
+        if (emitter.meta.divisionGuard) continue;
         const out = emitBody(lang, div(v("x"), v("y")));
         assert.ok(!out.includes("_exprforge_div"), `${lang} should not use a division helper`);
     }

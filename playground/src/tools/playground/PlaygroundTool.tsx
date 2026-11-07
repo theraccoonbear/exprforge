@@ -10,7 +10,7 @@ import { LANGUAGE_META } from "./languageMeta";
 import { EXAMPLES } from "./examples";
 import { readStorageJSON, readStorageString, writeStorageJSON, writeStorageString } from "../../lib/storage";
 import { ExprForge } from "../../lib/exprforge";
-import { PLAYGROUND_TOOL_ID } from "../ids";
+import { PLAYGROUND_TOOL_ID } from "./id";
 
 const { fn, loadExprSource } = ExprForge;
 

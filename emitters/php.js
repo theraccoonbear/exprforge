@@ -120,4 +120,27 @@ const emitter = new PhpEmitter({
     },
 });
 
+// Per-target facts that registry-wide docs and tests read; field reference
+// in emitters/meta.js.
+emitter.meta = {
+    displayName: "PHP",
+    kind: "executable",
+    testTarget: "PHP",
+    ci: { workflow: "test-php.yml", badge: "PHP" },
+    toolchain: {
+        probes: [{ candidates: ["php"], args: ["--version"] }],
+        docs: {
+            minimum: "PHP 7 (believed; no version-specific features found)",
+            tested: "8.3 (Ubuntu 24.04 `php-cli`)",
+            notes: "",
+        },
+    },
+    guards: "is_array($arr)",
+    division: "fdiv($x, $y)",
+    divisionGuard: { plain: "($x / 2)", helperCall: "fdiv(" },
+    roundTies: "away",
+    selectShortCircuits: true,
+    minMaxNaN: "positional",
+};
+
 module.exports = emitter;
