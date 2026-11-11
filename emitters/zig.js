@@ -178,4 +178,5 @@ emitter.meta = {
     minMaxNaN: "ignore",
 };
 
+emitter.lang = "zig";
 module.exports = emitter;

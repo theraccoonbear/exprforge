@@ -116,4 +116,5 @@ emitter.meta = {
     minMaxNaN: "propagate",
 };
 
+emitter.lang = "ts";
 module.exports = emitter;

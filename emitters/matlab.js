@@ -253,4 +253,5 @@ emitter.meta = {
     minMaxNaN: "ignore",
 };
 
+emitter.lang = "matlab";
 module.exports = emitter;

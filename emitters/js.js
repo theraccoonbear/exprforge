@@ -119,4 +119,5 @@ emitter.meta = {
     minMaxNaN: "propagate",
 };
 
+emitter.lang = "js";
 module.exports = emitter;

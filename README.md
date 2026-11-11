@@ -151,6 +151,40 @@ npm install exprforge
 
 Requires Node 22 or later. See [Supported toolchain versions](#supported-toolchain-versions) for every target's tested versions.
 
+## Importing only what you need
+
+`require("exprforge")` loads everything: every emitter, the parsers, the
+evaluator, the analyzers and the bundled sample fixtures. To load less,
+use the subpath exports (CommonJS; deep paths such as `exprforge/ast.js`
+are not exported):
+
+| Subpath | Provides | Loads |
+| --- | --- | --- |
+| `exprforge/core` | AST builders (`num`, `v`, `bin`, `call`, `letIn`, `select`, ...) and `PRIMITIVE_ARITY` | `ast.js`, `primitives.js` |
+| `exprforge/emitters/<lang>` | one emitter instance, e.g. `exprforge/emitters/c` (`emitters/registry` and `emitters/meta` are reachable too) | that emitter, `emitters/base.js`, `macros.js` and the core files |
+| `exprforge/parse` | `expr`, `fn`, `parseProgram` | `expr.js`, `fn.js`, `ast.js` |
+| `exprforge/eval` | `evaluate` | `evaluate.js`, `macros.js`, core files |
+| `exprforge/analyze` | `analyzeRanges`, `findDuplicateSubexpressions`, `differentiate` | `analyze.js`, `duplicates.js`, `differentiate.js`, `emitters/exprsyntax.js`, `macros.js`, core files |
+| `exprforge/macros` | `loadMacro`, `loadExtern`, `expandMacros`, ... | `macros.js`, core files |
+| `exprforge/math` | 3-D math compositions | registers its macros at import |
+
+None of these load the emitter registry, `load-expr.js` (the only module
+that requires `node:fs`) or the sample fixtures.
+
+```js
+const { v, num, add } = require("exprforge/core");
+const c = require("exprforge/emitters/c");
+
+const { loadExtern } = require("exprforge/macros");
+loadExtern("j0", { evaluate: (x) => x, c: ([x]) => `j0(${x})` });
+
+console.log(c.emitFunction({ name: "f", params: ["x"], body: add(v("x"), num(1)) }));
+```
+
+Each emitter module sets its own `lang`, so externs registered with
+`loadExtern` resolve for an emitter required directly. `package.json`
+declares `sideEffects` for the modules that register macros at import.
+
 ## Examples, flashiest first
 
 The showcase feature: several function definitions in one buffer, a

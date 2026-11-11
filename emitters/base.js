@@ -219,10 +219,9 @@ class Emitter {
             }
             case "call": {
                 const args = node.args.map((a) => this.emitExpr(a));
-                // `this.lang` is injected by emitters/registry.js (the
-                // registered key, e.g. "js"/"cobol") -- not set for an
-                // Emitter built standalone outside the registry, in which
-                // case an extern simply never resolves here, same as an
+                // `this.lang` is set by each emitters/<lang>.js to its
+                // registered key (e.g. "js"/"cobol"); an Emitter built
+                // without one never resolves an extern, same as an
                 // unmapped name.
                 const builtin = this.calls[node.name];
                 const template = builtin || (this.lang && resolveExternForEmitter(node.name, this.lang, this._registry));

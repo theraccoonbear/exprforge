@@ -155,4 +155,5 @@ emitter.meta = {
     minMaxNaN: "propagate",
 };
 
+emitter.lang = "r";
 module.exports = emitter;

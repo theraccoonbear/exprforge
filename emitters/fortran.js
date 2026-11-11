@@ -265,4 +265,5 @@ emitter.meta = {
     minMaxNaN: "erratic",
 };
 
+emitter.lang = "fortran";
 module.exports = emitter;
