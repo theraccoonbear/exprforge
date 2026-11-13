@@ -31,7 +31,8 @@ An opt-in 4th argument to `emit()`/`emitMany()` (and the equivalent on a
 session's own `emit`/`emitMany`, see `createSession()`):
 
 ```js
-const { emit, samples } = require("exprforge");
+const { emit } = require("exprforge");
+const samples = require("exprforge/samples");
 
 emit(samples.cyclicElem, "js").source;
 // function cyclicElem(arr, m, i) {

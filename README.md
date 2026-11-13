@@ -153,8 +153,9 @@ Requires Node 22 or later. See [Supported toolchain versions](#supported-toolcha
 
 ## Importing only what you need
 
-`require("exprforge")` loads everything: every emitter, the parsers, the
-evaluator, the analyzers and the bundled sample fixtures. To load less,
+`require("exprforge")` loads every emitter, the parsers, the evaluator
+and the analyzers. It does not load the sample fixtures (see
+`exprforge/samples` below) or `exprforge/math`. To load less,
 use the subpath exports (CommonJS; deep paths such as `exprforge/ast.js`
 are not exported):
 
@@ -167,9 +168,12 @@ are not exported):
 | `exprforge/analyze` | `analyzeRanges`, `findDuplicateSubexpressions`, `differentiate` | `analyze.js`, `duplicates.js`, `differentiate.js`, `emitters/exprsyntax.js`, `macros.js`, core files |
 | `exprforge/macros` | `loadMacro`, `loadExtern`, `expandMacros`, ... | `macros.js`, core files |
 | `exprforge/math` | 3-D math compositions | registers its macros at import |
+| `exprforge/samples` | the example and conformance-fixture ASTs, keyed by name (see [Samples](#samples)) | the fixtures plus the parser, `differentiate.js`, `macros.js`, core files and `exprforge/math`; `samples/macro-demo.js`, `samples/array-macro-demo.js` and `exprforge/math` register macros at import |
 
-None of these load the emitter registry, `load-expr.js` (the only module
-that requires `node:fs`) or the sample fixtures.
+None of these except `exprforge/samples` load the emitter registry,
+`load-expr.js` (the only module that requires `node:fs`) or the sample
+fixtures. `exprforge/samples` loads the fixtures, but not the registry or
+`load-expr.js`.
 
 ```js
 const { v, num, add } = require("exprforge/core");
@@ -337,9 +341,14 @@ console.log(outputs.rust.source);
 
 ## Samples
 
-`samples/` has worked, non-trivial examples (exported from the
-package together as the `samples` object, keyed by name, e.g.
-`samples.catmullRom`):
+`samples/` has worked, non-trivial examples, exported together through
+the `exprforge/samples` subpath as one object keyed by name (the main
+`exprforge` entry does not load or export them):
+
+```js
+const samples = require("exprforge/samples");
+samples.catmullRom; // the catmullRom1D function definition
+```
 
 - `samples/catmull-rom.js` — uniform Catmull-Rom spline interpolation.
 - `samples/fibonacci.js` — nth Fibonacci number via Binet's closed form.
@@ -1263,7 +1272,8 @@ JS/TypeScript/Python/PHP/Lua/Perl/Ruby/Scheme/Julia source (and, since it was ad
 check at all. Opt in with a 4th argument to `emit()`/`emitMany()`:
 
 ```js
-const { emit, samples } = require("exprforge");
+const { emit } = require("exprforge");
+const samples = require("exprforge/samples");
 
 emit(samples.cyclicElem, "js", undefined, { addTypeGuards: true }).source;
 // function cyclicElem(arr, m, i) {
