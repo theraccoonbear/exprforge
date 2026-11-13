@@ -804,7 +804,9 @@ const QB64_HARNESS_HELPERS =
     `END FUNCTION\n\n`;
 
 function qb64ToNumber(str) {
-    if (str.includes("QB64-RUNTIME-ERROR")) throw new Error(`QB64 runtime error: ${str}`);
+    // runQb64 already fails such a run; this keeps a stray report from
+    // ever being parsed as a value.
+    if (/^Runtime error/m.test(str)) throw new Error(`QB64 runtime error: ${str}`);
     // QB64 prints "-NAN"/"NAN" for NaN and "inf"/"-inf" for Infinity
     // (confirmed against a real compile) -- parseNumericOutput handles
     // both, same as every other target's own spelling; only a genuine
