@@ -111,3 +111,17 @@ test("package.json sideEffects lists every module that registers macros at impor
         assert.ok(pkg.sideEffects.includes(f), f);
     }
 });
+
+test("exprforge/samples exports the keyed fixtures; the main entry loads none of them", () => {
+    const { result, loaded } = child(`
+        const main = require("exprforge");
+        const loadedBefore = Object.keys(require.cache).filter((f) => f.includes(require("node:path").sep + "samples" + require("node:path").sep)).length;
+        const samples = require("exprforge/samples");
+        const result = { mainHasSamples: "samples" in main, loadedBefore, catmullRom: samples.catmullRom.name, cyclicElem: samples.cyclicElem.name, count: Object.keys(samples).length };`);
+    assert.strictEqual(result.mainHasSamples, false);
+    assert.strictEqual(result.loadedBefore, 0);
+    assert.strictEqual(result.catmullRom, "catmullRom1D");
+    assert.strictEqual(result.cyclicElem, "cyclicElem");
+    assert.ok(result.count >= 21, String(result.count));
+    assert.ok(loaded.includes("samples/index.js"));
+});

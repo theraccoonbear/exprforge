@@ -16,7 +16,8 @@
 // comparison to add here that these checks don't already cover.
 const test = require("node:test");
 const assert = require("node:assert");
-const { emit, emitMany, samples } = require("../index.js");
+const { emit, emitMany } = require("../index.js");
+const samples = require("../samples/index.js");
 const cyclicElemAst = samples.cyclicElem;
 const emitters = require("../emitters/registry.js");
 

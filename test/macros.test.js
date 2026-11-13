@@ -182,7 +182,7 @@ test("correct arity for every primitive still works normally -- not a false posi
     // x=0.5 keeps sqrt/log/log2/log10/asin/acos all in their valid
     // domain (see that file's own header comment); y=0.3 gives d=x-y a
     // definite sign for floor/ceil/round/trunc/sign.
-    const { samples } = require("../index.js");
+    const samples = require("../samples/index.js");
     assert.doesNotThrow(() => evaluate(samples.kitchenSink, [0.5, 0.3]));
 });
 

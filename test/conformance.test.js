@@ -39,8 +39,8 @@ const {
     collectLets,
     expr,
     emitters,
-    samples,
 } = require("../index.js");
+const samples = require("../samples/index.js");
 const {
     catmullRom: catmullRomAst,
     fibonacci: fibonacciAst,

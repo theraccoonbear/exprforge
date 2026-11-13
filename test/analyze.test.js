@@ -20,7 +20,7 @@ const { loadExtern } = require("../macros.js");
 const { PRIMITIVE_ARITY } = require("../primitives.js");
 const { safeDiv, normalize3 } = require("../math/index.js");
 const { createSession } = require("../index.js");
-const samples = require("../index.js").samples;
+const samples = require("../samples/index.js");
 
 const warningsOf = (r) => r.findings.filter((x) => x.severity === "warning");
 const def = (params, body) => ({ name: "f", params, body });
