@@ -13,6 +13,7 @@
     "./macros": "./entry/macros.js",
     "./emitters/*": "./emitters/*.js",
     "./math": "./math/index.js",
+    "./samples": "./samples/index.js",
     "./package.json": "./package.json"
   },
   "sideEffects": [

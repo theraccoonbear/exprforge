@@ -9,25 +9,6 @@ const { findDuplicateSubexpressions } = require("./duplicates.js");
 const { loadMacro, loadExtern, expandMacros, createRegistry } = require("./macros.js");
 const { loadExpr, loadExprSource } = require("./load-expr.js");
 const emitters = require("./emitters/registry.js");
-const { catmullRomAst } = require("./samples/catmull-rom.js");
-const { fibonacciAst } = require("./samples/fibonacci.js");
-const { splineFrameAsts } = require("./samples/spline-frame.js");
-const { kitchenSinkAst } = require("./samples/kitchen-sink.js");
-const { mathDemoAst } = require("./samples/math-demo.js");
-const { macroDemoAst } = require("./samples/macro-demo.js");
-const { cyclicElemAst, clampedElemAst } = require("./samples/array-index-demo.js");
-const { comparisonOpsAst } = require("./samples/comparison-ops-demo.js");
-const { nestedSelectAst } = require("./samples/nested-select-demo.js");
-const { numberExtremesAst } = require("./samples/number-extremes-demo.js");
-const { roundTieBoundaryAst } = require("./samples/round-tie-demo.js");
-const { domainSafetyAst } = require("./samples/domain-safety-demo.js");
-const { arraySuiteAst } = require("./samples/array-suite-demo.js");
-const { arrayMacroDemoAst } = require("./samples/array-macro-demo.js");
-const { mathEdgeCasesAst } = require("./samples/math-edge-cases-demo.js");
-const { divisionByZeroAst } = require("./samples/division-by-zero-demo.js");
-const { nonFiniteRoundingAst, roundingZeroSignAst } = require("./samples/non-finite-rounding-demo.js");
-const { differentiateDemoAst } = require("./samples/differentiate-demo.js");
-const { zeroParamDemoAst } = require("./samples/zero-param-demo.js");
 
 /**
  * Run ONE emitter against one AST function definition. Returns
@@ -199,31 +180,6 @@ module.exports = {
     // (a text editor buffer, an HTTP response, ...). loadExpr(path) is
     // now just this plus a readFileSync.
     loadExprSource,
-    // Built-in example and conformance-fixture formulas, keyed by name --
-    // see samples/ for the source and each file's own header comment.
-    samples: {
-        catmullRom: catmullRomAst,
-        fibonacci: fibonacciAst,
-        splineFrame: splineFrameAsts,
-        kitchenSink: kitchenSinkAst,
-        mathDemo: mathDemoAst,
-        macroDemo: macroDemoAst,
-        cyclicElem: cyclicElemAst,
-        clampedElem: clampedElemAst,
-        comparisonOps: comparisonOpsAst,
-        nestedSelect: nestedSelectAst,
-        numberExtremes: numberExtremesAst,
-        roundTieBoundary: roundTieBoundaryAst,
-        domainSafety: domainSafetyAst,
-        arraySuite: arraySuiteAst,
-        arrayMacroDemo: arrayMacroDemoAst,
-        mathEdgeCases: mathEdgeCasesAst,
-        divisionByZero: divisionByZeroAst,
-        nonFiniteRounding: nonFiniteRoundingAst,
-        roundingZeroSign: roundingZeroSignAst,
-        differentiateDemo: differentiateDemoAst,
-        zeroParamDemo: zeroParamDemoAst,
-    },
     // Per-language emitter instances, keyed by name (js, qb64, c, java, go, rust).
     emitters,
     // One target, explicit -- see this function's own doc comment above.
